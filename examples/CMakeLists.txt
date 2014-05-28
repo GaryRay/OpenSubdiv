@@ -22,7 +22,7 @@
 #   language governing permissions and limitations under the Apache License.
 #
 
-
+add_subdirectory(osd2eson)
 
 if( OPENGL_FOUND AND (GLEW_FOUND AND GLFW_FOUND) OR (APPLE AND GLFW_FOUND))
 
