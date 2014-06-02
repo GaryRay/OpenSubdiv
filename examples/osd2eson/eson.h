@@ -115,8 +115,6 @@ class Value
     int64_t  ComputeArraySize() const {
       assert(type_ == ARRAY_TYPE);
 
-      int64_t array_size = 0;
-
       assert(array_->size() > 0);
 
       char base_element_type = (*array_)[0].Type();
@@ -194,15 +192,15 @@ class Value
       }
     }
 
-    const char Type() const {
+    char Type() const {
       return (const char)type_;
     }
 
-    const bool IsArray() const {
+    bool IsArray() const {
       return (type_ == ARRAY_TYPE);
     }
 
-    const bool IsObject() const {
+    bool IsObject() const {
       return (type_ == OBJECT_TYPE);
     }
 

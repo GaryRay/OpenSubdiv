@@ -23,12 +23,14 @@
 //
 
 #include <stdio.h>
+#include <float.h>
 
 #include <far/meshFactory.h>
 #include <far/dispatcher.h>
 
 #include "../regression/common/shape_utils.h"
 #include "eson.h"
+#include "bezier.h"
 
 //
 // Regression testing matching Far to Hbr (default CPU implementation)
@@ -128,42 +130,8 @@ typedef OpenSubdiv::FarMeshFactory<xyzVV>       fMeshFactory;
 typedef OpenSubdiv::FarSubdivisionTables        fSubdivision;
 typedef OpenSubdiv::FarPatchTables              fPatches;
 
-static bool g_dumphbr = false;
 static int g_level = 4;
 
-//------------------------------------------------------------------------------
-// Returns true if a vertex or any of its parents is on a boundary
-bool VertexOnBoundary( xyzvertex const * v ) {
-
-    if (not v)
-        return false;
-
-    if (v->OnBoundary())
-        return true;
-
-    xyzvertex const * pv = v->GetParentVertex();
-    if (pv)
-        return VertexOnBoundary(pv);
-    else {
-        xyzhalfedge const * pe = v->GetParentEdge();
-        if (pe) {
-              return VertexOnBoundary(pe->GetOrgVertex()) or
-                     VertexOnBoundary(pe->GetDestVertex());
-        } else {
-            xyzface const * pf = v->GetParentFace(), * rootf = pf;
-            while (pf) {
-                pf = pf->GetParent();
-                if (pf)
-                    rootf=pf;
-            }
-            if (rootf)
-                for (int i=0; i<rootf->GetNumVertices(); ++i)
-                    if (rootf->GetVertex(i)->OnBoundary())
-                        return true;
-        }
-    }
-    return false;
-}
 
 //------------------------------------------------------------------------------
 int checkMesh( char const * name, xyzmesh * hmesh, int levels, Scheme scheme=kCatmark ) {
@@ -173,8 +141,6 @@ int checkMesh( char const * name, xyzmesh * hmesh, int levels, Scheme scheme=kCa
     assert(name);
 
     int count=0;
-    float deltaAvg[3] = {0.0f, 0.0f, 0.0f},
-          deltaCnt[3] = {0.0f, 0.0f, 0.0f};
 
     fMeshFactory fact( hmesh, levels, /*adaptive=*/true);
     fMesh * m = fact.Create( );
@@ -183,23 +149,63 @@ int checkMesh( char const * name, xyzmesh * hmesh, int levels, Scheme scheme=kCa
 
     // dump patch as eson
 
+    // centering vertices.
+    std::vector<float> vertices;
+    {
+        float min[3] = {FLT_MAX, FLT_MAX, FLT_MAX};
+        float max[3] = {-FLT_MAX, -FLT_MAX, -FLT_MAX};
+        for (int i = 0; i < (int)m->GetVertices().size(); ++i) {
+            xyzVV const &v = m->GetVertices()[i];
+            for (int j = 0; j < 3; ++j) {
+                min[j] = std::min(min[j], v.GetPos()[j]);
+                max[j] = std::max(max[j], v.GetPos()[j]);
+            }
+        }
+        float center[3] = { (max[0]+min[0])*0.5,
+                            (max[1]+min[1])*0.5,
+                            (max[2]+min[2])*0.5 };
+        for (int i = 0; i < (int)m->GetVertices().size(); ++i) {
+            xyzVV v = m->GetVertices()[i];
+            float x = v.GetPos()[0];
+            float y = v.GetPos()[1];
+            float z = v.GetPos()[2];
+            vertices.push_back(x-center[0]);
+            vertices.push_back(y-center[1]);
+            vertices.push_back(z-center[2]);
+        }
+    }
+
     FarPatchTables const *patchTables = m->GetPatchTables();
     FarPatchTables::PatchArrayVector const &patchArrays = patchTables->GetPatchArrayVector();
+    FarPatchTables::PatchParamTable const &patchParam = patchTables->GetPatchParamTable();
 
     int numPatches = 0;
-    std::vector<unsigned int> patchIndices;
+    std::vector<float> bezierVertices;
     // iterate patch types.
+    printf("begin\n");
     for (FarPatchTables::PatchArrayVector::const_iterator it = patchArrays.begin();
          it != patchArrays.end(); ++it) {
 
-        if (it->GetDescriptor().GetType() != FarPatchTables::REGULAR) continue;
-
-        assert(it->GetDescriptor().GetNumControlVertices() == 16);
-
-        for (int i = 0; i < it->GetNumPatches() * it->GetDescriptor().GetNumControlVertices(); ++i) {
-            patchIndices.push_back(patchTables->GetPatchTable()[it->GetVertIndex() + i]);
+        switch(it->GetDescriptor().GetType()) {
+        case FarPatchTables::REGULAR:
+            numPatches += convertRegular(bezierVertices, vertices, patchTables, *it);
+            break;
+        case FarPatchTables::BOUNDARY:
+            numPatches += convertBoundary(bezierVertices, vertices, patchTables, *it);
+            break;
+        case FarPatchTables::CORNER:
+            numPatches += convertCorner(bezierVertices, vertices, patchTables, *it);
+            break;
+        case FarPatchTables::GREGORY:
+            numPatches += convertGregory(bezierVertices, vertices, patchTables, *it);
+            break;
+        case FarPatchTables::GREGORY_BOUNDARY:
+            numPatches += convertBoundaryGregory(bezierVertices, vertices, patchTables, *it);
+            break;
+        default:
+            break;
         }
-        numPatches += it->GetNumPatches();
+
     }
 
     eson::Object mesh;
@@ -207,13 +213,17 @@ int checkMesh( char const * name, xyzmesh * hmesh, int levels, Scheme scheme=kCa
     mesh["num_vertices"] =
         eson::Value((int64_t)nverts);
     mesh["vertices"] =
-        eson::Value((uint8_t*)&(m->GetVertices()[0]), sizeof(float)*nverts*3);
-    mesh["num_regular_patches"] =
+        eson::Value((uint8_t*)&vertices[0], sizeof(float)*nverts*3);
+    mesh["num_bezier_patches"] =
         eson::Value((int64_t)numPatches);
-    mesh["regular_indices"] =
-        eson::Value((uint8_t*)&patchIndices[0], sizeof(unsigned int)*patchIndices.size());
+    mesh["patch_param"] =
+        eson::Value((uint8_t*)&patchParam[0], sizeof(OpenSubdiv::FarPatchParam)*patchParam.size());
+    mesh["bezier_vertices"] =
+        eson::Value((uint8_t*)&bezierVertices[0], sizeof(float)*bezierVertices.size());
 
-    printf("%s, verts=%d, patches=%d\n", name, nverts, numPatches);
+    printf("%s, verts=%d, patches=%d, %d\n", name, nverts, numPatches, (int)bezierVertices.size());
+
+    assert(numPatches*16*3 == (int)bezierVertices.size());
 
     eson::Value v = eson::Value(mesh);
     int64_t size = v.Size();
@@ -229,87 +239,6 @@ int checkMesh( char const * name, xyzmesh * hmesh, int levels, Scheme scheme=kCa
     fwrite(&buf[0], 1, size, fp);
     fclose(fp);
 
-#if 0
-
-    if (g_debugmode) {
-        for (int i=1; i<=levels; ++i)
-            if (g_dumphbr)
-                dumpXYZMesh( hmesh, i, scheme );
-            else
-                dumpMesh( m, i, scheme );
-    } else
-        printf("- %s (scheme=%d)\n", msg, scheme);
-
-    std::vector<int> const & remap = fact.GetRemappingTable();
-
-    int nverts = m->GetNumVertices();
-
-    // compare vertex results (only position for now - we need to expand w/ some vertex data)
-    for (int i=1; i<nverts; ++i) {
-
-        xyzvertex * hv = hmesh->GetVertex(i);
-        xyzVV & nv = m->GetVertex( remap[hv->GetID()] );
-
-        // boundary interpolation rules set to "none" produce "undefined" vertices on
-        // boundary vertices : far does not match hbr for those, so skip comparison.
-        if ( hmesh->GetInterpolateBoundaryMethod()==xyzmesh::k_InterpolateBoundaryNone and
-             VertexOnBoundary(hv) )
-             continue;
-
-#ifdef __INTEL_COMPILER // remark #1572: floating-point equality and inequality comparisons are unreliable
-#pragma warning disable 1572
-#endif
-        if ( hv->GetData().GetPos()[0] != nv.GetPos()[0] )
-            deltaCnt[0]++;
-        if ( hv->GetData().GetPos()[1] != nv.GetPos()[1] )
-            deltaCnt[1]++;
-        if ( hv->GetData().GetPos()[2] != nv.GetPos()[2] )
-            deltaCnt[2]++;
-#ifdef __INTEL_COMPILER
-#pragma warning enable 1572
-#endif
-
-        float delta[3] = { hv->GetData().GetPos()[0] - nv.GetPos()[0],
-                           hv->GetData().GetPos()[1] - nv.GetPos()[1],
-                           hv->GetData().GetPos()[2] - nv.GetPos()[2] };
-
-        deltaAvg[0]+=delta[0];
-        deltaAvg[1]+=delta[1];
-        deltaAvg[2]+=delta[2];
-
-        float dist = sqrtf( delta[0]*delta[0]+delta[1]*delta[1]+delta[2]*delta[2]);
-        if ( dist > PRECISION ) {
-            if (not g_debugmode)
-                printf("// HbrVertex<T> %d fails : dist=%.10f (%.10f %.10f %.10f)"
-                       " (%.10f %.10f %.10f)\n", i, dist, hv->GetData().GetPos()[0],
-                                                          hv->GetData().GetPos()[1],
-                                                          hv->GetData().GetPos()[2],
-                                                          nv.GetPos()[0],
-                                                          nv.GetPos()[1],
-                                                          nv.GetPos()[2] );
-           count++;
-        }
-    }
-
-    if (deltaCnt[0])
-        deltaAvg[0]/=deltaCnt[0];
-    if (deltaCnt[1])
-        deltaAvg[1]/=deltaCnt[1];
-    if (deltaCnt[2])
-        deltaAvg[2]/=deltaCnt[2];
-
-    if (not g_debugmode) {
-        printf("  delta ratio : (%d/%d %d/%d %d/%d)\n", (int)deltaCnt[0], nverts,
-                                                        (int)deltaCnt[1], nverts,
-                                                        (int)deltaCnt[2], nverts );
-        printf("  average delta : (%.10f %.10f %.10f)\n", deltaAvg[0],
-                                                          deltaAvg[1],
-                                                          deltaAvg[2] );
-        if (count==0)
-            printf("  success !\n");
-    }
-#endif
-
     delete hmesh;
     delete m;
 
@@ -323,7 +252,7 @@ static void parseArgs(int argc, char ** argv) {
             if (strcmp(argv[i],"-l")==0) {
                 g_level = atoi(argv[++i]);
             } else {
-                printf("Unknown argument \"%s\".\n");
+                printf("Unknown argument \"%s\".\n", argv[i]);
                 exit(1);
             }
         }
@@ -363,6 +292,14 @@ int main(int argc, char ** argv) {
 #define test_catmark_square_hedit2
 #define test_catmark_square_hedit3
 #define test_catmark_car
+#define test_catmark_bishop
+#define test_catmark_pawn
+#define test_catmark_rook
+#define test_catmark_helmet
+#define test_catmark_gregory_test1
+#define test_catmark_gregory_test2
+#define test_catmark_gregory_test3
+#define test_catmark_gregory_test4
 
 #if 0
 #define test_loop_triangle_edgeonly
@@ -382,7 +319,7 @@ int main(int argc, char ** argv) {
 
 #ifdef test_catmark_edgecorner
 #include "../regression/shapes/catmark_edgecorner.h"
-    total += checkMesh( "test_catmark_edgeonly", simpleHbr<xyzVV>(catmark_edgecorner.c_str(), kCatmark, 0), levels );
+    total += checkMesh( "test_catmark_edgecorner", simpleHbr<xyzVV>(catmark_edgecorner.c_str(), kCatmark, 0), levels );
 #endif
 
 #ifdef test_catmark_pyramid
@@ -495,7 +432,45 @@ int main(int argc, char ** argv) {
     total += checkMesh( "test_catmark_car", simpleHbr<xyzVV>(catmark_car.c_str(), kCatmark, 0), levels );
 #endif
 
+#ifdef test_catmark_bishop
+#include "../regression/shapes/catmark_bishop.h"
+    total += checkMesh( "test_catmark_bishop", simpleHbr<xyzVV>(catmark_bishop.c_str(), kCatmark, 0), levels );
+#endif
 
+#ifdef test_catmark_helmet
+#include "../regression/shapes/catmark_helmet.h"
+    total += checkMesh( "test_catmark_helmet", simpleHbr<xyzVV>(catmark_helmet.c_str(), kCatmark, 0), levels );
+#endif
+
+#ifdef test_catmark_pawn
+#include "../regression/shapes/catmark_pawn.h"
+    total += checkMesh( "test_catmark_pawn", simpleHbr<xyzVV>(catmark_pawn.c_str(), kCatmark, 0), levels );
+#endif
+
+#ifdef test_catmark_rook
+#include "../regression/shapes/catmark_rook.h"
+    total += checkMesh( "test_catmark_rook", simpleHbr<xyzVV>(catmark_rook.c_str(), kCatmark, 0), levels );
+#endif
+
+#ifdef test_catmark_gregory_test1
+#include "../regression/shapes/catmark_gregory_test1.h"
+    total += checkMesh( "test_catmark_gregory_test1", simpleHbr<xyzVV>(catmark_gregory_test1.c_str(), kCatmark, 0), levels );
+#endif
+
+#ifdef test_catmark_gregory_test2
+#include "../regression/shapes/catmark_gregory_test2.h"
+    total += checkMesh( "test_catmark_gregory_test2", simpleHbr<xyzVV>(catmark_gregory_test2.c_str(), kCatmark, 0), levels );
+#endif
+
+#ifdef test_catmark_gregory_test3
+#include "../regression/shapes/catmark_gregory_test3.h"
+    total += checkMesh( "test_catmark_gregory_test3", simpleHbr<xyzVV>(catmark_gregory_test3.c_str(), kCatmark, 0), levels );
+#endif
+
+#ifdef test_catmark_gregory_test4
+#include "../regression/shapes/catmark_gregory_test4.h"
+    total += checkMesh( "test_catmark_gregory_test4", simpleHbr<xyzVV>(catmark_gregory_test4.c_str(), kCatmark, 0), levels );
+#endif
 
 
 #ifdef test_loop_triangle_edgeonly
