@@ -356,10 +356,13 @@ int convertGregory(std::vector<float> &bezierVertices,
         memcpy(q+14*length, p[11], length*sizeof(float));
         memcpy(q+15*length, p[10], length*sizeof(float));
 
-        for (int i = 0; i < 16; ++i) {
-            bezierVertices.push_back(q[i*3+0]);
-            bezierVertices.push_back(q[i*3+1]);
-            bezierVertices.push_back(q[i*3+2]);
+        for (int x = 0; x < 4; ++x) {
+            for (int y = 0; y < 4; ++y) {
+                int index = y*4 + x;
+                bezierVertices.push_back(q[index*3+0]);
+                bezierVertices.push_back(q[index*3+1]);
+                bezierVertices.push_back(q[index*3+2]);
+            }
         }
 
     }
@@ -712,12 +715,14 @@ int convertBoundaryGregory(std::vector<float> &bezierVertices,
         memcpy(q+14*length, p[11], length*sizeof(float));
         memcpy(q+15*length, p[10], length*sizeof(float));
 
-        for (int i = 0; i < 16; ++i) {
-            bezierVertices.push_back(q[i*3+0]);
-            bezierVertices.push_back(q[i*3+1]);
-            bezierVertices.push_back(q[i*3+2]);
+        for (int x = 0; x < 4; ++x) {
+            for (int y = 0; y < 4; ++y) {
+                int index = y*4 + x;
+                bezierVertices.push_back(q[index*3+0]);
+                bezierVertices.push_back(q[index*3+1]);
+                bezierVertices.push_back(q[index*3+2]);
+            }
         }
-
     }
 
     return parray.GetNumPatches();
