@@ -4,8 +4,6 @@
 #include <algorithm>
 
 #include "camera.h"
-#include "matrix.h"
-#include "trackball.h"
 
 static inline double vdot(double const a[3], double const b[3]) {
   return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
@@ -84,12 +82,6 @@ void Camera::BuildCameraFrame(double const eye[3], double const lookat[3],
     dv_[2] = v[2];
 
     fov_ = fov;
-}
-
-static
-real Inverse(real x)
-{
-  std::min(real(1)/x, 1e+16f);
 }
 
 Ray Camera::GenerateRay(double u, double v) const {

@@ -536,14 +536,8 @@ bool BVHAccel::Build(const Mesh *mesh, const BVHBuildOptions &options) {
 
   assert(mesh);
 
-  trace("[BVHAccel] Input # of vertices = %lu\n", mesh->numVertices);
-#ifdef ENABLE_OSD_PATCH
   size_t n = mesh->numBezierPatches;
   trace("[BVHAccel] Input # of bezier patches = %lu\n", mesh->numBezierPatches);
-#else
-  size_t n = mesh->numFaces;
-  trace("[BVHAccel] Input # of faces    = %lu\n", mesh->numFaces);
-#endif
 
   //
   // 1. Create triangle indices(this will be permutated in BuildTree)

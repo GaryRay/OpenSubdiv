@@ -64,8 +64,6 @@ _add_glfw_executable(raytrace
     convert_bezier.cpp
     camera.cpp
     scene.cpp
-    trackball.cpp
-    matrix.cpp
     "${SHADER_FILES}"
     "${INC_FILES}"
     $<TARGET_OBJECTS:examples_common_obj>

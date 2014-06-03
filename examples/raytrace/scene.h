@@ -2,7 +2,6 @@
 #define SCENE_H
 
 #include "bvh_accel.h"
-#include "mesh.h"
 #include <far/patchTables.h>
 
 class Scene
@@ -22,9 +21,16 @@ public:
 
     void Shade(float rgba[4], const Intersection &isect, const Ray &ray);
 
+    enum ShadeMode { SHADED, PTEX_COORD };
+
+    void SetShadeMode(ShadeMode mode) {
+        _mode = mode;
+    }
+
 private:
     Mesh _mesh;
     BVHAccel _accel;
+    ShadeMode _mode;
 };
 
 #endif  // SCENE_H

@@ -108,10 +108,6 @@ typedef OpenSubdiv::HbrVertex<OpenSubdiv::OsdVertex>   OsdHbrVertex;
 typedef OpenSubdiv::HbrFace<OpenSubdiv::OsdVertex>     OsdHbrFace;
 typedef OpenSubdiv::HbrHalfedge<OpenSubdiv::OsdVertex> OsdHbrHalfedge;
 
-enum DisplayStyle { kWire = 0,
-                    kShaded,
-                    kWireShaded };
-
 struct SimpleShape {
     std::string  name;
     Scheme       scheme;
@@ -130,7 +126,7 @@ OpenSubdiv::FarMesh<OpenSubdiv::OsdVertex> *g_farMesh = NULL;
 int g_currentShape = 0;
 
 // GUI variables
-int   g_displayStyle = kWireShaded,
+int   g_displayStyle = Scene::SHADED,
       g_mbutton[3] = {0, 0, 0},
       g_partitioning = 1,
       g_running = 1;
@@ -164,18 +160,7 @@ Stopwatch g_fpsTimer;
 std::vector<float> g_orgPositions,
                    g_positions;
 
-Scheme             g_scheme;
-
 int g_level = 2;
-int g_tessLevel = 1;
-int g_tessLevelMin = 1;
-
-GLuint g_transformUB = 0,
-       g_transformBinding = 0,
-       g_tessellationUB = 0,
-       g_tessellationBinding = 0,
-       g_lightingUB = 0,
-       g_lightingBinding = 0;
 
 struct Transform {
     float ModelViewMatrix[16];
@@ -183,8 +168,8 @@ struct Transform {
     float ModelViewProjectionMatrix[16];
 } g_transformData;
 
-GLuint g_queries[2] = {0, 0};
 GLuint g_vao = 0;
+GLuint g_vbo = 0;
 GLuint g_program = 0;
 
 float g_eye[] = { 0, 0, 5, 1};
@@ -317,6 +302,50 @@ initializeShapes( ) {
 
 //------------------------------------------------------------------------------
 static void
+startRender() {
+    g_image.clear();
+    g_image.resize(g_width*g_height*4);
+    g_stepIndex = g_step*g_step;
+}
+
+static void
+setCamera() {
+    // prepare view matrix
+    double aspect = g_width/(double)g_height;
+    identity(g_transformData.ModelViewMatrix);
+    translate(g_transformData.ModelViewMatrix, g_pan[1], g_pan[0], -g_dolly);
+    rotate(g_transformData.ModelViewMatrix, g_rotate[1], 0, 1, 0);
+    rotate(g_transformData.ModelViewMatrix, g_rotate[0], 1, 0, 0);
+    rotate(g_transformData.ModelViewMatrix, 90, 0, 0, 1);
+    rotate(g_transformData.ModelViewMatrix, -90, 1, 0, 0);
+    // translate(g_transformData.ModelViewMatrix,
+    //           -g_center[0], -g_center[1], -g_center[2]);
+    perspective(g_transformData.ProjectionMatrix,
+                45.0f, (float)aspect, 0.01f, 500.0f);
+    multMatrix(g_transformData.ModelViewProjectionMatrix,
+               g_transformData.ModelViewMatrix,
+               g_transformData.ProjectionMatrix);
+
+    
+    float invView[16];
+    inverseMatrix(invView, g_transformData.ModelViewMatrix);
+
+    g_eye[0] = g_eye[1] = g_eye[2] = 0;
+    apply(g_eye, invView);
+
+    g_lookat[0] = g_lookat[1] = 0;
+    g_lookat[2] = -5;
+    apply(g_lookat, invView);
+
+    g_up[0] = g_up[2] = 1;
+    g_up[1] = 0;
+    apply(g_up, invView);
+
+
+    startRender();
+}
+
+static void
 updateGeom() {
 
     int nverts = (int)g_orgPositions.size() / 3;
@@ -396,16 +425,10 @@ createOsdMesh( const std::string &shape, int level ){
 
     g_positions.resize(g_orgPositions.size(),0.0f);
 
-    g_tessLevelMin = 1;
-
-    g_tessLevel = std::max(g_tessLevel,g_tessLevelMin);
-
-    g_image.clear();
-    g_image.resize(g_width*g_height*4);
-
     updateGeom();
-
     setCamera();
+
+    startRender();
 }
 
 //------------------------------------------------------------------------------
@@ -417,45 +440,6 @@ fitFrame() {
 }
 
 //------------------------------------------------------------------------------
-
-static void
-setCamera() {
-    // prepare view matrix
-    double aspect = g_width/(double)g_height;
-    identity(g_transformData.ModelViewMatrix);
-    translate(g_transformData.ModelViewMatrix, g_pan[1], g_pan[0], -g_dolly);
-    rotate(g_transformData.ModelViewMatrix, g_rotate[1], 0, 1, 0);
-    rotate(g_transformData.ModelViewMatrix, g_rotate[0], 1, 0, 0);
-    rotate(g_transformData.ModelViewMatrix, 90, 0, 0, 1);
-    rotate(g_transformData.ModelViewMatrix, -90, 1, 0, 0);
-    // translate(g_transformData.ModelViewMatrix,
-    //           -g_center[0], -g_center[1], -g_center[2]);
-    perspective(g_transformData.ProjectionMatrix,
-                45.0f, (float)aspect, 0.01f, 500.0f);
-    multMatrix(g_transformData.ModelViewProjectionMatrix,
-               g_transformData.ModelViewMatrix,
-               g_transformData.ProjectionMatrix);
-
-    
-    float invView[16];
-    inverseMatrix(invView, g_transformData.ModelViewMatrix);
-
-    g_eye[0] = g_eye[1] = g_eye[2] = 0;
-    apply(g_eye, invView);
-
-    g_lookat[0] = g_lookat[1] = 0;
-    g_lookat[2] = -5;
-    apply(g_lookat, invView);
-
-    g_up[0] = g_up[2] = 1;
-    g_up[1] = 0;
-    apply(g_up, invView);
-
-    g_image.clear();
-    g_image.resize(g_width*g_height*4);
-
-    g_stepIndex = g_step*g_step;
-}
 
 static void
 display() {
@@ -479,19 +463,9 @@ display() {
                  0, GL_RGBA, GL_FLOAT, &g_image[0]);
 
     glUseProgram(g_program);
- 
-    static GLuint vao = 0;
-    if (vao == 0) glGenVertexArrays(1, &vao);
-    glBindVertexArray(vao);
-    static GLuint vbo = 0;
-    if (vbo == 0){
-        glGenBuffers(1, &vbo);
-        glBindBuffer(GL_ARRAY_BUFFER, vbo);
-        static float pos[] = { -1, -1, 1, -1, -1,  1, 1,  1 };
-        glBufferData(GL_ARRAY_BUFFER, sizeof(pos),
-                     pos, GL_STATIC_DRAW);
-    }
-    glBindBuffer(GL_ARRAY_BUFFER, vbo);
+
+    glBindVertexArray(g_vao);
+    glBindBuffer(GL_ARRAY_BUFFER, g_vbo);
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE,
                           sizeof(GLfloat)*2, (void*)0);
@@ -579,8 +553,8 @@ mouse(int button, int state) {
 static void
 uninitGL() {
 
-    glDeleteQueries(2, g_queries);
     glDeleteVertexArrays(1, &g_vao);
+    glDeleteBuffers(1, &g_vbo);
 
     delete g_farMesh;
     delete g_cpuVertexBuffer;
@@ -597,8 +571,8 @@ reshape(int width, int height) {
 
     g_width = width;
     g_height = height;
-    g_image.clear();
-    g_image.resize(width*height*4);
+
+    startRender();
 
     g_frameBufferWidth = width;
     g_frameBufferHeight = height;
@@ -637,9 +611,6 @@ keyboard(int key, int event) {
     switch (key) {
         case 'Q': g_running = 0; break;
         case 'F': fitFrame(); break;
-        case '+':
-        case '=':  g_tessLevel++; break;
-        case '-':  g_tessLevel = std::max(g_tessLevelMin, g_tessLevel-1); break;
         case GLFW_KEY_ESCAPE: g_hud.SetVisible(!g_hud.IsVisible()); break;
     }
 }
@@ -675,12 +646,10 @@ static void
 callbackDisplayStyle(int b)
 {
     g_displayStyle = b;
-}
+    g_scene.SetShadeMode((Scene::ShadeMode)b);
 
-// static void
-// callbackCheckBox(bool checked, int button)
-// {
-// }
+    startRender();
+}
 
 static void
 initHUD()
@@ -692,9 +661,8 @@ initHUD()
     g_hud.Init(g_width, g_height);
 
     int shading_pulldown = g_hud.AddPullDown("Shading (W)", 10, 10, 250, callbackDisplayStyle, 'w');
-    g_hud.AddPullDownButton(shading_pulldown, "Wire", kWire, g_displayStyle==kWire);
-    g_hud.AddPullDownButton(shading_pulldown, "Shaded", kShaded, g_displayStyle==kShaded);
-    g_hud.AddPullDownButton(shading_pulldown, "Wire+Shaded", kWireShaded, g_displayStyle==kWireShaded);
+    g_hud.AddPullDownButton(shading_pulldown, "Shaded", Scene::SHADED, g_displayStyle==Scene::SHADED);
+    g_hud.AddPullDownButton(shading_pulldown, "Ptex coord", Scene::PTEX_COORD, g_displayStyle==Scene::PTEX_COORD);
 
     for (int i = 1; i < 11; ++i) {
         char level[16];
@@ -718,9 +686,13 @@ initGL()
     glCullFace(GL_BACK);
     glEnable(GL_CULL_FACE);
 
-    glGenQueries(2, g_queries);
-
     glGenVertexArrays(1, &g_vao);
+
+    glGenBuffers(1, &g_vbo);
+    glBindBuffer(GL_ARRAY_BUFFER, g_vbo);
+    static float pos[] = { -1, -1, 1, -1, -1,  1, 1,  1 };
+    glBufferData(GL_ARRAY_BUFFER, sizeof(pos), pos, GL_STATIC_DRAW);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
 
     GLuint vertexShader = compileShader(GL_VERTEX_SHADER, s_VS);
     GLuint fragmentShader = compileShader(GL_FRAGMENT_SHADER, s_FS);
@@ -737,8 +709,6 @@ initGL()
 //------------------------------------------------------------------------------
 static void
 idle() {
-    //updateGeom();
-
     if (g_stepIndex == 0) return;
 
     double fov = 45.0f;
