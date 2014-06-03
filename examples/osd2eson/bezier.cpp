@@ -1,4 +1,5 @@
 #include <cmath>
+#include <cstring>
 #include "bezier.h"
 
 static float ef[27] = {
@@ -137,9 +138,9 @@ int convertCorner(std::vector<float> &bezierVertices,
                     H[l][0] = H[l][1] = H[l][2] = 0;
                     for (int m = 0; m < 3; m++) {
                         int vert = patchTables->GetPatchTable()[parray.GetVertIndex() + i*9 + l*3 + m];
-                        H[l][0] += B[j][m] * vertices[vert*3+0];
-                        H[l][1] += B[j][m] * vertices[vert*3+1];
-                        H[l][2] += B[j][m] * vertices[vert*3+2];
+                        H[l][0] += B[3-j][2-m] * vertices[vert*3+0];
+                        H[l][1] += B[3-j][2-m] * vertices[vert*3+1];
+                        H[l][2] += B[3-j][2-m] * vertices[vert*3+2];
                     }
                 }
                 float cp[3];
