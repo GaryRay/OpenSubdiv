@@ -87,11 +87,19 @@ static const char *s_FS =
     "#version 410\n"
     "in vec2 uv;\n"
     "out vec4 outColor;\n"
-    "uniform sampler2D texture;\n"
+    "uniform sampler2D tex;\n"
     "void main()\n"
     "{\n"
-    "  vec4 c = texture2D(texture, uv);\n"
-    "  //if (c.a == 0.0) discard;\n"
+    "  vec2 texUV = textureSize(tex, 0)*uv;\n"
+    "  vec4 c = vec4(0);\n"
+    "  for(int i = 0; i < 8; ++i) {\n"
+    "    for(int j = 0; j < i*2+1; ++j) {\n"
+    "      ivec2 offset = min(ivec2(i*2-j, j), ivec2(i, i));\n"
+    "      vec4 cs = texelFetch(tex, ivec2(texUV)-offset, 0);\n"
+    "      c = mix(c, cs, 1-c.a);\n"
+    "      c.a = max(c.a, cs.a);\n"
+    "    }\n"
+    "  }\n"
     "  outColor = c;\n"
     "}\n";
 
@@ -136,10 +144,14 @@ float g_rotate[2] = {0, 0},
 int   g_prev_x = 0,
       g_prev_y = 0;
 
+int   g_frameBufferWidth = 1024,
+    g_frameBufferHeight = 1024;
+
 int   g_width = 1024,
       g_height = 1024;
 std::vector<float> g_image;
 int g_step = 8;
+int g_stepIndex = 0;
 
 GLhud g_hud;
 
@@ -389,7 +401,7 @@ createOsdMesh( const std::string &shape, int level ){
     g_tessLevel = std::max(g_tessLevel,g_tessLevelMin);
 
     g_image.clear();
-    g_image.resize(g_width*g_height*3);
+    g_image.resize(g_width*g_height*4);
 
     updateGeom();
 
@@ -440,18 +452,17 @@ setCamera() {
     apply(g_up, invView);
 
     g_image.clear();
-    g_image.resize(g_width*g_height*3);
+    g_image.resize(g_width*g_height*4);
 
-    g_step = 8;
+    g_stepIndex = g_step*g_step;
 }
 
 static void
 display() {
 
-    if (!glDrawArrays) return;
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-    glViewport(0, 0, g_width, g_height);
+    glViewport(0, 0, g_frameBufferWidth, g_frameBufferHeight);
 
     static GLuint tex = 0;
     if (tex == 0) glGenTextures(1, &tex);
@@ -465,7 +476,7 @@ display() {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA,
                  g_width, g_height,
-                 0, GL_RGB, GL_FLOAT, &g_image[0]);
+                 0, GL_RGBA, GL_FLOAT, &g_image[0]);
 
     glUseProgram(g_program);
  
@@ -498,7 +509,7 @@ display() {
         double fps = 1.0/g_fpsTimer.GetElapsed();
         g_fpsTimer.Start();
 
-        if (g_step > 0) 
+        if (g_stepIndex > 0) 
             g_hud.DrawString(10, -240, 1, 0, 0, "Rendering...");
 
         g_hud.DrawString(10, -180, "# of patches : %d", g_scene.GetNumPatches());
@@ -511,6 +522,7 @@ display() {
 
     glFinish();
 
+    glfwSwapBuffers(g_window);
     //checkGLErrors("display leave");
 }
 
@@ -586,14 +598,16 @@ reshape(int width, int height) {
     g_width = width;
     g_height = height;
     g_image.clear();
-    g_image.resize(width*height*3);
+    g_image.resize(width*height*4);
 
-    int windowWidth = g_width, windowHeight = g_height;
+    g_frameBufferWidth = width;
+    g_frameBufferHeight = height;
+
 #if GLFW_VERSION_MAJOR>=3
     // window size might not match framebuffer size on a high DPI display
-    glfwGetWindowSize(g_window, &windowWidth, &windowHeight);
+    glfwGetWindowSize(g_window, &g_width, &g_height);
 #endif
-    g_hud.Rebuild(windowWidth, windowHeight);
+    g_hud.Rebuild(g_width, g_height);
 }
 
 //------------------------------------------------------------------------------
@@ -663,20 +677,19 @@ callbackDisplayStyle(int b)
     g_displayStyle = b;
 }
 
-static void
-callbackCheckBox(bool checked, int button)
-{
-}
+// static void
+// callbackCheckBox(bool checked, int button)
+// {
+// }
 
 static void
 initHUD()
 {
-    int windowWidth = g_width, windowHeight = g_height;
 #if GLFW_VERSION_MAJOR>=3
     // window size might not match framebuffer size on a high DPI display
-    glfwGetWindowSize(g_window, &windowWidth, &windowHeight);
+    glfwGetWindowSize(g_window, &g_width, &g_height);
 #endif
-    g_hud.Init(windowWidth, windowHeight);
+    g_hud.Init(g_width, g_height);
 
     int shading_pulldown = g_hud.AddPullDown("Shading (W)", 10, 10, 250, callbackDisplayStyle, 'w');
     g_hud.AddPullDownButton(shading_pulldown, "Wire", kWire, g_displayStyle==kWire);
@@ -726,17 +739,20 @@ static void
 idle() {
     //updateGeom();
 
-    if (g_step == 0) return;
+    if (g_stepIndex == 0) return;
 
     double fov = 45.0f;
-    std::vector<int> count;
-    count.resize(g_width*g_height);
+
+    //printf("%d x %d, %d\n", g_width, g_height, g_step);
+
+    int s = 2*(g_step/2)*(g_step/2)+(g_step/2)+1;
+    int index = (g_stepIndex*s)%(g_step*g_step);
 
     g_scene.Render(g_width, g_height, fov,
-                   g_image, count,
-                   g_eye, g_lookat, g_up, g_step);
+                   g_image,
+                   g_eye, g_lookat, g_up, g_step, index);
 
-    g_step /= 2;
+    --g_stepIndex;
     display();
 }
 
@@ -816,7 +832,7 @@ int main(int argc, char ** argv)
     glfwMakeContextCurrent(g_window);
 
     // accommocate high DPI displays (e.g. mac retina displays)
-    glfwGetFramebufferSize(g_window, &g_width, &g_height);
+    glfwGetFramebufferSize(g_window, &g_frameBufferWidth, &g_frameBufferHeight);
     glfwSetFramebufferSizeCallback(g_window, reshape);
 
     glfwSetKeyCallback(g_window, keyboard);
@@ -860,17 +876,14 @@ int main(int argc, char ** argv)
     initHUD();
     rebuildOsdMesh();
 
-    g_image.resize(g_width*g_height*3);
+    g_image.resize(g_width*g_height*4);
 
     while (g_running) {
         idle();
 
-#if GLFW_VERSION_MAJOR>=3
         glfwPollEvents();
-        glfwSwapBuffers(g_window);
-#else
-        glfwSwapBuffers();
-#endif
+
+        if (g_stepIndex == 0) glfwWaitEvents();
     }
 
     uninitGL();

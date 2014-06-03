@@ -49,7 +49,7 @@ inline double randomreal(void) {
   return w * (1.0 / 4294967296.0);
 #else
   // @fixme { don't use __thread keyword? }
-  static unsigned int THREAD_TLS x = 123456789, y = 362436069, z = 521288629,
+  static unsigned int  x = 123456789, y = 362436069, z = 521288629,
                                  w = 88675123;
   unsigned t = x ^ (x << 11);
   x = y;
@@ -86,9 +86,9 @@ Scene::Build(float *inVertices, int numVertices, OpenSubdiv::FarPatchTables cons
                 max[j] = std::max(max[j], v[j]);
             }
         }
-        float center[3] = { (max[0]+min[0])*0.5,
-                            (max[1]+min[1])*0.5,
-                            (max[2]+min[2])*0.5 };
+        float center[3] = { (max[0]+min[0])*0.5f,
+                            (max[1]+min[1])*0.5f,
+                            (max[2]+min[2])*0.5f };
         float radius = std::max(std::max(max[0]-min[0], max[1]-min[1]), max[2]-min[2]);
         for (int i = 0; i < numVertices; ++i) {
             float *v = inVertices + i*3;
@@ -156,10 +156,9 @@ Scene::Build(float *inVertices, int numVertices, OpenSubdiv::FarPatchTables cons
 void
 Scene::Render(int width, int height, double fov,
               std::vector<float> &image, // RGB
-              std::vector<int> &count,
               const float eye[3],
               const float lookat[3], const float up[3],
-              int step)
+              int step, int stepIndex)
 {
   std::vector<int> xs;
   std::vector<int> ys;
@@ -167,7 +166,6 @@ Scene::Render(int width, int height, double fov,
   std::random_shuffle(xs.begin(), xs.end());
   std::random_shuffle(ys.begin(), ys.end());
 
-  double origin[3], corner[3], du[3], dv[3];
   Camera camera;
 
   double deye[3] = { eye[0], eye[1], eye[2] };
@@ -177,19 +175,13 @@ Scene::Render(int width, int height, double fov,
   camera.BuildCameraFrame(deye, dlook, dup, fov, width, height);
 
   assert(image.size() >= 3 * width * height);
-  // memset(&image.at(0), 0, sizeof(float) * width * height * 3);
 
   init_randomreal();
 
-  //
-  // Clear background with gradation.
-  //
-  memset(&image[0], 0, sizeof(float) * width * height * 3);
-
 #pragma omp parallel for schedule(dynamic, 1)
-  for (int y = 0; y < height; y += step) {
+  for (int y = stepIndex/step; y < height; y += step) {
 
-    for (int x = 0; x < width; x += step) {
+    for (int x = stepIndex%step; x < width; x += step) {
 
         float u = 0.5;//randomreal() - 0.5;
         float v = 0.5;//randomreal() - 0.5;
@@ -203,15 +195,16 @@ Scene::Render(int width, int height, double fov,
 
         float rgba[4];
         Shade(rgba, isect, ray);
-        image[3 * (y * width + x) + 0] = rgba[0];
-        image[3 * (y * width + x) + 1] = rgba[1];
-        image[3 * (y * width + x) + 2] = rgba[2];
-
+        image[4 * (y * width + x) + 0] = rgba[0];
+        image[4 * (y * width + x) + 1] = rgba[1];
+        image[4 * (y * width + x) + 2] = rgba[2];
       } else {
-          image[3 * (y * width + x) + 0] = 0.1;
-          image[3 * (y * width + x) + 1] = 0.1;
-          image[3 * (y * width + x) + 2] = 0.1;
+          image[4 * (y * width + x) + 0] = 0.1;
+          image[4 * (y * width + x) + 1] = 0.1;
+          image[4 * (y * width + x) + 2] = 0.1;
       }
+      image[4 * (y * width + x) + 3] = 1.0;
+#if 0
       // block fill
       for (int v = 0; v < step; v++) {
           if (y+v >= height) continue;
@@ -224,6 +217,7 @@ Scene::Render(int width, int height, double fov,
               }
           }
       }
+#endif
     }
   }
 
@@ -243,7 +237,7 @@ Scene::Shade(float rgba[4], const Intersection &isect, const Ray &ray)
     sray.dir = -1*I;
 
     Intersection is;
-    bool hit = _accel.Traverse(is, &_mesh, sray);
+    bool hit = false; //_accel.Traverse(is, &_mesh, sray);
     if (!hit) {
         real IdotN = vdot(I, isect.normal);
         IdotN = std::max(0.2f, IdotN);

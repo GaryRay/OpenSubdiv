@@ -15,9 +15,8 @@ public:
 
     void Render(int width, int height, double fov,
                 std::vector<float> &image, // RGB
-                std::vector<int> &count, const float eye[3],
-                const float lookat[3], const float up[3],
-                int step);
+                const float eye[3], const float lookat[3], const float up[3],
+                int step, int stepIndex);
 
     int GetNumPatches() const { return _mesh.numBezierPatches; }
 
