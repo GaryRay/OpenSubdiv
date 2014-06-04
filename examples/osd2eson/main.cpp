@@ -24,13 +24,15 @@
 
 #include <stdio.h>
 #include <float.h>
+#include <iostream>
+#include <fstream>
 
 #include <far/meshFactory.h>
 #include <far/dispatcher.h>
 
 #include "../regression/common/shape_utils.h"
 #include "eson.h"
-#include "bezier.h"
+#include "../raytrace/convert_bezier.h"
 
 //
 // Regression testing matching Far to Hbr (default CPU implementation)
@@ -131,6 +133,7 @@ typedef OpenSubdiv::FarSubdivisionTables        fSubdivision;
 typedef OpenSubdiv::FarPatchTables              fPatches;
 
 static int g_level = 4;
+static char *g_model = NULL;
 
 
 //------------------------------------------------------------------------------
@@ -149,7 +152,7 @@ int checkMesh( char const * name, xyzmesh * hmesh, int levels, Scheme scheme=kCa
 
     // dump patch as eson
 
-    // centering vertices.
+    // centering/normalize vertices.
     std::vector<float> vertices;
     {
         float min[3] = {FLT_MAX, FLT_MAX, FLT_MAX};
@@ -164,14 +167,15 @@ int checkMesh( char const * name, xyzmesh * hmesh, int levels, Scheme scheme=kCa
         float center[3] = { (max[0]+min[0])*0.5,
                             (max[1]+min[1])*0.5,
                             (max[2]+min[2])*0.5 };
+        float radius = std::max(std::max(max[0]-min[0], max[1]-min[1]), max[2]-min[2]);
         for (int i = 0; i < (int)m->GetVertices().size(); ++i) {
             xyzVV v = m->GetVertices()[i];
             float x = v.GetPos()[0];
             float y = v.GetPos()[1];
             float z = v.GetPos()[2];
-            vertices.push_back(x-center[0]);
-            vertices.push_back(y-center[1]);
-            vertices.push_back(z-center[2]);
+            vertices.push_back((x-center[0])/radius);
+            vertices.push_back((y-center[1])/radius);
+            vertices.push_back((z-center[2])/radius);
         }
     }
 
@@ -252,8 +256,7 @@ static void parseArgs(int argc, char ** argv) {
             if (strcmp(argv[i],"-l")==0) {
                 g_level = atoi(argv[++i]);
             } else {
-                printf("Unknown argument \"%s\".\n", argv[i]);
-                exit(1);
+                g_model = argv[i];
             }
         }
     }
@@ -267,6 +270,18 @@ int main(int argc, char ** argv) {
     parseArgs(argc, argv);
 
     int levels = g_level;
+
+    if (g_model) {
+        std::ifstream ifs(g_model);
+        if (ifs) {
+            std::stringstream ss;
+            ss << ifs.rdbuf();
+            ifs.close();
+            std::string str = ss.str();
+            checkMesh("output", simpleHbr<xyzVV>(str.c_str(), kCatmark, 0), levels );
+            return 0;
+        }
+    }
 
 #define test_catmark_edgeonly
 #define test_catmark_edgecorner

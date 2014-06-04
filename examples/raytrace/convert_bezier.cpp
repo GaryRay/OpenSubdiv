@@ -166,26 +166,35 @@ int convertGregory(std::vector<float> &bezierVertices,
                    OpenSubdiv::FarPatchTables const *patchTables,
                    OpenSubdiv::FarPatchTables::PatchArray const &parray)
 {
+    int const * vertexValenceBuffer = &patchTables->GetVertexValenceTable()[0];
+    int valences[4];
+    int length = 3;
+    int stride = 3;
+    int maxValence = patchTables->GetMaxValence();
+    float *r = (float*)alloca((maxValence+2)*4*length*sizeof(float));
+    float *f = (float*)alloca(maxValence*length*sizeof(float)),
+        *pos = (float*)alloca(length*sizeof(float)),
+        *opos = (float*)alloca(length*4*sizeof(float));
+    float const * inOffset = (float const*)&vertices[0];
+
+    float *Ep=(float*)alloca(length*4*sizeof(float)),
+        *Em=(float*)alloca(length*4*sizeof(float)),
+        *Fp=(float*)alloca(length*4*sizeof(float)),
+        *Fm=(float*)alloca(length*4*sizeof(float));
+    float *Em_ip=(float*)alloca(length*sizeof(float)),
+        *Ep_im=(float*)alloca(length*sizeof(float));
+    float *q=(float*)alloca(length*16*sizeof(float));
+
     for (int patchIndex = 0; patchIndex < (int)parray.GetNumPatches(); ++patchIndex) {
 
         unsigned int const * vertexIndices = &patchTables->GetPatchTable()[parray.GetVertIndex() + patchIndex*4];
-        int const * vertexValenceBuffer = &patchTables->GetVertexValenceTable()[0];
-        int valences[4];
-        int length = 3;
-        int stride = 3;
-        int maxValence = patchTables->GetMaxValence();
-        float const * inOffset = (float const*)&vertices[0];
-
         unsigned int const *quadOffsetBuffer = &patchTables->GetQuadOffsetTable()[parray.GetQuadOffsetIndex() + patchIndex*4];
 
-        float  *r  = (float*)alloca((maxValence+2)*4*length*sizeof(float)), *rp,
+        float *rp,
             *e0 = r + maxValence*4*length,
             *e1 = e0 + 4*length;
         memset(r, 0, (maxValence+2)*4*length*sizeof(float));
 
-        float *f=(float*)alloca(maxValence*length*sizeof(float)),
-            *pos=(float*)alloca(length*sizeof(float)),
-            *opos=(float*)alloca(length*4*sizeof(float));
         memset(opos, 0, length*4*sizeof(float));
 
         for (int vid=0; vid < 4; ++vid) {
@@ -275,11 +284,6 @@ int convertGregory(std::vector<float> &bezierVertices,
         //  P0         e0+      e1-         E1
         //
 
-        float *Ep=(float*)alloca(length*4*sizeof(float)),
-            *Em=(float*)alloca(length*4*sizeof(float)),
-            *Fp=(float*)alloca(length*4*sizeof(float)),
-            *Fm=(float*)alloca(length*4*sizeof(float));
-
         for (int vid=0; vid<4; ++vid) {
 
             int ip = (vid+1)%4;
@@ -301,9 +305,6 @@ int convertGregory(std::vector<float> &bezierVertices,
 
             unsigned int prev_p = (quadOffsets[ip] & 0xff00) / 256,
                 start_m = quadOffsets[im] & 0x00ff;
-
-            float *Em_ip=(float*)alloca(length*sizeof(float)),
-                *Ep_im=(float*)alloca(length*sizeof(float));
 
             for (int k=0, ipofs=ip*length, imofs=im*length; k<length; ++k, ++ipofs, ++imofs) {
                 Em_ip[k] = opos[ipofs] + e0[ipofs]*csf(np-3, 2*prev_p)  + e1[ipofs]*csf(np-3, 2*prev_p+1);
@@ -337,7 +338,6 @@ int convertGregory(std::vector<float> &bezierVertices,
         float d21 = u+V; if(u+V==0.0f) d21 = 1.0f;
         float d22 = U+V; if(U+V==0.0f) d22 = 1.0f;
 
-        float *q=(float*)alloca(length*16*sizeof(float));
         for (int k=0; k<length; ++k) {
             q[ 5*length+k] = (u*p[ 3][k] + v*p[ 4][k])/d11;
             q[ 6*length+k] = (U*p[ 9][k] + v*p[ 8][k])/d12;
@@ -377,26 +377,34 @@ int convertBoundaryGregory(std::vector<float> &bezierVertices,
                            OpenSubdiv::FarPatchTables const *patchTables,
                            OpenSubdiv::FarPatchTables::PatchArray const &parray)
 {
+    int const * vertexValenceBuffer = &patchTables->GetVertexValenceTable()[0];
+    int valences[4], zerothNeighbors[4];
+    int length = 3;
+    int stride = 3;
+    int maxValence = patchTables->GetMaxValence();
+    float const * inOffset = (float const*)&vertices[0];
+    float  *r  = (float*)alloca((maxValence+2)*4*length*sizeof(float));
+    float *f=(float*)alloca(maxValence*length*sizeof(float)),
+        *org=(float*)alloca(length*4*sizeof(float)),
+        *opos=(float*)alloca(length*4*sizeof(float));
+    float *Ep=(float*)alloca(length*4*sizeof(float)),
+        *Em=(float*)alloca(length*4*sizeof(float)),
+        *Fp=(float*)alloca(length*4*sizeof(float)),
+        *Fm=(float*)alloca(length*4*sizeof(float));
+    float *Em_ip=(float*)alloca(length*sizeof(float)),
+        *Ep_im=(float*)alloca(length*sizeof(float));
+    float *q=(float*)alloca(length*16*sizeof(float));
+
     for (int patchIndex = 0; patchIndex < (int)parray.GetNumPatches(); ++patchIndex) {
 
         // vertex
         unsigned int const * vertexIndices = &patchTables->GetPatchTable()[parray.GetVertIndex() + patchIndex*4];
-        int const * vertexValenceBuffer = &patchTables->GetVertexValenceTable()[0];
-        int valences[4], zerothNeighbors[4];
-        int length = 3;
-        int stride = 3;
-        int maxValence = patchTables->GetMaxValence();
-        float const * inOffset = (float const*)&vertices[0];
         unsigned int const *quadOffsetBuffer = &patchTables->GetQuadOffsetTable()[parray.GetQuadOffsetIndex() + patchIndex*4];
 
-        float  *r  = (float*)alloca((maxValence+2)*4*length*sizeof(float)), *rp,
+        float *rp,
             *e0 = r + maxValence*4*length,
             *e1 = e0 + 4*length;
         memset(r, 0, (maxValence+2)*4*length*sizeof(float));
-
-        float *f=(float*)alloca(maxValence*length*sizeof(float)),
-            *org=(float*)alloca(length*4*sizeof(float)),
-            *opos=(float*)alloca(length*4*sizeof(float));
 
         memset(opos, 0, length*4*sizeof(float));
 
@@ -574,11 +582,6 @@ int convertBoundaryGregory(std::vector<float> &bezierVertices,
         //  P0         e0+      e1-         E1
         //
 
-        float *Ep=(float*)alloca(length*4*sizeof(float)),
-            *Em=(float*)alloca(length*4*sizeof(float)),
-            *Fp=(float*)alloca(length*4*sizeof(float)),
-            *Fm=(float*)alloca(length*4*sizeof(float));
-
         for (int vid=0; vid<4; ++vid) {
 
             unsigned int ip = (vid+1)%4,
@@ -596,9 +599,6 @@ int convertBoundaryGregory(std::vector<float> &bezierVertices,
                 nm = abs(valences[im]),
                 start_m =  quadOffsets[im] & 0x00ff,
                 prev_p = (quadOffsets[ip] & 0xff00) / 256;
-
-            float *Em_ip=(float*)alloca(length*sizeof(float)),
-                *Ep_im=(float*)alloca(length*sizeof(float));
 
             if (valences[ip]<-2) {
                 unsigned int j = (np + prev_p - zerothNeighbors[ip]) % np;
@@ -696,7 +696,6 @@ int convertBoundaryGregory(std::vector<float> &bezierVertices,
         float d21 = u+V; if(u+V==0.0f) d21 = 1.0f;
         float d22 = U+V; if(U+V==0.0f) d22 = 1.0f;
 
-        float *q=(float*)alloca(length*16*sizeof(float));
         for (int k=0; k<length; ++k) {
             q[ 5*length+k] = (u*p[ 3][k] + v*p[ 4][k])/d11;
             q[ 6*length+k] = (U*p[ 9][k] + v*p[ 8][k])/d12;

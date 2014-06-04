@@ -26,7 +26,7 @@ include_directories("${PROJECT_SOURCE_DIR}/opensubdiv")
 
 set(SOURCE_FILES
     eson.cc
-    bezier.cpp
+    ../raytrace/convert_bezier.cpp
     main.cpp
 )
 
