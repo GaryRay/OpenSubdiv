@@ -10,7 +10,6 @@
 #include <iostream>
 #include <utility>
 #include <limits>
-#include <cstdio>
 
 //
 #define DIRECT_BILINEAR 1
@@ -103,7 +102,7 @@ static const int  MAX_LEVEL = 10;
     	static const REAL EPS3 = EPS*1e-3;
     	patch.minmax(min,max);
         //min = patch.min();
-        //max = patch.max();
+        //max = patch.max(); 
         min -= V(EPS3,EPS3,EPS3);
         max += V(EPS3,EPS3,EPS3);
     }
@@ -187,6 +186,28 @@ static const int  MAX_LEVEL = 10;
         }
         return false;
     }
+
+    static 
+    inline void bezier_minmax_(vector2x& min, vector2x& max, const vector2x p[], int n){
+        min = max = p[0];
+        for(int i = 1;i<n;i++){
+            for(int j = 0;j<2;j++){
+                min[j] = (min[j]>p[i][j])?p[i][j]:min[j];
+                max[j] = (max[j]<p[i][j])?p[i][j]:max[j];
+            }
+        }
+    }
+    static 
+    inline void bezier_minmax_(vector3x& min, vector3x& max, const vector3x p[], int n){
+        min = max = p[0];
+        for(int i = 1;i<n;i++){
+            for(int j = 0;j<3;j++){
+                min[j] = (min[j]>p[i][j])?p[i][j]:min[j];
+                max[j] = (max[j]<p[i][j])?p[i][j]:max[j];
+            }
+        }
+    }
+
     
     template<class T, int Sz>
     class static_vector
@@ -230,9 +251,7 @@ static const int  MAX_LEVEL = 10;
 
 		T evaluate     (float u, float v)const
 		{
-			int nu = get_nu();
-			int nv = get_nv();
-			return bezier_evaluate( &(cp_[0]), nu, nv, u, v);
+			return bezier_evaluate( &(cp_[0]), nu_, nv_, u, v);
 		}
 
 		int get_nu()const{return nu_;}
@@ -240,6 +259,7 @@ static const int  MAX_LEVEL = 10;
 		T get_at(int i, int j)const{return cp_[nu_*j+i];}
 		T get_cp_at(int i, int j)const{return get_at(i,j);}
 
+/*
 		T min()const
 		{
 			return bezier_min( &(cp_[0]), nu_*nv_ );
@@ -249,12 +269,11 @@ static const int  MAX_LEVEL = 10;
 		{
 			return bezier_max( &(cp_[0]), nu_*nv_ );
 		}
-        
+*/
         void minmax(T& min, T& max)const
         {
             bezier_minmax_(min,max, &(cp_[0]), nu_*nv_ );
         }
-        
 		this_type& transform(const matrix3x& m)
 		{
 			size_t sz = nu_*nv_;
@@ -364,7 +383,6 @@ static const int  MAX_LEVEL = 10;
                 nu,nv,	
 				v0,v1
 			);
-
 		}
 	private:
 		int nu_;
@@ -1367,7 +1385,6 @@ static const int  MAX_LEVEL = 10;
         vector3 min;
         vector3 max;
         get_minmax(min, max, patch);
-
         if(0<min[0] || max[0]<0)return false;//x
         if(0<min[1] || max[1]<0)return false;//y
         if(max[2]<zmin || zmax<min[2])return false;//z
@@ -1447,7 +1464,7 @@ static const int  MAX_LEVEL = 10;
 			patch.transform(mat);
 			return test_bezier_patch(patch, tmin, tmax, eps_);
 		}else{
-			static_bezier_patch<vector3x,16> patch(patch_);
+			bezier_patch<vector3x> patch(patch_);
 			patch.transform(mat);
 			return test_bezier_patch(patch, tmin, tmax, eps_);
 		}
@@ -1468,7 +1485,7 @@ static const int  MAX_LEVEL = 10;
 			patch.transform(mat);
 			bRet = test_bezier_patch(&uvt, patch, tmin, tmax, eps_);
 		}else{
-			static_bezier_patch<vector3x,16> patch(patch_);
+			bezier_patch<vector3x> patch(patch_);
 			patch.transform(mat);
 			bRet = test_bezier_patch(&uvt, patch, tmin, tmax, eps_);
 		}
