@@ -49,6 +49,14 @@ if( OPENCL_FOUND )
     include_directories("${OPENCL_INCLUDE_DIRS}")
 endif()
 
+if( TBB_FOUND )
+    include_directories("${TBB_INCLUDE_DIR}")
+
+    list(APPEND PLATFORM_LIBRARIES
+        ${TBB_LIBRARIES}
+    )
+endif()
+
 #-------------------------------------------------------------------------------
 
 _stringify("${SHADER_FILES}" INC_FILES)
