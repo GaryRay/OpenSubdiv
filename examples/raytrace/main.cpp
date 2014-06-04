@@ -91,7 +91,7 @@ static const char *s_FS =
     "void main()\n"
     "{\n"
     "  vec2 texUV = textureSize(tex, 0)*uv;\n"
-    "  vec4 c = vec4(0);\n"
+    "  vec4 c = vec4(0.1, 0.1, 0.1, 0);\n"
     "  for(int i = 0; i < 8; ++i) {\n"
     "    for(int j = 0; j < i*2+1; ++j) {\n"
     "      ivec2 offset = min(ivec2(i*2-j, j), ivec2(i, i));\n"

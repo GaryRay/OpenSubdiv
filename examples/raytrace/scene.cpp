@@ -12,12 +12,16 @@
 #include <omp.h>
 #endif
 
+#ifdef OPENSUBDIV_HAS_TBB
 #include <tbb/parallel_for.h>
 #include <tbb/task_scheduler_init.h>
+#endif
 
 Scene::Scene()
 {
+#ifdef OPENSUBDIV_HAS_TBB
     static tbb::task_scheduler_init init;
+#endif
 }
 
 void
@@ -89,8 +93,6 @@ Scene::Build(float *inVertices, int numVertices, OpenSubdiv::FarPatchTables cons
 
     BVHBuildOptions options; // Use default option
 
-    options.minLeafPrimitives = 64;
-
     printf("  BVH build option:\n");
     printf("    # of leaf primitives: %d\n", options.minLeafPrimitives);
     printf("    SAH binsize         : %d\n", options.binSize);
@@ -106,36 +108,40 @@ Scene::Build(float *inVertices, int numVertices, OpenSubdiv::FarPatchTables cons
     printf("  Max tree depth   : %d\n", stats.maxTreeDepth);
 }
 
+#ifdef OPENSUBDIV_HAS_TBB
 class Kernel {
 public:
-    Kernel(int width, int stepIndex, int step, BVHAccel *accel, Mesh *mesh, Camera *camera, float *image, int mode) :
-        _width(width), _stepIndex(stepIndex), _step(step), _accel(accel), _mesh(mesh), _camera(camera), _image(image), _mode(mode) {
+    Kernel(int width, int stepIndex, int step, BVHAccel *accel, Mesh *mesh,
+           Camera *camera, float *image, int mode) :
+        _width(width), _stepIndex(stepIndex), _step(step), _accel(accel),
+        _mesh(mesh), _camera(camera), _image(image), _mode(mode) {
     }
+
     void operator() (tbb::blocked_range<int> const &r) const {
         for (int rr = r.begin(); rr < r.end(); ++rr) {
             int y = rr*_step + _stepIndex/_step;
-        for (int x = _stepIndex%_step; x < _width; x += _step) {
+            for (int x = _stepIndex%_step; x < _width; x += _step) {
 
-            float u = 0.5;
-            float v = 0.5;
+                float u = 0.5;
+                float v = 0.5;
 
-            Ray ray = _camera->GenerateRay(x + u + _step / 2.0f, y + v + _step / 2.0f);
+                Ray ray = _camera->GenerateRay(x + u + _step / 2.0f, y + v + _step / 2.0f);
 
-            Intersection isect;
-            bool hit = _accel->Traverse(isect, _mesh, ray);
+                Intersection isect;
+                bool hit = _accel->Traverse(isect, _mesh, ray);
 
-            float rgba[4];
-            if (hit) {
-                Shade(rgba, isect, ray);
-            } else {
-                rgba[0] = rgba[1] = rgba[2] = 0.1f;
-                rgba[3] = 1.0f;
+                float rgba[4];
+                if (hit) {
+                    Shade(rgba, isect, ray);
+                } else {
+                    rgba[0] = rgba[1] = rgba[2] = 0.1f;
+                    rgba[3] = 1.0f;
+                }
+                _image[4 * (y * _width + x) + 0] = rgba[0];
+                _image[4 * (y * _width + x) + 1] = rgba[1];
+                _image[4 * (y * _width + x) + 2] = rgba[2];
+                _image[4 * (y * _width + x) + 3] = rgba[3];
             }
-            _image[4 * (y * _width + x) + 0] = rgba[0];
-            _image[4 * (y * _width + x) + 1] = rgba[1];
-            _image[4 * (y * _width + x) + 2] = rgba[2];
-            _image[4 * (y * _width + x) + 3] = rgba[3];
-        }
         }
     }
 
@@ -156,16 +162,17 @@ public:
         rgba[3] = 1.0;
     }
 
-    private:
+private:
     int _width;
-      int _stepIndex;
+    int _stepIndex;
     int _step;
-      BVHAccel *_accel;
+    BVHAccel *_accel;
     Mesh *_mesh;
     Camera *_camera;
     float *_image;
     int _mode;
 };
+#endif
 
 void
 Scene::Render(int width, int height, double fov,
@@ -187,16 +194,18 @@ Scene::Render(int width, int height, double fov,
     double dup[3] = { up[0], up[1], up[2] };
 
     camera.BuildCameraFrame(deye, dlook, dup, fov, width, height);
-    assert(image.size() >= 3 * width * height);
+    assert((int)image.size() >= 3 * width * height);
 
-#if 1
+#ifdef OPENSUBDIV_HAS_TBB
     tbb::blocked_range<int> range(0, height/step, 1);
 
     Kernel kernel(width, stepIndex, step, &_accel, &_mesh, &camera, &image[0], _mode);
     tbb::parallel_for(range, kernel);
-
 #else
+
+#ifdef _OPENMP
 #pragma omp parallel for schedule(dynamic, 1)
+#endif
     for (int y = stepIndex/step; y < height; y += step) {
 
         for (int x = stepIndex%step; x < width; x += step) {

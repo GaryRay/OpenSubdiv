@@ -192,19 +192,19 @@ int checkMesh( char const * name, xyzmesh * hmesh, int levels, Scheme scheme=kCa
 
         switch(it->GetDescriptor().GetType()) {
         case FarPatchTables::REGULAR:
-            numPatches += convertRegular(bezierVertices, vertices, patchTables, *it);
+            numPatches += convertRegular(bezierVertices, &vertices[0], patchTables, *it);
             break;
         case FarPatchTables::BOUNDARY:
-            numPatches += convertBoundary(bezierVertices, vertices, patchTables, *it);
+            numPatches += convertBoundary(bezierVertices, &vertices[0], patchTables, *it);
             break;
         case FarPatchTables::CORNER:
-            numPatches += convertCorner(bezierVertices, vertices, patchTables, *it);
+            numPatches += convertCorner(bezierVertices, &vertices[0], patchTables, *it);
             break;
         case FarPatchTables::GREGORY:
-            numPatches += convertGregory(bezierVertices, vertices, patchTables, *it);
+            numPatches += convertGregory(bezierVertices, &vertices[0], patchTables, *it);
             break;
         case FarPatchTables::GREGORY_BOUNDARY:
-            numPatches += convertBoundaryGregory(bezierVertices, vertices, patchTables, *it);
+            numPatches += convertBoundaryGregory(bezierVertices, &vertices[0], patchTables, *it);
             break;
         default:
             break;
