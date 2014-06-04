@@ -101,9 +101,9 @@ static const int  MAX_LEVEL = 10;
     static void get_minmax(V& min, V& max, const PATCH& patch)
     {
     	static const REAL EPS3 = EPS*1e-3;
-    	
-        min = patch.min();
-        max = patch.max(); 
+    	patch.minmax(min,max);
+        //min = patch.min();
+        //max = patch.max();
         min -= V(EPS3,EPS3,EPS3);
         max += V(EPS3,EPS3,EPS3);
     }
@@ -117,8 +117,8 @@ static const int  MAX_LEVEL = 10;
         {
             for(int j=0;j<3;j++)
             {
-                if(min[j]>p[i][j])min[j]=p[i][j];
-                if(max[j]<p[i][j])max[j]=p[i][j];
+                min[j] = (min[j]>p[i][j])?p[i][j]:min[j];//if(min[j]>p[i][j])min[j]=p[i][j];
+                max[j] = (max[j]<p[i][j])?p[i][j]:max[j];//if(max[j]<p[i][j])max[j]=p[i][j];
             }
         }
     }
@@ -249,6 +249,12 @@ static const int  MAX_LEVEL = 10;
 		{
 			return bezier_max( &(cp_[0]), nu_*nv_ );
 		}
+        
+        void minmax(T& min, T& max)const
+        {
+            bezier_minmax_(min,max, &(cp_[0]), nu_*nv_ );
+        }
+        
 		this_type& transform(const matrix3x& m)
 		{
 			size_t sz = nu_*nv_;

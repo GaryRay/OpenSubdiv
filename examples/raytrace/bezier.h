@@ -145,7 +145,8 @@ namespace mallie{
 
 #define DEF_BEZIER_MINMAX(TYPE)             \
 	TYPE bezier_min(const TYPE a[], int n); \
-	TYPE bezier_max(const TYPE a[], int n);
+	TYPE bezier_max(const TYPE a[], int n); \
+  void bezier_minmax(TYPE& min, TYPE& max, const TYPE p[], int n);
 
 	DEF_BEZIER_MINMAX(float)
 	DEF_BEZIER_MINMAX(vector2f)

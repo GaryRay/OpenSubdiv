@@ -211,8 +211,8 @@ namespace mallie{
         {
             for(int j=0;j<3;j++)
             {
-                if(min[j]>p[i][j])min[j]=p[i][j];
-                if(max[j]<p[i][j])max[j]=p[i][j];
+            	min[j] = (min[j]>p[i][j])?p[i][j]:min[j];
+                max[j] = (max[j]<p[i][j])?p[i][j]:max[j];
             }
         }
 	}

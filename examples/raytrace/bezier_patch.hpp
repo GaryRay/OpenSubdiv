@@ -117,6 +117,11 @@ namespace mallie{
 		{
 			return bezier_max( &(cp_[0]), nu_*nv_ );
 		}
+
+		void minmax(T& min, T& max)const
+		{
+			bezier_minmax(min, max,  &(cp_[0]), nu_*nv_ );
+		}
 	public:
 		this_type& swap_u()
 		{
