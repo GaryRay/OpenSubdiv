@@ -81,7 +81,7 @@ static const char *s_VS =
     "out vec2 uv;\n"
     "void main() {\n"
     "  gl_Position = vec4(position.x, position.y, 0, 1);\n"
-    "  uv = (position+vec2(1))*0.5;\n"
+    "  uv = (-position.yx+vec2(1))*0.5;\n"
     "}\n";
 static const char *s_FS =
     "#version 410\n"
@@ -103,10 +103,68 @@ static const char *s_FS =
     "  outColor = c;\n"
     "}\n";
 
+static const char *s_VS_BVH =
+    "#version 410\n"
+    "in vec3 minPos;\n"
+    "in vec3 maxPos;\n"
+    "in int flag;\n"
+    "out vec3 gMinPos;\n"
+    "out vec3 gMaxPos;\n"
+    "out vec4 gColor;\n"
+    "void main() {\n"
+    "  gMinPos = minPos;\n"
+    "  gMaxPos = maxPos;\n"
+    "  gColor = (flag==1) ? vec4(0.8, 0.8, 0.8, 0.5) : vec4(0.2, 0.2, 0.2, 0.5);\n"
+    "}\n";
+
+static const char *s_GS_BVH =
+    "#version 410\n"
+    "layout(points) in;\n"
+    "layout(line_strip, max_vertices = 24) out;\n"
+    "in vec3 gMinPos[];\n"
+    "in vec3 gMaxPos[];\n"
+    "in vec4 gColor[];\n"
+    "out vec4 fColor;\n"
+    "uniform mat4 ModelViewProjectionMatrix;\n"
+    "void emit(vec3 p0, vec3 p1){\n"
+    "  gl_Position = ModelViewProjectionMatrix * vec4(p0, 1);\n"
+    "  EmitVertex();\n"
+    "  gl_Position = ModelViewProjectionMatrix * vec4(p1, 1);\n"
+    "  EmitVertex();\n"
+    "  EndPrimitive();\n"
+    "}\n"
+    "void main() {\n"
+    "  vec3 p0 = gMinPos[0];\n"
+    "  vec3 p1 = gMaxPos[0];\n"
+    "  fColor = gColor[0];\n"
+    "  emit(vec3(p0.x, p0.y, p0.z), vec3(p1.x, p0.y, p0.z));\n"
+    "  emit(vec3(p0.x, p0.y, p1.z), vec3(p1.x, p0.y, p1.z));\n"
+    "  emit(vec3(p0.x, p1.y, p0.z), vec3(p1.x, p1.y, p0.z));\n"
+    "  emit(vec3(p0.x, p1.y, p1.z), vec3(p1.x, p1.y, p1.z));\n"
+    "  emit(vec3(p0.x, p0.y, p0.z), vec3(p0.x, p1.y, p0.z));\n"
+    "  emit(vec3(p0.x, p0.y, p1.z), vec3(p0.x, p1.y, p1.z));\n"
+    "  emit(vec3(p1.x, p0.y, p0.z), vec3(p1.x, p1.y, p0.z));\n"
+    "  emit(vec3(p1.x, p0.y, p1.z), vec3(p1.x, p1.y, p1.z));\n"
+    "  emit(vec3(p0.x, p0.y, p0.z), vec3(p0.x, p0.y, p1.z));\n"
+    "  emit(vec3(p0.x, p1.y, p0.z), vec3(p0.x, p1.y, p1.z));\n"
+    "  emit(vec3(p1.x, p0.y, p0.z), vec3(p1.x, p0.y, p1.z));\n"
+    "  emit(vec3(p1.x, p1.y, p0.z), vec3(p1.x, p1.y, p1.z));\n"
+    "}\n";
+
+static const char *s_FS_BVH =
+    "#version 410\n"
+    "in vec4 fColor;\n"
+    "out vec4 outColor;\n"
+    "void main() {\n"
+    "  outColor = fColor;\n"
+    "}\n";
+
 typedef OpenSubdiv::HbrMesh<OpenSubdiv::OsdVertex>     OsdHbrMesh;
 typedef OpenSubdiv::HbrVertex<OpenSubdiv::OsdVertex>   OsdHbrVertex;
 typedef OpenSubdiv::HbrFace<OpenSubdiv::OsdVertex>     OsdHbrFace;
 typedef OpenSubdiv::HbrHalfedge<OpenSubdiv::OsdVertex> OsdHbrHalfedge;
+
+enum HudCheckBox { kHUD_CB_DISPLAY_BVH };
 
 struct SimpleShape {
     std::string  name;
@@ -127,6 +185,7 @@ int g_currentShape = 0;
 
 // GUI variables
 int   g_displayStyle = Scene::SHADED,
+      g_drawBVH = true,
       g_mbutton[3] = {0, 0, 0},
       g_partitioning = 1,
       g_running = 1;
@@ -169,8 +228,10 @@ struct Transform {
 } g_transformData;
 
 GLuint g_vao = 0;
+GLuint g_vaoBVH = 0;
 GLuint g_vbo = 0;
 GLuint g_program = 0;
+GLuint g_programBVH = 0;
 
 float g_eye[] = { 0, 0, 5, 1};
 float g_lookat[] = {0, 0, 0, 1};
@@ -313,13 +374,18 @@ setCamera() {
     // prepare view matrix
     double aspect = g_width/(double)g_height;
     identity(g_transformData.ModelViewMatrix);
+#if 0
     translate(g_transformData.ModelViewMatrix, g_pan[1], g_pan[0], -g_dolly);
     rotate(g_transformData.ModelViewMatrix, g_rotate[1], 0, 1, 0);
     rotate(g_transformData.ModelViewMatrix, g_rotate[0], 1, 0, 0);
     rotate(g_transformData.ModelViewMatrix, 90, 0, 0, 1);
     rotate(g_transformData.ModelViewMatrix, -90, 1, 0, 0);
-    // translate(g_transformData.ModelViewMatrix,
-    //           -g_center[0], -g_center[1], -g_center[2]);
+#else
+    translate(g_transformData.ModelViewMatrix, -g_pan[0], -g_pan[1], -g_dolly);
+    rotate(g_transformData.ModelViewMatrix, g_rotate[1], 1, 0, 0);
+    rotate(g_transformData.ModelViewMatrix, g_rotate[0], 0, 1, 0);
+    rotate(g_transformData.ModelViewMatrix, -90, 1, 0, 0);
+#endif
     perspective(g_transformData.ProjectionMatrix,
                 45.0f, (float)aspect, 0.01f, 500.0f);
     multMatrix(g_transformData.ModelViewProjectionMatrix,
@@ -440,6 +506,38 @@ fitFrame() {
 }
 
 //------------------------------------------------------------------------------
+static void
+displayBVH() {
+
+    glDisable(GL_DEPTH_TEST);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+    glBindVertexArray(g_vaoBVH);
+
+    glBindBuffer(GL_ARRAY_BUFFER, g_scene.GetVBO());
+    glEnableVertexAttribArray(0);
+    glEnableVertexAttribArray(1);
+    glEnableVertexAttribArray(2);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(BVHNode), (void*)0);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(BVHNode), (void*)(sizeof(float)*3));
+    glVertexAttribIPointer(2, 1, GL_INT, sizeof(BVHNode), (void*)(sizeof(float)*6));
+
+    glUseProgram(g_programBVH);
+
+    glUniformMatrix4fv(0, 1, GL_FALSE, g_transformData.ModelViewProjectionMatrix);
+
+    glDrawArrays(GL_POINTS, 0, g_scene.GetNumBVHNode());
+
+    glUseProgram(0);
+
+    glBindVertexArray(0);
+
+    glDisable(GL_BLEND);
+
+}
+
+//------------------------------------------------------------------------------
 
 static void
 display() {
@@ -478,6 +576,10 @@ display() {
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     glBindVertexArray(0);
 
+    if (g_drawBVH) {
+        displayBVH();
+    }
+
     if (g_hud.IsVisible()) {
         g_fpsTimer.Stop();
         double fps = 1.0/g_fpsTimer.GetElapsed();
@@ -494,7 +596,6 @@ display() {
         g_hud.Flush();
     }
 
-    glFinish();
 
     glfwSwapBuffers(g_window);
     //checkGLErrors("display leave");
@@ -554,6 +655,7 @@ static void
 uninitGL() {
 
     glDeleteVertexArrays(1, &g_vao);
+    glDeleteVertexArrays(1, &g_vaoBVH);
     glDeleteBuffers(1, &g_vbo);
 
     delete g_farMesh;
@@ -652,6 +754,16 @@ callbackDisplayStyle(int b)
 }
 
 static void
+callbackCheckBox(bool checked, int button)
+{
+    switch (button) {
+    case kHUD_CB_DISPLAY_BVH:
+        g_drawBVH = checked;
+        break;
+    }
+}
+
+static void
 initHUD()
 {
 #if GLFW_VERSION_MAJOR>=3
@@ -660,9 +772,16 @@ initHUD()
 #endif
     g_hud.Init(g_width, g_height);
 
-    int shading_pulldown = g_hud.AddPullDown("Shading (W)", 10, 10, 250, callbackDisplayStyle, 'w');
-    g_hud.AddPullDownButton(shading_pulldown, "Shaded", Scene::SHADED, g_displayStyle==Scene::SHADED);
-    g_hud.AddPullDownButton(shading_pulldown, "Ptex coord", Scene::PTEX_COORD, g_displayStyle==Scene::PTEX_COORD);
+    g_hud.AddCheckBox("Show BVH (b)", g_drawBVH != 0,
+                      10, 10, callbackCheckBox, kHUD_CB_DISPLAY_BVH, 'b');
+
+    int shading_pulldown = g_hud.AddPullDown("Shading (W)", 200, 10, 250, callbackDisplayStyle, 'w');
+    g_hud.AddPullDownButton(shading_pulldown, "Shaded", Scene::SHADED,
+                            g_displayStyle==Scene::SHADED);
+    g_hud.AddPullDownButton(shading_pulldown, "Ptex coord", Scene::PTEX_COORD,
+                            g_displayStyle==Scene::PTEX_COORD);
+    g_hud.AddPullDownButton(shading_pulldown, "Patch color", Scene::PATCH_TYPE,
+                            g_displayStyle==Scene::PATCH_TYPE);
 
     for (int i = 1; i < 11; ++i) {
         char level[16];
@@ -687,6 +806,7 @@ initGL()
     glEnable(GL_CULL_FACE);
 
     glGenVertexArrays(1, &g_vao);
+    glGenVertexArrays(1, &g_vaoBVH);
 
     glGenBuffers(1, &g_vbo);
     glBindBuffer(GL_ARRAY_BUFFER, g_vbo);
@@ -694,16 +814,29 @@ initGL()
     glBufferData(GL_ARRAY_BUFFER, sizeof(pos), pos, GL_STATIC_DRAW);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
 
-    GLuint vertexShader = compileShader(GL_VERTEX_SHADER, s_VS);
-    GLuint fragmentShader = compileShader(GL_FRAGMENT_SHADER, s_FS);
-    g_program = glCreateProgram();
-    glAttachShader(g_program, vertexShader);
-    glAttachShader(g_program, fragmentShader);
-
-    glLinkProgram(g_program);
-
-    glDeleteShader(vertexShader);
-    glDeleteShader(fragmentShader);
+    {
+        GLuint vertexShader = compileShader(GL_VERTEX_SHADER, s_VS);
+        GLuint fragmentShader = compileShader(GL_FRAGMENT_SHADER, s_FS);
+        g_program = glCreateProgram();
+        glAttachShader(g_program, vertexShader);
+        glAttachShader(g_program, fragmentShader);
+        glLinkProgram(g_program);
+        glDeleteShader(vertexShader);
+        glDeleteShader(fragmentShader);
+    }
+    {
+        GLuint vertexShader = compileShader(GL_VERTEX_SHADER, s_VS_BVH);
+        GLuint geometryShader = compileShader(GL_GEOMETRY_SHADER, s_GS_BVH);
+        GLuint fragmentShader = compileShader(GL_FRAGMENT_SHADER, s_FS_BVH);
+        g_programBVH = glCreateProgram();
+        glAttachShader(g_programBVH, vertexShader);
+        glAttachShader(g_programBVH, geometryShader);
+        glAttachShader(g_programBVH, fragmentShader);
+        glLinkProgram(g_programBVH);
+        glDeleteShader(vertexShader);
+        glDeleteShader(geometryShader);
+        glDeleteShader(fragmentShader);
+    }
 }
 
 //------------------------------------------------------------------------------
@@ -723,6 +856,7 @@ idle() {
                    g_eye, g_lookat, g_up, g_step, index);
 
     --g_stepIndex;
+
     display();
 }
 

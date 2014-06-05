@@ -329,7 +329,7 @@ private:
 
 #ifdef ENABLE_OSD_PATCH
 static void ComputeBoundingBox(real3 &bmin, real3 &bmax,
-                               real *bezierVertices,
+                               const real *bezierVertices,
                                unsigned int *indices,
                                unsigned int leftIndex,
                                unsigned int rightIndex) {
@@ -412,7 +412,7 @@ size_t BVHAccel::BuildTree(const Mesh *mesh, unsigned int leftIdx,
 
   real3 bmin, bmax;
 #ifdef ENABLE_OSD_PATCH
-  ComputeBoundingBox(bmin, bmax, mesh->bezierVertices,
+  ComputeBoundingBox(bmin, bmax, &mesh->bezierVertices[0],
                      &indices_.at(0), leftIdx, rightIdx);
 #else
   ComputeBoundingBox(bmin, bmax, mesh->vertices, mesh->faces, &indices_.at(0),
@@ -725,7 +725,7 @@ inline bool TriangleIsect(real &tInOut, real &uOut, real &vOut, const real3 &v0,
 
 #ifdef ENABLE_OSD_PATCH
 inline bool PatchIsect(Intersection &isect,
-                       real *bezierVerts,
+                       const real *bezierVerts,
                        const Ray &ray) {
 
   // REPLACE ME, ototoi-san!
@@ -822,7 +822,7 @@ bool TestLeafNode(Intersection &isect, // [inout]
     int faceIdx = indices[i + offset];
 
 #ifdef ENABLE_OSD_PATCH
-    real *bv = &mesh->bezierVertices[faceIdx * 16 * 3];
+    const real *bv = &mesh->bezierVertices[faceIdx * 16 * 3];
     if (PatchIsect(isect, bv, tr)) {
       // Update isect state
       isect.faceID = faceIdx;
@@ -867,8 +867,10 @@ void BuildIntersection(Intersection &isect, const Mesh *mesh, Ray &ray) {
 #ifdef ENABLE_OSD_PATCH
   // remap ptex index
   const OpenSubdiv::FarPatchParam &param = mesh->patchParams[isect.faceID];
-  isect.faceID = param.faceIndex;
   unsigned int bits = param.bitField.field;
+  isect.patchID = isect.faceID;
+  isect.faceID = param.faceIndex;
+  isect.level = (bits & 0xf);
   int level = 1 << ((bits & 0xf) - ((bits >> 4) &1));
   int pu = (bits >> 17) & 0x3ff;
   int pv = (bits >> 7) & 0x3ff;

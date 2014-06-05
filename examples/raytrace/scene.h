@@ -3,11 +3,13 @@
 
 #include "bvh_accel.h"
 #include <far/patchTables.h>
+#include <osd/opengl.h>
 
 class Scene
 {
 public:
     Scene();
+    ~Scene();
 
     void Build(float *vertices, int numVertices,
                OpenSubdiv::FarPatchTables const *patchTables);
@@ -21,16 +23,21 @@ public:
 
     void Shade(float rgba[4], const Intersection &isect, const Ray &ray);
 
-    enum ShadeMode { SHADED, PTEX_COORD };
+    enum ShadeMode { SHADED, PTEX_COORD, PATCH_TYPE };
 
     void SetShadeMode(ShadeMode mode) {
         _mode = mode;
     }
 
+    GLuint GetVBO() const { return _vbo; }
+    int GetNumBVHNode() const { return (int)_accel.GetNodes().size(); }
+
 private:
     Mesh _mesh;
     BVHAccel _accel;
     ShadeMode _mode;
+
+    GLuint _vbo;
 };
 
 #endif  // SCENE_H

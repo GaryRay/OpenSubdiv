@@ -17,11 +17,51 @@
 #include <tbb/task_scheduler_init.h>
 #endif
 
-Scene::Scene()
+static float const *getAdaptivePatchColor(OpenSubdiv::FarPatchTables::Descriptor const & desc)
+{
+    static float _colors[4][5][4] = {{{1.0f,  1.0f,  1.0f,  1.0f},   // regular
+                                      {0.8f,  0.0f,  0.0f,  1.0f},   // boundary
+                                      {0.0f,  1.0f,  0.0f,  1.0f},   // corner
+                                      {1.0f,  1.0f,  0.0f,  1.0f},   // gregory
+                                      {1.0f,  0.5f,  0.0f,  1.0f}},  // gregory boundary
+
+                                     {{0.0f,  1.0f,  1.0f,  1.0f},   // regular pattern 0
+                                      {0.0f,  0.5f,  1.0f,  1.0f},   // regular pattern 1
+                                      {0.0f,  0.5f,  0.5f,  1.0f},   // regular pattern 2
+                                      {0.5f,  0.0f,  1.0f,  1.0f},   // regular pattern 3
+                                      {1.0f,  0.5f,  1.0f,  1.0f}},  // regular pattern 4
+ 
+                                     {{0.0f,  0.0f,  0.75f, 1.0f},   // boundary pattern 0
+                                      {0.0f,  0.2f,  0.75f, 1.0f},   // boundary pattern 1
+                                      {0.0f,  0.4f,  0.75f, 1.0f},   // boundary pattern 2
+                                      {0.0f,  0.6f,  0.75f, 1.0f},   // boundary pattern 3
+                                      {0.0f,  0.8f,  0.75f, 1.0f}},  // boundary pattern 4
+ 
+                                     {{0.25f, 0.25f, 0.25f, 1.0f},   // corner pattern 0
+                                      {0.25f, 0.25f, 0.25f, 1.0f},   // corner pattern 1
+                                      {0.25f, 0.25f, 0.25f, 1.0f},   // corner pattern 2
+                                      {0.25f, 0.25f, 0.25f, 1.0f},   // corner pattern 3
+                                      {0.25f, 0.25f, 0.25f, 1.0f}}}; // corner pattern 4
+
+    typedef OpenSubdiv::FarPatchTables FPT;
+
+    if (desc.GetPattern()==FPT::NON_TRANSITION) {
+        return _colors[0][(int)(desc.GetType()-FPT::REGULAR)];
+    } else {
+        return _colors[(int)(desc.GetType()-FPT::REGULAR)+1][(int)desc.GetPattern()-1];
+    }
+}
+
+Scene::Scene() : _vbo(0)
 {
 #ifdef OPENSUBDIV_HAS_TBB
     static tbb::task_scheduler_init init;
 #endif
+}
+
+Scene::~Scene()
+{
+    if (_vbo) glDeleteBuffers(1, &_vbo);
 }
 
 void
@@ -57,39 +97,51 @@ Scene::Build(float *inVertices, int numVertices, OpenSubdiv::FarPatchTables cons
         }
     }
 
-    int numPatches = 0;
-    static std::vector<float> bezierVertices;
-    bezierVertices.clear();
+    int numTotalPatches = 0;
+    _mesh.bezierVertices.clear();
+    _mesh.colors.clear();
+
     // iterate patch types.
     for (FarPatchTables::PatchArrayVector::const_iterator it = patchArrays.begin();
          it != patchArrays.end(); ++it) {
 
-        switch(it->GetDescriptor().GetType()) {
+        int numPatches = 0;
+        FarPatchTables::Descriptor desc = it->GetDescriptor();
+        switch(desc.GetType()) {
         case FarPatchTables::REGULAR:
-            numPatches += convertRegular(bezierVertices, &vertices[0], patchTables, *it);
+            numPatches = convertRegular(_mesh.bezierVertices, &vertices[0], patchTables, *it);
             break;
         case FarPatchTables::BOUNDARY:
-            numPatches += convertBoundary(bezierVertices, &vertices[0], patchTables, *it);
+            numPatches = convertBoundary(_mesh.bezierVertices, &vertices[0], patchTables, *it);
             break;
         case FarPatchTables::CORNER:
-            numPatches += convertCorner(bezierVertices, &vertices[0], patchTables, *it);
+            numPatches = convertCorner(_mesh.bezierVertices, &vertices[0], patchTables, *it);
             break;
         case FarPatchTables::GREGORY:
-            numPatches += convertGregory(bezierVertices, &vertices[0], patchTables, *it);
+            numPatches = convertGregory(_mesh.bezierVertices, &vertices[0], patchTables, *it);
             break;
         case FarPatchTables::GREGORY_BOUNDARY:
-            numPatches += convertBoundaryGregory(bezierVertices, &vertices[0], patchTables, *it);
+            numPatches = convertBoundaryGregory(_mesh.bezierVertices, &vertices[0], patchTables, *it);
             break;
         default:
             break;
         }
+        numTotalPatches += numPatches;
+        // color array
+        {
+            const float *color = getAdaptivePatchColor(desc);
+            for (int i = 0; i < numPatches; ++i) {
+                _mesh.colors.push_back(color[0]);
+                _mesh.colors.push_back(color[1]);
+                _mesh.colors.push_back(color[2]);
+            }
+        }
     }
 
-    _mesh.numBezierPatches = numPatches;
-    _mesh.bezierVertices = &bezierVertices[0];
+    _mesh.numBezierPatches = numTotalPatches;
     _mesh.patchParams = &(patchParam[0]);
 
-    assert(numPatches*16*3 == (int)bezierVertices.size());
+    assert(numTotalPatches*16*3 == (int)_mesh.bezierVertices.size());
 
     BVHBuildOptions options; // Use default option
 
@@ -106,6 +158,13 @@ Scene::Build(float *inVertices, int numVertices, OpenSubdiv::FarPatchTables cons
     printf("    # of leaf   nodes: %d\n", stats.numLeafNodes);
     printf("    # of branch nodes: %d\n", stats.numBranchNodes);
     printf("  Max tree depth   : %d\n", stats.maxTreeDepth);
+
+    // create vbo for display
+    if (_vbo == 0) glGenBuffers(1, &_vbo);
+    glBindBuffer(GL_ARRAY_BUFFER, _vbo);
+    glBufferData(GL_ARRAY_BUFFER, _accel.GetNodes().size() * sizeof(BVHNode),
+                 &_accel.GetNodes()[0], GL_STATIC_DRAW);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
 }
 
 #ifdef OPENSUBDIV_HAS_TBB
@@ -148,17 +207,22 @@ public:
     void Shade(float rgba[4], const Intersection &isect, const Ray &ray) const {
         real3 I = ray.dir;
 
-        real3 color(0.8f, 0.8f, 0.8f);
-        if (_mode == 1) {
-            color = real3(isect.u, isect.v, 1);
-        }
-
         real d = vdot(I, isect.normal);
-        real3 reflect = I - 2 * d * isect.normal;
-        real s = pow(std::max(0.0f, -vdot(ray.dir, reflect)), 32);
-        rgba[0] = d * color[0] + s;
-        rgba[1] = d * color[1] + s;
-        rgba[2] = d * color[2] + s;
+        real3 color;
+        if (_mode == 0) {
+            real3 reflect = I - 2 * d * isect.normal;
+            real s = pow(std::max(0.0f, -vdot(ray.dir, reflect)), 32);
+            color = d * real3(0.8, 0.8, 0.8) + s * real3(1, 1, 1);
+        } else if (_mode == 1) {
+            color = d *real3(isect.u, isect.v, 1);
+        } else if (_mode == 2) {
+            float l = isect.level * 0.05;
+            color = d * (real3(&_mesh->colors[isect.patchID*3])
+                         - real3(l, l, l));
+        }
+        rgba[0] = color[0];
+        rgba[1] = color[1];
+        rgba[2] = color[2];
         rgba[3] = 1.0;
     }
 

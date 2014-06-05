@@ -15,7 +15,7 @@ struct real3 {
     y = yy;
     z = zz;
   }
-  real3(real *p) {
+  real3(const real *p) {
     x = p[0];
     y = p[1];
     z = p[2];
