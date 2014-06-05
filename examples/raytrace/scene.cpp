@@ -179,9 +179,9 @@ Scene::VBOBuild()
 class Kernel {
 public:
     Kernel(int width, int stepIndex, int step, BVHAccel *accel, Mesh *mesh,
-           Camera *camera, float *image, int mode) :
+           Camera *camera, float *image, Scene *scene) :
         _width(width), _stepIndex(stepIndex), _step(step), _accel(accel),
-        _mesh(mesh), _camera(camera), _image(image), _mode(mode) {
+        _mesh(mesh), _camera(camera), _image(image), _scene(scene) {
     }
 
     void operator() (tbb::blocked_range<int> const &r) const {
@@ -198,43 +198,19 @@ public:
                 bool hit = _accel->Traverse(isect, _mesh, ray);
 
                 float rgba[4];
+                float *d = _image + 4 * (y * _width + x);
                 if (hit) {
-                    Shade(rgba, isect, ray);
+                    _scene->Shade(rgba, isect, ray);
                 } else {
                     rgba[0] = rgba[1] = rgba[2] = 0.1f;
                     rgba[3] = 1.0f;
                 }
-                _image[4 * (y * _width + x) + 0] = rgba[0];
-                _image[4 * (y * _width + x) + 1] = rgba[1];
-                _image[4 * (y * _width + x) + 2] = rgba[2];
-                _image[4 * (y * _width + x) + 3] = rgba[3];
+                d[0] = rgba[0];
+                d[1] = rgba[1];
+                d[2] = rgba[2];
+                d[3] = rgba[3];
             }
         }
-    }
-
-    void Shade(float rgba[4], const Intersection &isect, const Ray &ray) const {
-        real3 I = ray.dir;
-
-        real d = vdot(I, isect.normal);
-        real3 color;
-        if (_mode == 0) {
-            real3 reflect = I - 2 * d * isect.normal;
-            real s = pow(std::max(0.0f, -vdot(ray.dir, reflect)), 32);
-            color = d * real3(0.8, 0.8, 0.8) + s * real3(1, 1, 1);
-        } else if (_mode == 1) {
-            color = d *real3(isect.u, isect.v, 1);
-        } else if (_mode == 2) {
-            float l = isect.level * 0.05;
-            color = d * (real3(&_mesh->colors[isect.patchID*3])
-                         - real3(l, l, l));
-            color[0] = std::max(real(0), color[0]);
-            color[1] = std::max(real(0), color[1]);
-            color[2] = std::max(real(0), color[2]);
-        }
-        rgba[0] = color[0];
-        rgba[1] = color[1];
-        rgba[2] = color[2];
-        rgba[3] = 1.0;
     }
 
 private:
@@ -245,7 +221,7 @@ private:
     Mesh *_mesh;
     Camera *_camera;
     float *_image;
-    int _mode;
+    Scene *_scene;
 };
 #endif
 
@@ -274,7 +250,7 @@ Scene::Render(int width, int height, double fov,
 #ifdef OPENSUBDIV_HAS_TBB
     tbb::blocked_range<int> range(0, height/step, 1);
 
-    Kernel kernel(width, stepIndex, step, &_accel, &_mesh, &camera, &image[0], _mode);
+    Kernel kernel(width, stepIndex, step, &_accel, &_mesh, &camera, &image[0], this);
     tbb::parallel_for(range, kernel);
 #else
 
@@ -309,21 +285,57 @@ Scene::Render(int width, int height, double fov,
 #endif
 }
 
+inline float randomreal(void) {
+  static unsigned int x = 123456789, y = 362436069, z = 521288629,
+      w = 88675123;
+  unsigned t = x ^ (x << 11);
+  x = y;
+  y = z;
+  z = w;
+  w = (w ^ (w >> 19)) ^ (t ^ (t >> 8));
+  return w * (1.0f / 4294967296.0f);
+}
+
 void
 Scene::Shade(float rgba[4], const Intersection &isect, const Ray &ray)
 {
     real3 I = ray.dir;
 
-    real3 color(0.8f, 0.8f, 0.8f);
-    if (_mode == 1) {
-        color = real3(isect.u, isect.v, 1);
-    }
-
     real d = vdot(I, isect.normal);
-    real3 reflect = I - 2 * d * isect.normal;
-    real s = pow(std::max(0.0f, -vdot(ray.dir, reflect)), 32);
-    rgba[0] = d * color[0] + s;
-    rgba[1] = d * color[1] + s;
-    rgba[2] = d * color[2] + s;
+    real3 color;
+    if (_mode == SHADED) {
+        real3 reflect = I - 2 * d * isect.normal;
+        real s = pow(std::max(0.0f, -vdot(ray.dir, reflect)), 32);
+        color = d * real3(0.8, 0.8, 0.8) + s * real3(1, 1, 1);
+    } else if (_mode == PTEX_COORD) {
+        color = d *real3(isect.u, isect.v, 1);
+    } else if (_mode == PATCH_TYPE) {
+        float l = isect.level * 0.05;
+        color = d * (real3(&_mesh.colors[isect.patchID*3])
+                     - real3(l, l, l));
+        color[0] = std::max(real(0), color[0]);
+        color[1] = std::max(real(0), color[1]);
+        color[2] = std::max(real(0), color[2]);
+    } else if (_mode == AO) {
+        Intersection si;
+        Ray sray;
+        int numHits = 0;
+
+        int numSamples = 16;
+        for (int i = 0; i < numSamples; ++i) {
+            real3 sample = real3(0.5-randomreal(), 0.5-randomreal(), 0.5-randomreal());
+            sample.normalize();
+            sray.dir = sample * (vdot(sample, isect.normal) > 0 ? -1 : 1);
+            sray.invDir = sray.dir.neg();
+            sray.org = ray.org + ray.dir * isect.t + sray.dir * 0.0001;
+            numHits += _accel.Traverse(si, &_mesh, sray) ? 1 : 0;
+        }
+
+        color[0] = color[1] = color[2] = d * (1.0-numHits/float(numSamples));
+    }
+    rgba[0] = color[0];
+    rgba[1] = color[1];
+    rgba[2] = color[2];
     rgba[3] = 1.0;
 }
+

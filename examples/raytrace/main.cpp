@@ -837,6 +837,8 @@ initHUD()
                             g_displayStyle==Scene::PTEX_COORD);
     g_hud.AddPullDownButton(shading_pulldown, "Patch color", Scene::PATCH_TYPE,
                             g_displayStyle==Scene::PATCH_TYPE);
+    g_hud.AddPullDownButton(shading_pulldown, "Ambient Occlusion", Scene::AO,
+                            g_displayStyle==Scene::AO);
 
     for (int i = 1; i < 11; ++i) {
         char level[16];
