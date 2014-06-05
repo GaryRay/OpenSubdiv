@@ -65,7 +65,7 @@ Scene::~Scene()
 }
 
 void
-Scene::Build(float *inVertices, int numVertices, OpenSubdiv::FarPatchTables const *patchTables)
+Scene::Convert(float *inVertices, int numVertices, OpenSubdiv::FarPatchTables const *patchTables)
 {
     using namespace OpenSubdiv;
 
@@ -142,7 +142,11 @@ Scene::Build(float *inVertices, int numVertices, OpenSubdiv::FarPatchTables cons
     _mesh.patchParams = &(patchParam[0]);
 
     assert(numTotalPatches*16*3 == (int)_mesh.bezierVertices.size());
+}
 
+void
+Scene::Build()
+{
     BVHBuildOptions options; // Use default option
 
     printf("  BVH build option:\n");
@@ -158,7 +162,11 @@ Scene::Build(float *inVertices, int numVertices, OpenSubdiv::FarPatchTables cons
     printf("    # of leaf   nodes: %d\n", stats.numLeafNodes);
     printf("    # of branch nodes: %d\n", stats.numBranchNodes);
     printf("  Max tree depth   : %d\n", stats.maxTreeDepth);
+}
 
+void
+Scene::VBOBuild()
+{
     // create vbo for display
     if (_vbo == 0) glGenBuffers(1, &_vbo);
     glBindBuffer(GL_ARRAY_BUFFER, _vbo);
@@ -219,6 +227,9 @@ public:
             float l = isect.level * 0.05;
             color = d * (real3(&_mesh->colors[isect.patchID*3])
                          - real3(l, l, l));
+            color[0] = std::max(real(0), color[0]);
+            color[1] = std::max(real(0), color[1]);
+            color[2] = std::max(real(0), color[2]);
         }
         rgba[0] = color[0];
         rgba[1] = color[1];

@@ -102,6 +102,16 @@ static const char *s_FS =
     "  }\n"
     "  outColor = c;\n"
     "}\n";
+static const char *s0_FS =
+    "#version 410\n"
+    "in vec2 uv;\n"
+    "out vec4 outColor;\n"
+    "uniform sampler2D tex;\n"
+    "void main()\n"
+    "{\n"
+    "  vec2 texUV = textureSize(tex, 0)*uv;\n"
+    "  outColor = texelFetch(tex, ivec2(texUV), 0);\n"
+    "}\n";
 
 static const char *s_VS_BVH =
     "#version 410\n"
@@ -164,7 +174,8 @@ typedef OpenSubdiv::HbrVertex<OpenSubdiv::OsdVertex>   OsdHbrVertex;
 typedef OpenSubdiv::HbrFace<OpenSubdiv::OsdVertex>     OsdHbrFace;
 typedef OpenSubdiv::HbrHalfedge<OpenSubdiv::OsdVertex> OsdHbrHalfedge;
 
-enum HudCheckBox { kHUD_CB_DISPLAY_BVH };
+enum HudCheckBox { kHUD_CB_DISPLAY_BVH,
+                   kHUD_CB_BLOCK_FILL };
 
 struct SimpleShape {
     std::string  name;
@@ -185,7 +196,8 @@ int g_currentShape = 0;
 
 // GUI variables
 int   g_displayStyle = Scene::SHADED,
-      g_drawBVH = true,
+      g_drawBVH = false,
+      g_blockFill = true,
       g_mbutton[3] = {0, 0, 0},
       g_partitioning = 1,
       g_running = 1;
@@ -214,12 +226,18 @@ GLhud g_hud;
 float g_cpuTime = 0;
 float g_gpuTime = 0;
 Stopwatch g_fpsTimer;
+Stopwatch g_renderTimer;
+float g_hbrTime = 0;
+float g_farTime = 0;
+float g_convertTime = 0;
+float g_bvhTime = 0;
+float g_renderTime = 0;
 
 // geometry
 std::vector<float> g_orgPositions,
                    g_positions;
 
-int g_level = 2;
+int g_level = 1;
 
 struct Transform {
     float ModelViewMatrix[16];
@@ -230,7 +248,8 @@ struct Transform {
 GLuint g_vao = 0;
 GLuint g_vaoBVH = 0;
 GLuint g_vbo = 0;
-GLuint g_program = 0;
+GLuint g_programSimpleFill = 0;
+GLuint g_programBlockFill = 0;
 GLuint g_programBVH = 0;
 
 float g_eye[] = { 0, 0, 5, 1};
@@ -367,6 +386,8 @@ startRender() {
     g_image.clear();
     g_image.resize(g_width*g_height*4);
     g_stepIndex = g_step*g_step;
+
+    g_renderTimer.Start();
 }
 
 static void
@@ -445,9 +466,20 @@ updateGeom() {
                       g_farMesh->GetKernelBatches(),
                       g_cpuVertexBuffer);
 
-    g_scene.Build(g_cpuVertexBuffer->BindCpuBuffer(),
-                  g_cpuVertexBuffer->GetNumVertices(),
-                  g_farMesh->GetPatchTables());
+    Stopwatch s;
+    s.Start();
+    g_scene.Convert(g_cpuVertexBuffer->BindCpuBuffer(),
+                    g_cpuVertexBuffer->GetNumVertices(),
+                    g_farMesh->GetPatchTables());
+    s.Stop();
+    g_convertTime = s.GetElapsed() * 1000.0f;
+
+    s.Start();
+    g_scene.Build();
+    s.Stop();
+    g_bvhTime = s.GetElapsed() * 1000.0f;
+
+    g_scene.VBOBuild();
 }
 
 //------------------------------------------------------------------------------
@@ -456,15 +488,26 @@ createOsdMesh( const std::string &shape, int level ){
 
     checkGLErrors("create osd enter");
     // generate Hbr representation from "obj" description
+
+    Stopwatch s;
+
+    s.Start();
     OsdHbrMesh * hmesh = simpleHbr<OpenSubdiv::OsdVertex>(shape.c_str(), kCatmark, g_orgPositions);
+    s.Stop();
+
+    g_hbrTime = s.GetElapsed() * 1000.0f;
 
     delete g_farMesh;
     delete g_cpuComputeContext;
     delete g_cpuVertexBuffer;
 
     // create farmesh
+    s.Start();
     OpenSubdiv::FarMeshFactory<OpenSubdiv::OsdVertex> meshFactory(hmesh, level, true);
     g_farMesh = meshFactory.Create();
+    s.Stop();
+
+    g_farTime = s.GetElapsed() * 1000.0f;
     // Hbr mesh can be deleted
     delete hmesh;
 
@@ -560,7 +603,7 @@ display() {
                  g_width, g_height,
                  0, GL_RGBA, GL_FLOAT, &g_image[0]);
 
-    glUseProgram(g_program);
+    glUseProgram(g_blockFill ? g_programBlockFill : g_programSimpleFill);
 
     glBindVertexArray(g_vao);
     glBindBuffer(GL_ARRAY_BUFFER, g_vbo);
@@ -588,10 +631,16 @@ display() {
         if (g_stepIndex > 0) 
             g_hud.DrawString(10, -240, 1, 0, 0, "Rendering...");
 
-        g_hud.DrawString(10, -180, "# of patches : %d", g_scene.GetNumPatches());
-//        g_hud.DrawString(10, -60,  "GPU Draw   : %.3f ms", drawGpuTime);
-//        g_hud.DrawString(10, -40,  "CPU Draw   : %.3f ms", drawCpuTime);
-        g_hud.DrawString(10, -20,  "FPS        : %3.1f", fps);
+        g_hud.DrawString(10, -200, "# of patches : %8d", g_scene.GetNumPatches());
+        g_hud.DrawString(10, -180, "memory       : %8.1f MB",
+                         g_scene.GetNumPatches()*16*3*4/1024.0/1024.0);
+
+        g_hud.DrawString(10, -160, "Hbr time     : %8.1f ms", g_hbrTime);
+        g_hud.DrawString(10, -140, "Far time     : %8.1f ms", g_farTime);
+        g_hud.DrawString(10, -120, "Bezier conv. : %8.1f ms", g_convertTime);
+        g_hud.DrawString(10, -100, "BVH build    : %8.1f ms", g_bvhTime);
+        g_hud.DrawString(10, -40,  "Render time  : %5.3f s", g_renderTime);
+        g_hud.DrawString(10, -20,  "FPS          : %3.1f", fps);
 
         g_hud.Flush();
     }
@@ -760,7 +809,11 @@ callbackCheckBox(bool checked, int button)
     case kHUD_CB_DISPLAY_BVH:
         g_drawBVH = checked;
         break;
+    case kHUD_CB_BLOCK_FILL:
+        g_blockFill = checked;
+        break;
     }
+    display();
 }
 
 static void
@@ -772,8 +825,10 @@ initHUD()
 #endif
     g_hud.Init(g_width, g_height);
 
-    g_hud.AddCheckBox("Show BVH (b)", g_drawBVH != 0,
+    g_hud.AddCheckBox("Show BVH (B)", g_drawBVH != 0,
                       10, 10, callbackCheckBox, kHUD_CB_DISPLAY_BVH, 'b');
+    g_hud.AddCheckBox("Block Fill (F)", g_blockFill != 0,
+                      10, 30, callbackCheckBox, kHUD_CB_BLOCK_FILL, 'f');
 
     int shading_pulldown = g_hud.AddPullDown("Shading (W)", 200, 10, 250, callbackDisplayStyle, 'w');
     g_hud.AddPullDownButton(shading_pulldown, "Shaded", Scene::SHADED,
@@ -786,7 +841,7 @@ initHUD()
     for (int i = 1; i < 11; ++i) {
         char level[16];
         sprintf(level, "Lv. %d", i);
-        g_hud.AddRadioButton(3, level, i==2, 10, 210+i*20, callbackLevel, i, '0'+(i%10));
+        g_hud.AddRadioButton(3, level, i==g_level, 10, 210+i*20, callbackLevel, i, '0'+(i%10));
     }
 
     int pulldown_handle = g_hud.AddPullDown("Shape (N)", -300, 10, 300, callbackModel, 'n');
@@ -796,6 +851,24 @@ initHUD()
 }
 
 //------------------------------------------------------------------------------
+
+static GLuint
+compileProgram(const char *vs, const char *gs, const char *fs)
+{
+    GLuint vertexShader = compileShader(GL_VERTEX_SHADER, vs);
+    GLuint geometryShader = gs ? compileShader(GL_GEOMETRY_SHADER, gs) : 0;
+    GLuint fragmentShader = compileShader(GL_FRAGMENT_SHADER, fs);
+    GLuint program = glCreateProgram();
+    glAttachShader(program, vertexShader);
+    glAttachShader(program, fragmentShader);
+    if (geometryShader) glAttachShader(program, geometryShader);
+    glLinkProgram(program);
+    glDeleteShader(vertexShader);
+    glDeleteShader(fragmentShader);
+    if (geometryShader) glDeleteShader(geometryShader);
+    return program;
+}
+
 static void
 initGL()
 {
@@ -814,29 +887,9 @@ initGL()
     glBufferData(GL_ARRAY_BUFFER, sizeof(pos), pos, GL_STATIC_DRAW);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
 
-    {
-        GLuint vertexShader = compileShader(GL_VERTEX_SHADER, s_VS);
-        GLuint fragmentShader = compileShader(GL_FRAGMENT_SHADER, s_FS);
-        g_program = glCreateProgram();
-        glAttachShader(g_program, vertexShader);
-        glAttachShader(g_program, fragmentShader);
-        glLinkProgram(g_program);
-        glDeleteShader(vertexShader);
-        glDeleteShader(fragmentShader);
-    }
-    {
-        GLuint vertexShader = compileShader(GL_VERTEX_SHADER, s_VS_BVH);
-        GLuint geometryShader = compileShader(GL_GEOMETRY_SHADER, s_GS_BVH);
-        GLuint fragmentShader = compileShader(GL_FRAGMENT_SHADER, s_FS_BVH);
-        g_programBVH = glCreateProgram();
-        glAttachShader(g_programBVH, vertexShader);
-        glAttachShader(g_programBVH, geometryShader);
-        glAttachShader(g_programBVH, fragmentShader);
-        glLinkProgram(g_programBVH);
-        glDeleteShader(vertexShader);
-        glDeleteShader(geometryShader);
-        glDeleteShader(fragmentShader);
-    }
+    g_programBlockFill = compileProgram(s_VS, NULL, s_FS);
+    g_programSimpleFill = compileProgram(s_VS, NULL, s0_FS);
+    g_programBVH = compileProgram(s_VS_BVH, s_GS_BVH, s_FS_BVH);
 }
 
 //------------------------------------------------------------------------------
@@ -856,6 +909,11 @@ idle() {
                    g_eye, g_lookat, g_up, g_step, index);
 
     --g_stepIndex;
+
+    if (g_stepIndex == 0) {
+        g_renderTimer.Stop();
+        g_renderTime = g_renderTimer.GetElapsed();
+    }
 
     display();
 }

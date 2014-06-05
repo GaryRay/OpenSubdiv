@@ -11,8 +11,10 @@ public:
     Scene();
     ~Scene();
 
-    void Build(float *vertices, int numVertices,
-               OpenSubdiv::FarPatchTables const *patchTables);
+    void Convert(float *vertices, int numVertices,
+                 OpenSubdiv::FarPatchTables const *patchTables);
+    void Build();
+    void VBOBuild();
 
     void Render(int width, int height, double fov,
                 std::vector<float> &image, // RGB
