@@ -769,7 +769,7 @@ FarMeshFactory<T,U>::Create( bool requireFVarData ) {
 
     // Create VertexEditTables if necessary
     if (GetHbrMesh()->HasVertexEdits()) {
-        result->_vertexEditTables = FarVertexEditTablesFactory<T,U>::Create( this, result, &result->_batches, GetMaxLevel() );
+        result->_vertexEditTables = FarVertexEditTablesFactory<T,U>::Create( this, &result->_batches, GetMaxLevel() );
         assert(result->_vertexEditTables);
     }
 

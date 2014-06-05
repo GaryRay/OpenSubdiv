@@ -60,7 +60,7 @@ protected:
     static void insertHEditBatch(FarKernelBatchVector *batches, int batchIndex, int batchLevel, int batchCount, int tableOffset);
 
     /// \brief Creates a FarVertexEditTables instance.
-    static FarVertexEditTables * Create( FarMeshFactory<T,U> const * factory, FarMesh<U> * mesh, FarKernelBatchVector *batches, int maxlevel );
+    static FarVertexEditTables * Create( FarMeshFactory<T,U> const * factory, FarKernelBatchVector *batches, int maxlevel );
 };
 
 template <class T, class U> bool
@@ -84,9 +84,9 @@ FarVertexEditTablesFactory<T,U>::insertHEditBatch(FarKernelBatchVector *batches,
 }
 
 template <class T, class U> FarVertexEditTables * 
-FarVertexEditTablesFactory<T,U>::Create( FarMeshFactory<T,U> const * factory, FarMesh<U> * mesh, FarKernelBatchVector *batches, int maxlevel ) {
+FarVertexEditTablesFactory<T,U>::Create( FarMeshFactory<T,U> const * factory, FarKernelBatchVector *batches, int maxlevel ) {
 
-    assert( factory and mesh );
+    assert( factory  );
 
     FarVertexEditTables* result = new FarVertexEditTables();
 
