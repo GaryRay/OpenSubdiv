@@ -75,6 +75,7 @@ Scene::Convert(float *inVertices, int numVertices, OpenSubdiv::FarPatchTables co
 
     // centering/normalize vertices.
     std::vector<float> vertices;
+    vertices.reserve(numVertices*3);
     {
         float min[3] = {FLT_MAX, FLT_MAX, FLT_MAX};
         float max[3] = {-FLT_MAX, -FLT_MAX, -FLT_MAX};
@@ -99,6 +100,7 @@ Scene::Convert(float *inVertices, int numVertices, OpenSubdiv::FarPatchTables co
 
     int numTotalPatches = 0;
     _mesh.bezierVertices.clear();
+    _mesh.bezierBounds.clear();
     _mesh.colors.clear();
 
     // iterate patch types.
@@ -109,19 +111,29 @@ Scene::Convert(float *inVertices, int numVertices, OpenSubdiv::FarPatchTables co
         FarPatchTables::Descriptor desc = it->GetDescriptor();
         switch(desc.GetType()) {
         case FarPatchTables::REGULAR:
-            numPatches = convertRegular(_mesh.bezierVertices, &vertices[0], patchTables, *it);
+            numPatches = convertRegular(_mesh.bezierVertices,
+                                        _mesh.bezierBounds,
+                                        &vertices[0], patchTables, *it);
             break;
         case FarPatchTables::BOUNDARY:
-            numPatches = convertBoundary(_mesh.bezierVertices, &vertices[0], patchTables, *it);
+            numPatches = convertBoundary(_mesh.bezierVertices,
+                                         _mesh.bezierBounds,
+                                         &vertices[0], patchTables, *it);
             break;
         case FarPatchTables::CORNER:
-            numPatches = convertCorner(_mesh.bezierVertices, &vertices[0], patchTables, *it);
+            numPatches = convertCorner(_mesh.bezierVertices,
+                                       _mesh.bezierBounds,
+                                       &vertices[0], patchTables, *it);
             break;
         case FarPatchTables::GREGORY:
-            numPatches = convertGregory(_mesh.bezierVertices, &vertices[0], patchTables, *it);
+            numPatches = convertGregory(_mesh.bezierVertices,
+                                        _mesh.bezierBounds,
+                                        &vertices[0], patchTables, *it);
             break;
         case FarPatchTables::GREGORY_BOUNDARY:
-            numPatches = convertBoundaryGregory(_mesh.bezierVertices, &vertices[0], patchTables, *it);
+            numPatches = convertBoundaryGregory(_mesh.bezierVertices,
+                                                _mesh.bezierBounds,
+                                                &vertices[0], patchTables, *it);
             break;
         default:
             break;
@@ -326,7 +338,7 @@ Scene::Shade(float rgba[4], const Intersection &isect, const Ray &ray)
             real3 sample = real3(0.5-randomreal(), 0.5-randomreal(), 0.5-randomreal());
             sample.normalize();
             sray.dir = sample * (vdot(sample, isect.normal) > 0 ? -1 : 1);
-            sray.invDir = sray.dir.neg();
+            sray.invDir = real3(1.0/sray.dir[0], 1.0/sray.dir[1], 1.0/sray.dir[2]);
             sray.org = ray.org + ray.dir * isect.t + sray.dir * 0.0001;
             numHits += _accel.Traverse(si, &_mesh, sray) ? 1 : 0;
         }

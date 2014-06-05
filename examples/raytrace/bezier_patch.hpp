@@ -39,6 +39,14 @@ namespace mallie{
 			assert(nu*nv == p.size());
 		}
 
+                template<class S>
+                bezier_patch(int nu, int nv, S const *p)
+                    :nu_(nu),nv_(nv),cp_(default_cp(nu,nv))
+		{
+                    for (int i = 0; i < nu*nv; ++i) cp_[i] = p[i];
+			assert(nu*nv == p.size());
+		}
+
 		bezier_patch(const bezier_patch<T>& rhs)
 			:nu_(rhs.nu_),nv_(rhs.nv_),cp_(rhs.cp_)
 		{

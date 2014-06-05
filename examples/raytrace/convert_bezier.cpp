@@ -1,6 +1,7 @@
 #include <cmath>
 #include <cstring>
 #include <cstdio>
+#include <cfloat>
 #include "convert_bezier.h"
 
 static float ef[27] = {
@@ -23,7 +24,9 @@ csf(unsigned int n, unsigned int j)
     }
 }
 
+
 int convertRegular(std::vector<float> &bezierVertices,
+                   std::vector<float> &bezierBounds,
                    float const *vertices,
                    OpenSubdiv::FarPatchTables const *patchTables,
                    OpenSubdiv::FarPatchTables::PatchArray const &parray)
@@ -39,6 +42,8 @@ int convertRegular(std::vector<float> &bezierVertices,
 
     // regular to bezier
     for (int i = 0; i < numPatches; i++) {
+        float min[3] = {FLT_MAX, FLT_MAX, FLT_MAX};
+        float max[3] = {-FLT_MAX, -FLT_MAX, -FLT_MAX};
         for (int j = 0; j < 4; j++) {
             for (int k = 0; k < 4; k++) {
                 float H[4][3];
@@ -58,17 +63,30 @@ int convertRegular(std::vector<float> &bezierVertices,
                     cp[1] += Q[k][m] * H[m][1];
                     cp[2] += Q[k][m] * H[m][2];
                 }
+                min[0] = std::min(min[0], cp[0]);
+                min[1] = std::min(min[1], cp[1]);
+                min[2] = std::min(min[2], cp[2]);
+                max[0] = std::max(max[0], cp[0]);
+                max[1] = std::max(max[1], cp[1]);
+                max[2] = std::max(max[2], cp[2]);
                 bezierVertices.push_back(cp[0]);
                 bezierVertices.push_back(cp[1]);
                 bezierVertices.push_back(cp[2]);
             }
         }
+        bezierBounds.push_back(min[0]);
+        bezierBounds.push_back(min[1]);
+        bezierBounds.push_back(min[2]);
+        bezierBounds.push_back(max[0]);
+        bezierBounds.push_back(max[1]);
+        bezierBounds.push_back(max[2]);
     }
     return numPatches;
 }
 
 int convertBoundary(std::vector<float> &bezierVertices,
-                   float const *vertices,
+                    std::vector<float> &bezierBounds,
+                    float const *vertices,
                     OpenSubdiv::FarPatchTables const *patchTables,
                     OpenSubdiv::FarPatchTables::PatchArray const &parray)
 {
@@ -88,6 +106,8 @@ int convertBoundary(std::vector<float> &bezierVertices,
 
     // regular to bezier
     for (int i = 0; i < numPatches; i++) {
+        float min[3] = {FLT_MAX, FLT_MAX, FLT_MAX};
+        float max[3] = {-FLT_MAX, -FLT_MAX, -FLT_MAX};
         for (int j = 0; j < 4; j++) {
             for (int k = 0; k < 4; k++) {
                 float H[3][3];
@@ -107,16 +127,29 @@ int convertBoundary(std::vector<float> &bezierVertices,
                     cp[1] += B[k][m] * H[m][1];
                     cp[2] += B[k][m] * H[m][2];
                 }
+                min[0] = std::min(min[0], cp[0]);
+                min[1] = std::min(min[1], cp[1]);
+                min[2] = std::min(min[2], cp[2]);
+                max[0] = std::max(max[0], cp[0]);
+                max[1] = std::max(max[1], cp[1]);
+                max[2] = std::max(max[2], cp[2]);
                 bezierVertices.push_back(cp[0]);
                 bezierVertices.push_back(cp[1]);
                 bezierVertices.push_back(cp[2]);
             }
         }
+        bezierBounds.push_back(min[0]);
+        bezierBounds.push_back(min[1]);
+        bezierBounds.push_back(min[2]);
+        bezierBounds.push_back(max[0]);
+        bezierBounds.push_back(max[1]);
+        bezierBounds.push_back(max[2]);
     }
     return numPatches;
 }
 
 int convertCorner(std::vector<float> &bezierVertices,
+                  std::vector<float> &bezierBounds,
                   float const *vertices,
                   OpenSubdiv::FarPatchTables const *patchTables,
                   OpenSubdiv::FarPatchTables::PatchArray const &parray)
@@ -132,6 +165,8 @@ int convertCorner(std::vector<float> &bezierVertices,
 
     // regular to bezier
     for (int i = 0; i < numPatches; i++) {
+        float min[3] = {FLT_MAX, FLT_MAX, FLT_MAX};
+        float max[3] = {-FLT_MAX, -FLT_MAX, -FLT_MAX};
         for (int j = 0; j < 4; j++) {
             for (int k = 0; k < 4; k++) {
                 float H[3][3];
@@ -151,17 +186,30 @@ int convertCorner(std::vector<float> &bezierVertices,
                     cp[1] += B[k][m] * H[m][1];
                     cp[2] += B[k][m] * H[m][2];
                 }
+                min[0] = std::min(min[0], cp[0]);
+                min[1] = std::min(min[1], cp[1]);
+                min[2] = std::min(min[2], cp[2]);
+                max[0] = std::max(max[0], cp[0]);
+                max[1] = std::max(max[1], cp[1]);
+                max[2] = std::max(max[2], cp[2]);
                 bezierVertices.push_back(cp[0]);
                 bezierVertices.push_back(cp[1]);
                 bezierVertices.push_back(cp[2]);
             }
         }
+        bezierBounds.push_back(min[0]);
+        bezierBounds.push_back(min[1]);
+        bezierBounds.push_back(min[2]);
+        bezierBounds.push_back(max[0]);
+        bezierBounds.push_back(max[1]);
+        bezierBounds.push_back(max[2]);
     }
     return numPatches;
 }
 
 
 int convertGregory(std::vector<float> &bezierVertices,
+                   std::vector<float> &bezierBounds,
                    float const *vertices,
                    OpenSubdiv::FarPatchTables const *patchTables,
                    OpenSubdiv::FarPatchTables::PatchArray const &parray)
@@ -186,6 +234,8 @@ int convertGregory(std::vector<float> &bezierVertices,
     float *q=(float*)alloca(length*16*sizeof(float));
 
     for (int patchIndex = 0; patchIndex < (int)parray.GetNumPatches(); ++patchIndex) {
+        float min[3] = {FLT_MAX, FLT_MAX, FLT_MAX};
+        float max[3] = {-FLT_MAX, -FLT_MAX, -FLT_MAX};
 
         unsigned int const * vertexIndices = &patchTables->GetPatchTable()[parray.GetVertIndex() + patchIndex*4];
         unsigned int const *quadOffsetBuffer = &patchTables->GetQuadOffsetTable()[parray.GetQuadOffsetIndex() + patchIndex*4];
@@ -370,17 +420,30 @@ int convertGregory(std::vector<float> &bezierVertices,
         for (int x = 0; x < 4; ++x) {
             for (int y = 0; y < 4; ++y) {
                 int index = y*4 + x;
+                min[0] = std::min(min[0], q[index*3+0]);
+                min[1] = std::min(min[1], q[index*3+1]);
+                min[2] = std::min(min[2], q[index*3+2]);
+                max[0] = std::max(max[0], q[index*3+0]);
+                max[1] = std::max(max[1], q[index*3+1]);
+                max[2] = std::max(max[2], q[index*3+2]);
                 bezierVertices.push_back(q[index*3+0]);
                 bezierVertices.push_back(q[index*3+1]);
                 bezierVertices.push_back(q[index*3+2]);
             }
         }
+        bezierBounds.push_back(min[0]);
+        bezierBounds.push_back(min[1]);
+        bezierBounds.push_back(min[2]);
+        bezierBounds.push_back(max[0]);
+        bezierBounds.push_back(max[1]);
+        bezierBounds.push_back(max[2]);
     }
 
     return parray.GetNumPatches();
 }
 
 int convertBoundaryGregory(std::vector<float> &bezierVertices,
+                           std::vector<float> &bezierBounds,
                            float const *vertices,
                            OpenSubdiv::FarPatchTables const *patchTables,
                            OpenSubdiv::FarPatchTables::PatchArray const &parray)
@@ -404,6 +467,8 @@ int convertBoundaryGregory(std::vector<float> &bezierVertices,
     float *q=(float*)alloca(length*16*sizeof(float));
 
     for (int patchIndex = 0; patchIndex < (int)parray.GetNumPatches(); ++patchIndex) {
+        float min[3] = {FLT_MAX, FLT_MAX, FLT_MAX};
+        float max[3] = {-FLT_MAX, -FLT_MAX, -FLT_MAX};
 
         // vertex
         unsigned int const * vertexIndices = &patchTables->GetPatchTable()[parray.GetVertIndex() + patchIndex*4];
@@ -736,11 +801,23 @@ int convertBoundaryGregory(std::vector<float> &bezierVertices,
         for (int x = 0; x < 4; ++x) {
             for (int y = 0; y < 4; ++y) {
                 int index = y*4 + x;
+                min[0] = std::min(min[0], q[index*3+0]);
+                min[1] = std::min(min[1], q[index*3+1]);
+                min[2] = std::min(min[2], q[index*3+2]);
+                max[0] = std::max(max[0], q[index*3+0]);
+                max[1] = std::max(max[1], q[index*3+1]);
+                max[2] = std::max(max[2], q[index*3+2]);
                 bezierVertices.push_back(q[index*3+0]);
                 bezierVertices.push_back(q[index*3+1]);
                 bezierVertices.push_back(q[index*3+2]);
             }
         }
+        bezierBounds.push_back(min[0]);
+        bezierBounds.push_back(min[1]);
+        bezierBounds.push_back(min[2]);
+        bezierBounds.push_back(max[0]);
+        bezierBounds.push_back(max[1]);
+        bezierBounds.push_back(max[2]);
     }
 
     return parray.GetNumPatches();

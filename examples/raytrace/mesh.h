@@ -9,6 +9,7 @@
 typedef struct {
     size_t numBezierPatches;
     std::vector<real> bezierVertices;              /// [xyz] * 16 * numBezierPatches
+    std::vector<real> bezierBounds;                /// [xyz] * [min, max] * numBezierPatches
     OpenSubdiv::FarPatchParam const *patchParams;  /// [FarPatchParam] * numBezierPatches
     std::vector<float> colors;                     /// [rgb] * numBezierPatches;
 

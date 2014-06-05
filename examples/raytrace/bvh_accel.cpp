@@ -89,6 +89,19 @@ static inline void GetBoundingBoxOfTriangle(real3 &bmin, real3 &bmax,
 #endif
 
 #ifdef ENABLE_OSD_PATCH
+
+#if 1
+static inline void GetBoundingBoxOfRegularPatch(real3 &bmin, real3 &bmax,
+                                                const Mesh *mesh,
+                                                unsigned int index) {
+    bmin[0] = mesh->bezierBounds[index*6+0];
+    bmin[1] = mesh->bezierBounds[index*6+1];
+    bmin[2] = mesh->bezierBounds[index*6+2];
+    bmax[0] = mesh->bezierBounds[index*6+3];
+    bmax[1] = mesh->bezierBounds[index*6+4];
+    bmax[2] = mesh->bezierBounds[index*6+5];
+}
+#else
 static inline void GetBoundingBoxOfRegularPatch(real3 &bmin, real3 &bmax,
                                                 const Mesh *mesh,
                                                 unsigned int index) {
@@ -110,6 +123,7 @@ static inline void GetBoundingBoxOfRegularPatch(real3 &bmin, real3 &bmax,
     bmax[2] = std::max(bmax[2], p[2]);
   }
 }
+#endif
 #endif
 
 static void ContributeBinBuffer(BinBuffer *bins, // [out]
@@ -330,6 +344,7 @@ private:
 #ifdef ENABLE_OSD_PATCH
 static void ComputeBoundingBox(real3 &bmin, real3 &bmax,
                                const real *bezierVertices,
+                               const real *bezierBounds,
                                unsigned int *indices,
                                unsigned int leftIndex,
                                unsigned int rightIndex) {
@@ -338,6 +353,30 @@ static void ComputeBoundingBox(real3 &bmin, real3 &bmax,
   size_t i = leftIndex;
   size_t idx = indices[i];
 
+#if 1
+  bmin[0] = bezierBounds[6*idx + 0];
+  bmin[1] = bezierBounds[6*idx + 1];
+  bmin[2] = bezierBounds[6*idx + 2];
+  bmax[0] = bezierBounds[6*idx + 3];
+  bmax[1] = bezierBounds[6*idx + 4];
+  bmax[2] = bezierBounds[6*idx + 5];
+
+  for (i = leftIndex; i < rightIndex; i++) { // for each faces
+      size_t idx = indices[i];
+      bmin[0] = std::min(bmin[0], bezierBounds[6*idx + 0]);
+      bmin[1] = std::min(bmin[1], bezierBounds[6*idx + 1]);
+      bmin[2] = std::min(bmin[2], bezierBounds[6*idx + 2]);
+      bmax[0] = std::max(bmax[0], bezierBounds[6*idx + 3]);
+      bmax[1] = std::max(bmax[1], bezierBounds[6*idx + 4]);
+      bmax[2] = std::max(bmax[2], bezierBounds[6*idx + 5]);
+  }
+  bmin[0] -= kEPS;
+  bmin[1] -= kEPS;
+  bmin[2] -= kEPS;
+  bmax[0] += kEPS;
+  bmax[1] += kEPS;
+  bmax[2] += kEPS;
+#else
   bmin[0] = bezierVertices[3 * 16 * idx + 0] - kEPS;
   bmin[1] = bezierVertices[3 * 16 * idx + 1] - kEPS;
   bmin[2] = bezierVertices[3 * 16 * idx + 2] - kEPS;
@@ -358,6 +397,7 @@ static void ComputeBoundingBox(real3 &bmin, real3 &bmax,
       }
     }
   }
+#endif
 }
 #else
 static void ComputeBoundingBox(real3 &bmin, real3 &bmax, real *vertices,
@@ -412,7 +452,9 @@ size_t BVHAccel::BuildTree(const Mesh *mesh, unsigned int leftIdx,
 
   real3 bmin, bmax;
 #ifdef ENABLE_OSD_PATCH
-  ComputeBoundingBox(bmin, bmax, &mesh->bezierVertices[0],
+  ComputeBoundingBox(bmin, bmax,
+                     &mesh->bezierVertices[0],
+                     &mesh->bezierBounds[0],
                      &indices_.at(0), leftIdx, rightIdx);
 #else
   ComputeBoundingBox(bmin, bmax, mesh->vertices, mesh->faces, &indices_.at(0),
@@ -766,12 +808,15 @@ inline bool PatchIsect(Intersection &isect,
   }
 #else
     using namespace mallie;
+#if 0
     std::vector<vector3> v(16);
     for(int i = 0;i<16;i++){
       v[i] = vector3(bezierVerts[3*i+0],bezierVerts[3*i+1],bezierVerts[3*i+2]);
     }
-    
     bezier_patch_intersection bzi(bezier_patch<vector3>(4,4,v));
+#else
+    bezier_patch_intersection bzi(bezier_patch<vector3>(4,4,(const vector3*)bezierVerts));
+#endif
 
     real t = isect.t;
     if(bzi.test(&isect, ray, t))
@@ -953,7 +998,8 @@ bool BVHAccel::Traverse(Intersection &isect, const Mesh *mesh, Ray &ray) {
   real hitT = std::numeric_limits<real>::max(); // far = no hit.
 
   int nodeStackIndex = 0;
-  std::vector<int> nodeStack(512);
+//  std::vector<int> nodeStack(512);
+  int nodeStack[512];
   nodeStack[0] = 0;
 
   // Init isect info as no hit
