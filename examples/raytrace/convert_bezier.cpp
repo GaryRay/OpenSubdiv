@@ -190,6 +190,8 @@ int convertGregory(std::vector<float> &bezierVertices,
         unsigned int const * vertexIndices = &patchTables->GetPatchTable()[parray.GetVertIndex() + patchIndex*4];
         unsigned int const *quadOffsetBuffer = &patchTables->GetQuadOffsetTable()[parray.GetQuadOffsetIndex() + patchIndex*4];
 
+        bool badPatch = false;
+
         float *rp,
             *e0 = r + maxValence*4*length,
             *e1 = e0 + 4*length;
@@ -243,18 +245,21 @@ int convertGregory(std::vector<float> &bezierVertices,
                 opos[vofs+k] /= valence;
             }
 
-            for (int i=0; i<valence; ++i) {
-                int im = (i+valence-1)%valence;
-                for (int k=0; k<length; ++k) {
-                    float e = 0.5f*(f[i*length+k]+f[im*length+k]);
-                    e0[vofs+k] += csf(valence-3, 2*i) * e;
-                    e1[vofs+k] += csf(valence-3, 2*i+1) * e;
+            if (valence >= 3) {
+                for (int i=0; i<valence; ++i) {
+                    int im = (i+valence-1)%valence;
+                    for (int k=0; k<length; ++k) {
+                        float e = 0.5f*(f[i*length+k]+f[im*length+k]);
+                        e0[vofs+k] += csf(valence-3, 2*i) * e;
+                        e1[vofs+k] += csf(valence-3, 2*i+1) * e;
+                    }
                 }
-            }
-
-            for (int k=0; k<length; ++k) {
-                e0[vofs+k] *= ef[valence-3];
-                e1[vofs+k] *= ef[valence-3];
+                for (int k=0; k<length; ++k) {
+                    e0[vofs+k] *= ef[valence-3];
+                    e1[vofs+k] *= ef[valence-3];
+                }
+            } else {
+                badPatch = true;
             }
         }
 
@@ -358,6 +363,10 @@ int convertGregory(std::vector<float> &bezierVertices,
         memcpy(q+14*length, p[11], length*sizeof(float));
         memcpy(q+15*length, p[10], length*sizeof(float));
 
+        if (badPatch) {
+            memset(q, 0, 16*3*sizeof(float));
+        }
+
         for (int x = 0; x < 4; ++x) {
             for (int y = 0; y < 4; ++y) {
                 int index = y*4 + x;
@@ -366,7 +375,6 @@ int convertGregory(std::vector<float> &bezierVertices,
                 bezierVertices.push_back(q[index*3+2]);
             }
         }
-
     }
 
     return parray.GetNumPatches();
@@ -400,6 +408,8 @@ int convertBoundaryGregory(std::vector<float> &bezierVertices,
         // vertex
         unsigned int const * vertexIndices = &patchTables->GetPatchTable()[parray.GetVertIndex() + patchIndex*4];
         unsigned int const *quadOffsetBuffer = &patchTables->GetQuadOffsetTable()[parray.GetQuadOffsetIndex() + patchIndex*4];
+
+        bool badPatch = false;
 
         float *rp,
             *e0 = r + maxValence*4*length,
@@ -488,18 +498,21 @@ int convertBoundaryGregory(std::vector<float> &bezierVertices,
                 boundaryEdgeNeighbors[1] = boundaryEdgeNeighbors[0];
             }
 
-            for (int i=0; i<ivalence; ++i) {
-                unsigned int im = (i+ivalence-1)%ivalence;
-                for (int k=0; k<length; ++k) {
-                    float e = 0.5f*(f[i*length+k]+f[im*length+k]);
-                    e0[vofs+k] += csf(ivalence-3, 2*i  ) * e;
-                    e1[vofs+k] += csf(ivalence-3, 2*i+1) * e;
+            if (ivalence >= 3) {
+                for (int i=0; i<ivalence; ++i) {
+                    unsigned int im = (i+ivalence-1)%ivalence;
+                    for (int k=0; k<length; ++k) {
+                        float e = 0.5f*(f[i*length+k]+f[im*length+k]);
+                        e0[vofs+k] += csf(ivalence-3, 2*i  ) * e;
+                        e1[vofs+k] += csf(ivalence-3, 2*i+1) * e;
+                    }
                 }
-            }
-
-            for (int k=0; k<length; ++k) {
-                e0[vofs+k] *= ef[ivalence-3];
-                e1[vofs+k] *= ef[ivalence-3];
+                for (int k=0; k<length; ++k) {
+                    e0[vofs+k] *= ef[ivalence-3];
+                    e1[vofs+k] *= ef[ivalence-3];
+                }
+            } else {
+                badPatch = true;
             }
 
             if (valence<0) {
@@ -715,6 +728,10 @@ int convertBoundaryGregory(std::vector<float> &bezierVertices,
         memcpy(q+13*length, p[17], length*sizeof(float));
         memcpy(q+14*length, p[11], length*sizeof(float));
         memcpy(q+15*length, p[10], length*sizeof(float));
+
+        if (badPatch) {
+            memset(q, 0, 16*3*sizeof(float));
+        }
 
         for (int x = 0; x < 4; ++x) {
             for (int y = 0; y < 4; ++y) {
