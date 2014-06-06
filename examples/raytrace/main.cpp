@@ -554,6 +554,9 @@ fitFrame() {
 
     g_pan[0] = g_pan[1] = 0;
     g_dolly = g_size;
+
+    setCamera();
+    startRender();
 }
 
 //------------------------------------------------------------------------------
@@ -636,10 +639,11 @@ display() {
         double fps = 1.0/g_fpsTimer.GetElapsed();
         g_fpsTimer.Start();
 
-        g_hud.DrawString(10, -220, "# of patches : %8d", g_scene.GetNumPatches());
-        g_hud.DrawString(10, -200, "# of tris    : %8d", g_scene.GetNumTriangles());
-        g_hud.DrawString(10, -180, "memory       : %8.1f MB",
-                         g_scene.GetNumPatches()*16*3*4/1024.0/1024.0);
+        g_hud.DrawString(10, -280, "# of patches : %8d", g_scene.GetNumPatches());
+        g_hud.DrawString(10, -240, "PreTess lv   : %d (+/-)", g_preTessLevel);
+        g_hud.DrawString(10, -220, "# of tris    : %8d", g_scene.GetNumTriangles());
+
+        g_hud.DrawString(10, -180, "memory       : %8.1f MB", g_scene.GetMemoryUsage()/1024.0/1024.0);
 
         g_hud.DrawString(10, -160, "Hbr time     : %8.1f ms", g_hbrTime);
         g_hud.DrawString(10, -140, "Far time     : %8.1f ms", g_farTime);
@@ -848,8 +852,8 @@ initHUD()
 
     g_hud.AddCheckBox("Show BVH (B)", g_drawBVH != 0,
                       10, 10, callbackCheckBox, kHUD_CB_DISPLAY_BVH, 'b');
-    g_hud.AddCheckBox("Block Fill (F)", g_blockFill != 0,
-                      10, 30, callbackCheckBox, kHUD_CB_BLOCK_FILL, 'f');
+    g_hud.AddCheckBox("Block Fill (K)", g_blockFill != 0,
+                      10, 30, callbackCheckBox, kHUD_CB_BLOCK_FILL, 'k');
 
     g_hud.AddCheckBox("Pre tessellate (T)", g_preTess != 0,
                       10, 60, callbackCheckBox, kHUD_CB_PRE_TESSELLATE, 't');

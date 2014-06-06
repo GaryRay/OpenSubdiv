@@ -38,6 +38,19 @@ public:
     GLuint GetVBO() const { return _vbo; }
     int GetNumBVHNode() const { return (int)_accel.GetNodes().size(); }
 
+    size_t GetMemoryUsage() const {
+        size_t mem = 0;
+        if (_mesh.IsBezierMesh()) {
+            mem += _mesh.bezierVertices.size() * sizeof(float);  // cp
+            mem += _mesh.bezierBounds.size() * sizeof(float);   // bounds
+        } else {
+            mem += _mesh.triVertices.size() * 3 * sizeof(float); // verts
+            mem += _mesh.faces.size() * sizeof(unsigned int); // indices
+        }
+        return mem;
+    }
+
+
 private:
     Mesh _mesh;
     BVHAccel _accel;
