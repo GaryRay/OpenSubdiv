@@ -185,26 +185,26 @@ int checkMesh( char const * name, xyzmesh * hmesh, int levels, Scheme scheme=kCa
 
     int numPatches = 0;
     std::vector<float> bezierVertices;
+    std::vector<float> bezierBounds;
     // iterate patch types.
-    printf("begin\n");
     for (FarPatchTables::PatchArrayVector::const_iterator it = patchArrays.begin();
          it != patchArrays.end(); ++it) {
 
         switch(it->GetDescriptor().GetType()) {
         case FarPatchTables::REGULAR:
-            numPatches += convertRegular(bezierVertices, &vertices[0], patchTables, *it);
+            numPatches += convertRegular(bezierVertices, bezierBounds, &vertices[0], patchTables, *it);
             break;
         case FarPatchTables::BOUNDARY:
-            numPatches += convertBoundary(bezierVertices, &vertices[0], patchTables, *it);
+            numPatches += convertBoundary(bezierVertices, bezierBounds, &vertices[0], patchTables, *it);
             break;
         case FarPatchTables::CORNER:
-            numPatches += convertCorner(bezierVertices, &vertices[0], patchTables, *it);
+            numPatches += convertCorner(bezierVertices, bezierBounds, &vertices[0], patchTables, *it);
             break;
         case FarPatchTables::GREGORY:
-            numPatches += convertGregory(bezierVertices, &vertices[0], patchTables, *it);
+            numPatches += convertGregory(bezierVertices, bezierBounds, &vertices[0], patchTables, *it);
             break;
         case FarPatchTables::GREGORY_BOUNDARY:
-            numPatches += convertBoundaryGregory(bezierVertices, &vertices[0], patchTables, *it);
+            numPatches += convertBoundaryGregory(bezierVertices, bezierBounds, &vertices[0], patchTables, *it);
             break;
         default:
             break;
@@ -224,6 +224,8 @@ int checkMesh( char const * name, xyzmesh * hmesh, int levels, Scheme scheme=kCa
         eson::Value((uint8_t*)&patchParam[0], sizeof(OpenSubdiv::FarPatchParam)*patchParam.size());
     mesh["bezier_vertices"] =
         eson::Value((uint8_t*)&bezierVertices[0], sizeof(float)*bezierVertices.size());
+    mesh["bezier_bounds"] =
+        eson::Value((uint8_t*)&bezierBounds[0], sizeof(float)*bezierBounds.size());
 
     printf("%s, verts=%d, patches=%d, %d\n", name, nverts, numPatches, (int)bezierVertices.size());
 
