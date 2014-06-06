@@ -90,16 +90,16 @@ static const char *s_FS =
     "uniform sampler2D tex;\n"
     "void main()\n"
     "{\n"
-    "  vec2 texUV = textureSize(tex, 0)*uv;\n"
+    "  ivec2 texUV = ivec2(textureSize(tex, 0)*uv);\n"
     "  vec4 c = vec4(0.1, 0.1, 0.1, 0);\n"
-    "  for(int i = 0; i < 8; ++i) {\n"
-    "    for(int j = 0; j < i*2+1; ++j) {\n"
-    "      ivec2 offset = min(ivec2(i*2-j, j), ivec2(i, i));\n"
-    "      vec4 cs = texelFetch(tex, ivec2(texUV)-offset, 0);\n"
-    "      c = mix(c, cs, 1-c.a);\n"
-    "      c.a = max(c.a, cs.a);\n"
-    "    }\n"
-    "  }\n"
+    "  vec4 cs = texelFetch(tex, texUV, 0);\n"
+    "  vec4 c0 = texelFetch(tex, ivec2(texUV.x & ~7, texUV.y & ~7), 0);\n"
+    "  vec4 c1 = texelFetch(tex, ivec2(texUV.x & ~3, texUV.y & ~3), 0);\n"
+    "  vec4 c2 = texelFetch(tex, ivec2(texUV.x & ~1, texUV.y & ~1), 0);\n"
+    "  c = mix(c, c0, c0.a);\n"
+    "  c = mix(c, c1, c1.a);\n"
+    "  c = mix(c, c2, c2.a);\n"
+    "  c = mix(c, cs, cs.a);\n"
     "  outColor = c;\n"
     "}\n";
 static const char *s0_FS =
@@ -906,10 +906,15 @@ idle() {
     double fov = 45.0f;
     g_renderTime = -1.0f;
 
-    //printf("%d x %d, %d\n", g_width, g_height, g_step);
+    int index = g_step*g_step - g_stepIndex;
 
-    int s = 2*(g_step/2)*(g_step/2)+(g_step/2)+1;
-    int index = (g_stepIndex*s)%(g_step*g_step);
+    index = ((index>>0)&1) * (g_step*g_step>>1)
+          + ((index>>1)&1) * (g_step>>1)
+          + ((index>>2)&1) * (g_step*g_step>>2)
+          + ((index>>3)&1) * (g_step>>2)
+          + ((index>>4)&1) * (g_step*g_step>>3)
+          + ((index>>5)&1) * (g_step>>3);
+
 
     g_scene.Render(g_width, g_height, fov,
                    g_image,
