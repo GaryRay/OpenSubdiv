@@ -6,13 +6,23 @@
 #include <far/patchParam.h>
 #include "common.h"
 
-typedef struct {
+struct Mesh {
+    Mesh() : numTriangles(0), numBezierPatches(0), patchParams(NULL) {
+    }
+
+    bool IsBezierMesh() const {
+        return numBezierPatches > 0;
+    }
+
+    size_t numTriangles;
+    std::vector<real> triVertices;
+    std::vector<unsigned int> faces;
+
     size_t numBezierPatches;
     std::vector<real> bezierVertices;              /// [xyz] * 16 * numBezierPatches
     std::vector<real> bezierBounds;                /// [xyz] * [min, max] * numBezierPatches
     OpenSubdiv::FarPatchParam const *patchParams;  /// [FarPatchParam] * numBezierPatches
     std::vector<float> colors;                     /// [rgb] * numBezierPatches;
-
-} Mesh;
+};
 
 #endif // __MESH_H__

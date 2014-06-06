@@ -13,12 +13,9 @@
 
 #include "bvh_accel.h"
 
-#ifdef ENABLE_OSD_PATCH
 #include "bezier_patch.hpp"
 #include "bezier_patch_intersection.h"
 #include <memory>
-#endif
-
 
 #define ENABLE_TRACE_PRINT (0)
 #define ENABLE_DEBUG_PRINT (0)
@@ -59,7 +56,6 @@ static inline double CalculateSurfaceArea(const real3 &min, const real3 &max) {
   return 2.0 * (box[0] * box[1] + box[1] * box[2] + box[2] * box[0]);
 }
 
-#ifndef ENABLE_OSD_PATCH
 static inline void GetBoundingBoxOfTriangle(real3 &bmin, real3 &bmax,
                                             const Mesh *mesh,
                                             unsigned int index) {
@@ -69,9 +65,9 @@ static inline void GetBoundingBoxOfTriangle(real3 &bmin, real3 &bmax,
 
   real3 p[3];
 
-  p[0] = real3(&mesh->vertices[3 * f0]);
-  p[1] = real3(&mesh->vertices[3 * f1]);
-  p[2] = real3(&mesh->vertices[3 * f2]);
+  p[0] = real3(&mesh->triVertices[3 * f0]);
+  p[1] = real3(&mesh->triVertices[3 * f1]);
+  p[2] = real3(&mesh->triVertices[3 * f2]);
 
   bmin = p[0];
   bmax = p[0];
@@ -86,11 +82,7 @@ static inline void GetBoundingBoxOfTriangle(real3 &bmin, real3 &bmax,
     bmax[2] = std::max(bmax[2], p[i][2]);
   }
 }
-#endif
 
-#ifdef ENABLE_OSD_PATCH
-
-#if 1
 static inline void GetBoundingBoxOfRegularPatch(real3 &bmin, real3 &bmax,
                                                 const Mesh *mesh,
                                                 unsigned int index) {
@@ -101,30 +93,6 @@ static inline void GetBoundingBoxOfRegularPatch(real3 &bmin, real3 &bmax,
     bmax[1] = mesh->bezierBounds[index*6+4];
     bmax[2] = mesh->bezierBounds[index*6+5];
 }
-#else
-static inline void GetBoundingBoxOfRegularPatch(real3 &bmin, real3 &bmax,
-                                                const Mesh *mesh,
-                                                unsigned int index) {
-
-  {
-    real3 p(&mesh->bezierVertices[16*index*3]);
-    bmin = p;
-    bmax = p;
-  }
-
-  for (int i = 1; i < 16; i++) {
-    real3 p(&mesh->bezierVertices[(16*index + i)*3]);
-    bmin[0] = std::min(bmin[0], p[0]);
-    bmin[1] = std::min(bmin[1], p[1]);
-    bmin[2] = std::min(bmin[2], p[2]);
-
-    bmax[0] = std::max(bmax[0], p[0]);
-    bmax[1] = std::max(bmax[1], p[1]);
-    bmax[2] = std::max(bmax[2], p[2]);
-  }
-}
-#endif
-#endif
 
 static void ContributeBinBuffer(BinBuffer *bins, // [out]
                                 const real3 &sceneMin, const real3 &sceneMax,
@@ -153,6 +121,8 @@ static void ContributeBinBuffer(BinBuffer *bins, // [out]
   size_t idxBMin[3];
   size_t idxBMax[3];
 
+  bool bezierMesh = mesh->IsBezierMesh();
+
   for (size_t i = leftIdx; i < rightIdx; i++) {
 
     //
@@ -163,11 +133,11 @@ static void ContributeBinBuffer(BinBuffer *bins, // [out]
     real3 bmin;
     real3 bmax;
 
-#ifdef ENABLE_OSD_PATCH
-    GetBoundingBoxOfRegularPatch(bmin, bmax, mesh, indices[i]);
-#else
-    GetBoundingBoxOfTriangle(bmin, bmax, mesh, indices[i]);
-#endif
+    if (bezierMesh) {
+        GetBoundingBoxOfRegularPatch(bmin, bmax, mesh, indices[i]);
+    } else {
+        GetBoundingBoxOfTriangle(bmin, bmax, mesh, indices[i]);
+    }
 
     real3 quantizedBMin = (bmin - sceneMin) * sceneInvSize;
     real3 quantizedBMax = (bmax - sceneMin) * sceneInvSize;
@@ -308,52 +278,51 @@ static bool FindCutFromBinBuffer(real *cutPos,     // [out] xyz
 class SAHPred : public std::unary_function<unsigned int, bool> {
 public:
   SAHPred(int axis, real pos, const Mesh *mesh)
-      : axis_(axis), pos_(pos), mesh_(mesh) {}
+      : axis_(axis), pos_(pos), mesh_(mesh) {
+      bezier_ = mesh->IsBezierMesh();
+  }
 
   bool operator()(unsigned int i) const {
     int axis = axis_;
     real pos = pos_;
 
-#ifdef ENABLE_OSD_PATCH
-    real center = 0;
-    for (int j = 0; j < 16; ++j) {
-        center += mesh_->bezierVertices[3 * (16 * i + j) + axis];
+    if (bezier_) {
+        real center = 0;
+        for (int j = 0; j < 16; ++j) {
+            center += mesh_->bezierVertices[3 * (16 * i + j) + axis];
+        }
+        return (center < pos * 16.0);
+    } else {
+        unsigned int i0 = mesh_->faces[3 * i + 0];
+        unsigned int i1 = mesh_->faces[3 * i + 1];
+        unsigned int i2 = mesh_->faces[3 * i + 2];
+        real3 p0(&mesh_->triVertices[3 * i0]);
+        real3 p1(&mesh_->triVertices[3 * i1]);
+        real3 p2(&mesh_->triVertices[3 * i2]);
+
+        real center = p0[axis] + p1[axis] + p2[axis];
+
+        return (center < pos * 3.0);
     }
-    return (center < pos * 16.0);
-#else
-    unsigned int i0 = mesh_->faces[3 * i + 0];
-    unsigned int i1 = mesh_->faces[3 * i + 1];
-    unsigned int i2 = mesh_->faces[3 * i + 2];
-
-    real3 p0(&mesh_->vertices[3 * i0]);
-    real3 p1(&mesh_->vertices[3 * i1]);
-    real3 p2(&mesh_->vertices[3 * i2]);
-
-    real center = p0[axis] + p1[axis] + p2[axis];
-
-    return (center < pos * 3.0);
-#endif
   }
 
 private:
   int axis_;
   real pos_;
   const Mesh *mesh_;
+    bool bezier_;
 };
 
-#ifdef ENABLE_OSD_PATCH
 static void ComputeBoundingBox(real3 &bmin, real3 &bmax,
-                               const real *bezierVertices,
                                const real *bezierBounds,
-                               unsigned int *indices,
+                               const unsigned int *indices,
                                unsigned int leftIndex,
                                unsigned int rightIndex) {
-  const real kEPS = std::numeric_limits<real>::epsilon() * 1024;
+    const real kEPS = std::numeric_limits<real>::epsilon() * 1024;
 
   size_t i = leftIndex;
   size_t idx = indices[i];
 
-#if 1
   bmin[0] = bezierBounds[6*idx + 0];
   bmin[1] = bezierBounds[6*idx + 1];
   bmin[2] = bezierBounds[6*idx + 2];
@@ -376,32 +345,12 @@ static void ComputeBoundingBox(real3 &bmin, real3 &bmax,
   bmax[0] += kEPS;
   bmax[1] += kEPS;
   bmax[2] += kEPS;
-#else
-  bmin[0] = bezierVertices[3 * 16 * idx + 0] - kEPS;
-  bmin[1] = bezierVertices[3 * 16 * idx + 1] - kEPS;
-  bmin[2] = bezierVertices[3 * 16 * idx + 2] - kEPS;
-  bmax[0] = bezierVertices[3 * 16 * idx + 0] + kEPS;
-  bmax[1] = bezierVertices[3 * 16 * idx + 1] + kEPS;
-  bmax[2] = bezierVertices[3 * 16 * idx + 2] + kEPS;
-
-  for (i = leftIndex; i < rightIndex; i++) { // for each faces
-    size_t idx = indices[i];
-    for (int j = 0; j < 16; j++) { // for each face vertex
-      for (int k = 0; k < 3; k++) { // xyz
-        real minval = bezierVertices[3 * (16 * idx + j) + k] - kEPS;
-        real maxval = bezierVertices[3 * (16 * idx + j) + k] + kEPS;
-        if (bmin[k] > minval)
-          bmin[k] = minval;
-        if (bmax[k] < maxval)
-          bmax[k] = maxval;
-      }
-    }
-  }
-#endif
 }
-#else
-static void ComputeBoundingBox(real3 &bmin, real3 &bmax, real *vertices,
-                               unsigned int *faces, unsigned int *indices,
+
+static void ComputeBoundingBox(real3 &bmin, real3 &bmax,
+                               const real *vertices,
+                               const unsigned int *faces,
+                               const unsigned int *indices,
                                unsigned int leftIndex,
                                unsigned int rightIndex) {
   const real kEPS = std::numeric_limits<real>::epsilon() * 1024;
@@ -432,7 +381,6 @@ static void ComputeBoundingBox(real3 &bmin, real3 &bmax, real *vertices,
     }
   }
 }
-#endif
 
 //
 // --
@@ -451,21 +399,21 @@ size_t BVHAccel::BuildTree(const Mesh *mesh, unsigned int leftIdx,
   }
 
   real3 bmin, bmax;
-#ifdef ENABLE_OSD_PATCH
-  ComputeBoundingBox(bmin, bmax,
-                     &mesh->bezierVertices[0],
-                     &mesh->bezierBounds[0],
-                     &indices_.at(0), leftIdx, rightIdx);
-#else
-  ComputeBoundingBox(bmin, bmax, mesh->vertices, mesh->faces, &indices_.at(0),
-                     leftIdx, rightIdx);
-#endif
+  if (mesh->IsBezierMesh()) {
+      ComputeBoundingBox(bmin, bmax, &mesh->bezierBounds[0],
+                         &indices_.at(0), leftIdx, rightIdx);
+  } else {
+      ComputeBoundingBox(bmin, bmax, &mesh->triVertices[0],
+                         &mesh->faces[0],
+                         &indices_.at(0),
+                         leftIdx, rightIdx);
+  }
 
   debug(" bmin = %f, %f, %f\n", bmin[0], bmin[1], bmin[2]);
   debug(" bmax = %f, %f, %f\n", bmax[0], bmax[1], bmax[2]);
 
   size_t n = rightIdx - leftIdx;
-  if ((n < options_.minLeafPrimitives) || (depth >= options_.maxTreeDepth)) {
+  if ((n < (size_t)options_.minLeafPrimitives) || (depth >= options_.maxTreeDepth)) {
     // Create leaf node.
     BVHNode leaf;
 
@@ -578,7 +526,7 @@ bool BVHAccel::Build(const Mesh *mesh, const BVHBuildOptions &options) {
 
   assert(mesh);
 
-  size_t n = mesh->numBezierPatches;
+  size_t n = mesh->IsBezierMesh() ? mesh->numBezierPatches : mesh->numTriangles;
   trace("[BVHAccel] Input # of bezier patches = %lu\n", mesh->numBezierPatches);
 
   //
@@ -684,7 +632,7 @@ bool IntersectRayAABB(real &tminOut, // [out]
                       real3 rayOrg, real3 rayInvDir, int rayDirSign[3]) __attribute__ ((noinline));
 #endif
 
-const int kMaxStackDepth = 512;
+const int kMaxStackDepth = 5120;
 
 bool IntersectRayAABB(real &tminOut, // [out]
                              real &tmaxOut, // [out]
@@ -692,21 +640,12 @@ bool IntersectRayAABB(real &tminOut, // [out]
                              real3 rayOrg, real3 rayInvDir, int rayDirSign[3]) {
   real tmin, tmax;
 
-#if 0
-  const real min_x = rayDirSign[0] ? bmax[0] : bmin[0];
-  const real min_y = rayDirSign[1] ? bmax[1] : bmin[1];
-  const real min_z = rayDirSign[2] ? bmax[2] : bmin[2];
-  const real max_x = rayDirSign[0] ? bmin[0] : bmax[0];
-  const real max_y = rayDirSign[1] ? bmin[1] : bmax[1];
-  const real max_z = rayDirSign[2] ? bmin[2] : bmax[2];
-#else
   const real min_x = rayDirSign[0] * bmax[0] + (1-rayDirSign[0]) * bmin[0];
   const real min_y = rayDirSign[1] * bmax[1] + (1-rayDirSign[1]) * bmin[1];
   const real min_z = rayDirSign[2] * bmax[2] + (1-rayDirSign[2]) * bmin[2];
   const real max_x = rayDirSign[0] * bmin[0] + (1-rayDirSign[0]) * bmax[0];
   const real max_y = rayDirSign[1] * bmin[1] + (1-rayDirSign[1]) * bmax[1];
   const real max_z = rayDirSign[2] * bmin[2] + (1-rayDirSign[2]) * bmax[2];
-#endif
 
   // X
   const double tmin_x = (min_x - rayOrg[0]) * rayInvDir[0];
@@ -763,7 +702,7 @@ inline bool TriangleIsect(real &tInOut, real &uOut, real &vOut, const real3 &v0,
   real invDet;
   real det = vdot(e1, p);
   if (std::abs(det) < kEPS) { // no-cull
-    return false;
+      //    return false;
   }
 
   invDet = 1.0 / det;
@@ -780,7 +719,7 @@ inline bool TriangleIsect(real &tInOut, real &uOut, real &vOut, const real3 &v0,
   if (v < 0.0 || u + v > 1.0)
     return false;
   if (t < 0.0 || t > tInOut)
-    return false;
+      return false;
 
   tInOut = t;
   uOut = u;
@@ -789,69 +728,21 @@ inline bool TriangleIsect(real &tInOut, real &uOut, real &vOut, const real3 &v0,
   return true;
 }
 
-#ifdef ENABLE_OSD_PATCH
 inline bool PatchIsect(Intersection &isect,
                        const real *bezierVerts,
-                       const Ray &ray) {
-
-  // REPLACE ME, ototoi-san!
-#if 0
-  real3 rayOrg;
-  rayOrg[0] = ray.org[0];
-  rayOrg[1] = ray.org[1];
-  rayOrg[2] = ray.org[2];
-
-  real3 rayDir;
-  rayDir[0] = ray.dir[0];
-  rayDir[1] = ray.dir[1];
-  rayDir[2] = ray.dir[2];
-
-  real3 cp0(&bezierVerts[0]);
-  real3 cp1(&bezierVerts[3*3]);
-  real3 cp2(&bezierVerts[12*3]);
-  real3 cp3(&bezierVerts[15*3]);
-
-  real t = isect.t;
-  real u;
-  real v;
-
-  if (TriangleIsect(t,u,v, cp0, cp1, cp2, rayOrg, rayDir))
-  {
-    isect.t=t;
-    isect.u=u;
-    isect.v=v;
-      return true;
-  }
-
-  if (TriangleIsect(t,u,v, cp2, cp1, cp3, rayOrg, rayDir))
-  {
-      isect.t=t;
-      isect.u=u;
-      isect.v=v;
-      return true;
-  }
-#else
+                       const Ray &ray)
+{
+    // REPLACE ME, ototoi-san!
     using namespace mallie;
-#if 0
-    std::vector<vector3> v(16);
-    for(int i = 0;i<16;i++){
-      v[i] = vector3(bezierVerts[3*i+0],bezierVerts[3*i+1],bezierVerts[3*i+2]);
-    }
-    bezier_patch_intersection bzi(bezier_patch<vector3>(4,4,v));
-#else
     bezier_patch_intersection bzi(bezier_patch<vector3>(4,4,(const vector3*)bezierVerts));
-#endif
 
     real t = isect.t;
     if(bzi.test(&isect, ray, t))
     {
       return true;
     }
-    
-#endif
-  return false;
+    return false;
 }
-#endif
 
 static
 real Inverse(real x)
@@ -868,7 +759,7 @@ bool TestLeafNode(Intersection &isect, // [inout]
   unsigned int numTriangles = node.data[0];
   unsigned int offset = node.data[1];
 
-  real t = isect.t; // current hit distance
+  real t = isect.t;
 
   real3 rayOrg;
   rayOrg[0] = ray.org[0];
@@ -887,133 +778,136 @@ bool TestLeafNode(Intersection &isect, // [inout]
     tr.dirSign[i] = (rayDir[i]<0)?1:0;
   }
 
-  for (unsigned int i = 0; i < numTriangles; i++) {
-    int faceIdx = indices[i + offset];
+  if (mesh->IsBezierMesh()) {
+    for (unsigned int i = 0; i < numTriangles; i++) {
+      int faceIdx = indices[i + offset];
 
-#ifdef ENABLE_OSD_PATCH
-    const real *bv = &mesh->bezierVertices[faceIdx * 16 * 3];
-    if (PatchIsect(isect, bv, tr)) {
-      // Update isect state
-      isect.faceID = faceIdx;
-      hit = true;
+      const real *bv = &mesh->bezierVertices[faceIdx * 16 * 3];
+      if (PatchIsect(isect, bv, tr)) {
+        // Update isect state
+        isect.faceID = faceIdx;
+        hit = true;
+      }
     }
-#else
-    int f0 = mesh->faces[3 * faceIdx + 0];
-    int f1 = mesh->faces[3 * faceIdx + 1];
-    int f2 = mesh->faces[3 * faceIdx + 2];
+  } else {
+    for (unsigned int i = 0; i < numTriangles; i++) {
+      int faceIdx = indices[i + offset];
 
-    real3 v0, v1, v2;
-    v0[0] = mesh->vertices[3 * f0 + 0];
-    v0[1] = mesh->vertices[3 * f0 + 1];
-    v0[2] = mesh->vertices[3 * f0 + 2];
+      int f0 = mesh->faces[3 * faceIdx + 0];
+      int f1 = mesh->faces[3 * faceIdx + 1];
+      int f2 = mesh->faces[3 * faceIdx + 2];
 
-    v1[0] = mesh->vertices[3 * f1 + 0];
-    v1[1] = mesh->vertices[3 * f1 + 1];
-    v1[2] = mesh->vertices[3 * f1 + 2];
+      real3 v0, v1, v2;
+      v0[0] = mesh->triVertices[3 * f0 + 0];
+      v0[1] = mesh->triVertices[3 * f0 + 1];
+      v0[2] = mesh->triVertices[3 * f0 + 2];
 
-    v2[0] = mesh->vertices[3 * f2 + 0];
-    v2[1] = mesh->vertices[3 * f2 + 1];
-    v2[2] = mesh->vertices[3 * f2 + 2];
+      v1[0] = mesh->triVertices[3 * f1 + 0];
+      v1[1] = mesh->triVertices[3 * f1 + 1];
+      v1[2] = mesh->triVertices[3 * f1 + 2];
 
-    real u, v;
-    if (TriangleIsect(t, u, v, v0, v1, v2, rayOrg, rayDir)) {
-      // Update isect state
-      isect.t = t;
-      isect.u = u;
-      isect.v = v;
-      isect.faceID = faceIdx;
-      hit = true;
+      v2[0] = mesh->triVertices[3 * f2 + 0];
+      v2[1] = mesh->triVertices[3 * f2 + 1];
+      v2[2] = mesh->triVertices[3 * f2 + 2];
+
+      real u, v;
+      if (TriangleIsect(t, u, v, v0, v1, v2, rayOrg, rayDir)) {
+        // Update isect state
+        isect.t = t;
+        isect.u = u;
+        isect.v = v;
+        isect.faceID = faceIdx;
+        hit = true;
+      }
     }
-#endif
   }
 
   return hit;
 }
 
-void BuildIntersection(Intersection &isect, const Mesh *mesh, Ray &ray) {
+void BuildIntersection(Intersection &isect, const Mesh *mesh, Ray &ray)
+{
+    if (mesh->IsBezierMesh()) {
+        // remap ptex index
+        const OpenSubdiv::FarPatchParam &param = mesh->patchParams[isect.faceID];
+        unsigned int bits = param.bitField.field;
+        isect.patchID = isect.faceID;
+        isect.faceID = param.faceIndex;
+        isect.level = (bits & 0xf);
+        int level = 1 << ((bits & 0xf) - ((bits >> 4) &1));
+        int pu = (bits >> 17) & 0x3ff;
+        int pv = (bits >> 7) & 0x3ff;
+        int rot = (bits >> 5) & 0x3;
 
+        float u = float(rot==0)*(isect.v)
+            + float(rot==1)*(1-isect.u)
+            + float(rot==2)*(1-isect.v)
+            + float(rot==3)*(isect.u);
+        float v = float(rot==0)*(isect.u)
+            + float(rot==1)*(isect.v)
+            + float(rot==2)*(1-isect.u)
+            + float(rot==3)*(1-isect.v);
 
-#ifdef ENABLE_OSD_PATCH
-  // remap ptex index
-  const OpenSubdiv::FarPatchParam &param = mesh->patchParams[isect.faceID];
-  unsigned int bits = param.bitField.field;
-  isect.patchID = isect.faceID;
-  isect.faceID = param.faceIndex;
-  isect.level = (bits & 0xf);
-  int level = 1 << ((bits & 0xf) - ((bits >> 4) &1));
-  int pu = (bits >> 17) & 0x3ff;
-  int pv = (bits >> 7) & 0x3ff;
-  int rot = (bits >> 5) & 0x3;
+        isect.u = (u + pu)/(float)level;
+        isect.v = (v + pv)/(float)level;
+    } else {
+        // face index
+        const unsigned int *faces = &mesh->faces[0];
+        const real *vertices = &mesh->triVertices[0];
+        isect.f0 = faces[3 * isect.faceID + 0];
+        isect.f1 = faces[3 * isect.faceID + 1];
+        isect.f2 = faces[3 * isect.faceID + 2];
 
-  float u = float(rot==0)*(isect.v)
-          + float(rot==1)*(1-isect.u)
-          + float(rot==2)*(1-isect.v)
-          + float(rot==3)*(isect.u);
-  float v = float(rot==0)*(isect.u)
-          + float(rot==1)*(isect.v)
-          + float(rot==2)*(1-isect.u)
-          + float(rot==3)*(1-isect.v);
+        real3 p0, p1, p2;
+        p0[0] = vertices[3 * isect.f0 + 0];
+        p0[1] = vertices[3 * isect.f0 + 1];
+        p0[2] = vertices[3 * isect.f0 + 2];
+        p1[0] = vertices[3 * isect.f1 + 0];
+        p1[1] = vertices[3 * isect.f1 + 1];
+        p1[2] = vertices[3 * isect.f1 + 2];
+        p2[0] = vertices[3 * isect.f2 + 0];
+        p2[1] = vertices[3 * isect.f2 + 1];
+        p2[2] = vertices[3 * isect.f2 + 2];
 
-  isect.u = (u + pu)/(float)level;
-  isect.v = (v + pv)/(float)level;
+        // calc shading point.
+        isect.position[0] = ray.org[0] + isect.t * ray.dir[0];
+        isect.position[1] = ray.org[1] + isect.t * ray.dir[1];
+        isect.position[2] = ray.org[2] + isect.t * ray.dir[2];
 
-  return;
-#else
-  // face index
-  const unsigned int *faces = mesh->faces;
-  const real *vertices = mesh->vertices;
-  isect.f0 = faces[3 * isect.faceID + 0];
-  isect.f1 = faces[3 * isect.faceID + 1];
-  isect.f2 = faces[3 * isect.faceID + 2];
+        // calc geometric normal.
+        real3 p10 = p1 - p0;
+        real3 p20 = p2 - p0;
+        real3 n = vcross(p10, p20);
+        n.normalize();
 
-  real3 p0, p1, p2;
-  p0[0] = vertices[3 * isect.f0 + 0];
-  p0[1] = vertices[3 * isect.f0 + 1];
-  p0[2] = vertices[3 * isect.f0 + 2];
-  p1[0] = vertices[3 * isect.f1 + 0];
-  p1[1] = vertices[3 * isect.f1 + 1];
-  p1[2] = vertices[3 * isect.f1 + 2];
-  p2[0] = vertices[3 * isect.f2 + 0];
-  p2[1] = vertices[3 * isect.f2 + 1];
-  p2[2] = vertices[3 * isect.f2 + 2];
+        isect.geometricNormal = n;
+        isect.normal = n;
 
-  // calc shading point.
-  isect.position[0] = ray.org[0] + isect.t * ray.dir[0];
-  isect.position[1] = ray.org[1] + isect.t * ray.dir[1];
-  isect.position[2] = ray.org[2] + isect.t * ray.dir[2];
+#if 0
+        if (mesh->facevarying_normals) {
+            assert(0);
+            const real* normals = mesh->facevarying_normals;
+            real3 n0, n1, n2;
 
-  // calc geometric normal.
-  real3 p10 = p1 - p0;
-  real3 p20 = p2 - p0;
-  real3 n = vcross(p10, p20);
-  n.normalize();
+            n0[0] = normals[9 * isect.faceID + 0];
+            n0[1] = normals[9 * isect.faceID + 1];
+            n0[2] = normals[9 * isect.faceID + 2];
+            n1[0] = normals[9 * isect.faceID + 3];
+            n1[1] = normals[9 * isect.faceID + 4];
+            n1[2] = normals[9 * isect.faceID + 5];
+            n2[0] = normals[9 * isect.faceID + 6];
+            n2[1] = normals[9 * isect.faceID + 7];
+            n2[2] = normals[9 * isect.faceID + 8];
 
-  isect.geometricNormal = n;
-
-  if (mesh->facevarying_normals) {
-    assert(0);
-    const real* normals = mesh->facevarying_normals;
-    real3 n0, n1, n2;
-
-    n0[0] = normals[9 * isect.faceID + 0];
-    n0[1] = normals[9 * isect.faceID + 1];
-    n0[2] = normals[9 * isect.faceID + 2];
-    n1[0] = normals[9 * isect.faceID + 3];
-    n1[1] = normals[9 * isect.faceID + 4];
-    n1[2] = normals[9 * isect.faceID + 5];
-    n2[0] = normals[9 * isect.faceID + 6];
-    n2[1] = normals[9 * isect.faceID + 7];
-    n2[2] = normals[9 * isect.faceID + 8];
-
-    // lerp
-    isect.normal[0] = (1.0 - isect.u - isect.v) * n0[0] + isect.u * n1[0] + isect.v * n2[0];
-    isect.normal[1] = (1.0 - isect.u - isect.v) * n0[1] + isect.u * n1[1] + isect.v * n2[1];
-    isect.normal[2] = (1.0 - isect.u - isect.v) * n0[2] + isect.u * n1[2] + isect.v * n2[2];
-
-  } else {
-    isect.normal = n;
-  }
+            // lerp
+            isect.normal[0] = (1.0 - isect.u - isect.v) * n0[0] + isect.u * n1[0] + isect.v * n2[0];
+            isect.normal[1] = (1.0 - isect.u - isect.v) * n0[1] + isect.u * n1[1] + isect.v * n2[1];
+            isect.normal[2] = (1.0 - isect.u - isect.v) * n0[2] + isect.u * n1[2] + isect.v * n2[2];
+        } else {
+            isect.normal = n;
+        }
 #endif
+    }
 }
 
 } // namespace
@@ -1023,7 +917,7 @@ bool BVHAccel::Traverse(Intersection &isect, const Mesh *mesh, Ray &ray) {
 
   int nodeStackIndex = 0;
 //  std::vector<int> nodeStack(512);
-  int nodeStack[512];
+  int nodeStack[5120];
   nodeStack[0] = 0;
 
   // Init isect info as no hit

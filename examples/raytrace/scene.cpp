@@ -17,6 +17,9 @@
 #include <tbb/task_scheduler_init.h>
 #endif
 
+#include <osd/cpuEvalLimitContext.h>
+#include <osd/cpuEvalLimitController.h>
+
 static float const *getAdaptivePatchColor(OpenSubdiv::FarPatchTables::Descriptor const & desc)
 {
     static float _colors[4][5][4] = {{{1.0f,  1.0f,  1.0f,  1.0f},   // regular
@@ -65,13 +68,16 @@ Scene::~Scene()
 }
 
 void
-Scene::Convert(float *inVertices, int numVertices, OpenSubdiv::FarPatchTables const *patchTables)
+Scene::BezierConvert(float *inVertices, int numVertices,
+                     OpenSubdiv::FarPatchTables const *patchTables)
 {
     using namespace OpenSubdiv;
 
     // convert to mesh
-    FarPatchTables::PatchArrayVector const &patchArrays = patchTables->GetPatchArrayVector();
-    FarPatchTables::PatchParamTable const &patchParam = patchTables->GetPatchParamTable();
+    FarPatchTables::PatchArrayVector const &patchArrays =
+        patchTables->GetPatchArrayVector();
+    FarPatchTables::PatchParamTable const &patchParam =
+        patchTables->GetPatchParamTable();
 
     // centering/normalize vertices.
     std::vector<float> vertices;
@@ -92,9 +98,15 @@ Scene::Convert(float *inVertices, int numVertices, OpenSubdiv::FarPatchTables co
         float radius = std::max(std::max(max[0]-min[0], max[1]-min[1]), max[2]-min[2]);
         for (int i = 0; i < numVertices; ++i) {
             float *v = inVertices + i*3;
+#if 1
             vertices.push_back((v[0]-center[0])/radius);
             vertices.push_back((v[1]-center[1])/radius);
             vertices.push_back((v[2]-center[2])/radius);
+#else
+            vertices.push_back(v[0]);
+            vertices.push_back(v[1]);
+            vertices.push_back(v[2]);
+#endif
         }
     }
 
@@ -150,10 +162,110 @@ Scene::Convert(float *inVertices, int numVertices, OpenSubdiv::FarPatchTables co
         }
     }
 
+    _mesh.numTriangles = 0;
     _mesh.numBezierPatches = numTotalPatches;
     _mesh.patchParams = &(patchParam[0]);
 
     assert(numTotalPatches*16*3 == (int)_mesh.bezierVertices.size());
+}
+
+inline void
+univar4x4(float u, float B[4], float D[4])
+{
+    float t = u;
+    float s = 1.0f - u;
+
+    float A0 = s * s;
+    float A1 = 2 * s * t;
+    float A2 = t * t;
+
+    B[0] = s * A0;
+    B[1] = t * A0 + s * A1;
+    B[2] = t * A1 + s * A2;
+    B[3] = t * A2;
+
+    if (D) {
+        D[0] =    - A0;
+        D[1] = A0 - A1;
+        D[2] = A1 - A2;
+        D[3] = A2;
+    }
+}
+
+static void evalBezier(float *r, float u, float v, const float *cp)
+{
+    float B[4], BU[3*4];
+
+    memset(BU, 0, 3*4*sizeof(float));
+
+    univar4x4(u, B, 0);
+    for (int i=0; i<4; ++i) {
+        for (int j=0; j<4; ++j) {
+            const float *in = cp + (i+j*4)*3;
+            for (int k=0; k<3; ++k) {
+                BU[i*3+k] += in[k] * B[j];
+            }
+        }
+    }
+    univar4x4(v, B, 0);
+
+    r[0] = r[1] = r[2] = 0;
+    for (int i=0; i<4; ++i) {
+        for (int k=0; k<3; ++k) {
+            r[k] += BU[3*i+k] * B[i];
+        }
+    }
+}
+
+void
+Scene::Tessellate(int level)
+{
+    float *cp = &_mesh.bezierVertices[0];
+    int vindex = 0;
+    int numTriangles = 0;
+
+    _mesh.triVertices.clear();
+    _mesh.faces.clear();
+    for (size_t patchIndex = 0; patchIndex < _mesh.numBezierPatches; ++patchIndex) {
+
+        const OpenSubdiv::FarPatchParam &param = _mesh.patchParams[patchIndex];
+        unsigned int bits = param.bitField.field;
+        int patchLevel = (bits & 0xf);
+        int div = 1 << std::max(0, level-patchLevel);
+
+        float r[3];
+        for (int u = 0; u <= div; ++u) {
+            for (int v = 0; v <= div; ++v) {
+                evalBezier(r, u/float(div), v/float(div), cp);
+                _mesh.triVertices.push_back(r[0]);
+                _mesh.triVertices.push_back(r[1]);
+                _mesh.triVertices.push_back(r[2]);
+
+                if (u < div and v < div) {
+                    _mesh.faces.push_back(vindex);
+                    _mesh.faces.push_back(vindex+1);
+                    _mesh.faces.push_back(vindex+div+1);
+
+                    _mesh.faces.push_back(vindex+div+1);
+                    _mesh.faces.push_back(vindex+1);
+                    _mesh.faces.push_back(vindex+div+2);
+                    numTriangles += 2;
+                }
+                ++vindex;
+            }
+        }
+
+        // next
+        cp += 16*3;
+    }
+
+    _mesh.numTriangles = numTriangles;
+
+
+    // clear bezier patch
+    _mesh.numBezierPatches = 0;
+    _mesh.bezierVertices.clear();
+    _mesh.bezierBounds.clear();
 }
 
 void
@@ -164,6 +276,9 @@ Scene::Build()
     printf("  BVH build option:\n");
     printf("    # of leaf primitives: %d\n", options.minLeafPrimitives);
     printf("    SAH binsize         : %d\n", options.binSize);
+
+    printf("  # of triangles : %ld\n", _mesh.numTriangles);
+    printf("  # of bezier patches : %ld\n", _mesh.numBezierPatches);
 
     _accel = BVHAccel();
     _accel.Build(&_mesh, options);
@@ -317,7 +432,7 @@ Scene::Shade(float rgba[4], const Intersection &isect, const Ray &ray)
     real3 color;
     if (_mode == SHADED) {
         real3 reflect = I - 2 * d * isect.normal;
-        real s = pow(std::max(0.0f, -vdot(ray.dir, reflect)), 32);
+        real s = 0;//pow(std::max(0.0f, -vdot(ray.dir, reflect)), 32);
         color = d * real3(0.8, 0.8, 0.8) + s * real3(1, 1, 1);
     } else if (_mode == PTEX_COORD) {
         color = d *real3(isect.u, isect.v, 1);

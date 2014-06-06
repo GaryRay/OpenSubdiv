@@ -11,8 +11,11 @@ public:
     Scene();
     ~Scene();
 
-    void Convert(float *vertices, int numVertices,
-                 OpenSubdiv::FarPatchTables const *patchTables);
+    void BezierConvert(float *vertices, int numVertices,
+                       OpenSubdiv::FarPatchTables const *patchTables);
+
+    void Tessellate(int level);
+
     void Build();
     void VBOBuild();
 
@@ -22,6 +25,7 @@ public:
                 int step, int stepIndex);
 
     int GetNumPatches() const { return _mesh.numBezierPatches; }
+    int GetNumTriangles() const { return _mesh.numTriangles; }
 
     void Shade(float rgba[4], const Intersection &isect, const Ray &ray);
 

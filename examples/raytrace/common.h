@@ -3,8 +3,6 @@
 
 #include <cmath>
 
-#define ENABLE_OSD_PATCH 1
-
 //ypedef double real;
 typedef float real;
 

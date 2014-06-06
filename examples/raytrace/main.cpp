@@ -175,7 +175,8 @@ typedef OpenSubdiv::HbrFace<OpenSubdiv::OsdVertex>     OsdHbrFace;
 typedef OpenSubdiv::HbrHalfedge<OpenSubdiv::OsdVertex> OsdHbrHalfedge;
 
 enum HudCheckBox { kHUD_CB_DISPLAY_BVH,
-                   kHUD_CB_BLOCK_FILL };
+                   kHUD_CB_BLOCK_FILL,
+                   kHUD_CB_PRE_TESSELLATE };
 
 struct SimpleShape {
     std::string  name;
@@ -238,6 +239,8 @@ std::vector<float> g_orgPositions,
                    g_positions;
 
 int g_level = 1;
+int g_preTess = 0;
+int g_preTessLevel = 1;
 
 struct Transform {
     float ModelViewMatrix[16];
@@ -468,18 +471,25 @@ updateGeom() {
 
     Stopwatch s;
     s.Start();
-    g_scene.Convert(g_cpuVertexBuffer->BindCpuBuffer(),
-                    g_cpuVertexBuffer->GetNumVertices(),
-                    g_farMesh->GetPatchTables());
+    g_scene.BezierConvert(g_cpuVertexBuffer->BindCpuBuffer(),
+                          g_cpuVertexBuffer->GetNumVertices(),
+                          g_farMesh->GetPatchTables());
     s.Stop();
     g_convertTime = s.GetElapsed() * 1000.0f;
+
+    if (g_preTess) {
+        g_scene.Tessellate(g_preTessLevel);
+    }
 
     s.Start();
     g_scene.Build();
     s.Stop();
+
     g_bvhTime = s.GetElapsed() * 1000.0f;
 
     g_scene.VBOBuild();
+
+    startRender();
 }
 
 //------------------------------------------------------------------------------
@@ -534,10 +544,8 @@ createOsdMesh( const std::string &shape, int level ){
 
     g_positions.resize(g_orgPositions.size(),0.0f);
 
-    updateGeom();
     setCamera();
-
-    startRender();
+    updateGeom();
 }
 
 //------------------------------------------------------------------------------
@@ -628,7 +636,8 @@ display() {
         double fps = 1.0/g_fpsTimer.GetElapsed();
         g_fpsTimer.Start();
 
-        g_hud.DrawString(10, -200, "# of patches : %8d", g_scene.GetNumPatches());
+        g_hud.DrawString(10, -220, "# of patches : %8d", g_scene.GetNumPatches());
+        g_hud.DrawString(10, -200, "# of tris    : %8d", g_scene.GetNumTriangles());
         g_hud.DrawString(10, -180, "memory       : %8.1f MB",
                          g_scene.GetNumPatches()*16*3*4/1024.0/1024.0);
 
@@ -764,6 +773,9 @@ keyboard(int key, int event) {
     switch (key) {
         case 'Q': g_running = 0; break;
         case 'F': fitFrame(); break;
+        case '+':
+        case '=': g_preTessLevel++; updateGeom(); break;
+        case '-': g_preTessLevel = std::max(g_level, g_preTessLevel-1); updateGeom(); break;
         case GLFW_KEY_ESCAPE: g_hud.SetVisible(!g_hud.IsVisible()); break;
     }
 }
@@ -814,6 +826,10 @@ callbackCheckBox(bool checked, int button)
     case kHUD_CB_BLOCK_FILL:
         g_blockFill = checked;
         break;
+    case kHUD_CB_PRE_TESSELLATE:
+        g_preTess = checked;
+        updateGeom();
+        break;
     }
     display();
 }
@@ -831,6 +847,9 @@ initHUD()
                       10, 10, callbackCheckBox, kHUD_CB_DISPLAY_BVH, 'b');
     g_hud.AddCheckBox("Block Fill (F)", g_blockFill != 0,
                       10, 30, callbackCheckBox, kHUD_CB_BLOCK_FILL, 'f');
+
+    g_hud.AddCheckBox("Pre tessellate (T)", g_preTess != 0,
+                      10, 60, callbackCheckBox, kHUD_CB_PRE_TESSELLATE, 't');
 
     int shading_pulldown = g_hud.AddPullDown("Shading (W)", 200, 10, 250, callbackDisplayStyle, 'w');
     g_hud.AddPullDownButton(shading_pulldown, "Shaded", Scene::SHADED,
