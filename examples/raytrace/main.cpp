@@ -695,7 +695,7 @@ motion(int x, int y) {
 //------------------------------------------------------------------------------
 static void
 #if GLFW_VERSION_MAJOR>=3
-mouse(GLFWwindow *, int button, int state, int /* mods */) {
+mouse(GLFWwindow *, int button, int state, int mods) {
 #else
 mouse(int button, int state) {
 #endif
@@ -705,6 +705,9 @@ mouse(int button, int state) {
         return;
     }
 
+    if (mods & GLFW_MOD_SHIFT) {
+        button = 2;
+    }
     if (button < 3) {
         g_mbutton[button] = (state == GLFW_PRESS);
     }
