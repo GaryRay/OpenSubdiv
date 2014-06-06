@@ -209,7 +209,7 @@ public:
                 Intersection isect;
                 bool hit = _accel->Traverse(isect, _mesh, ray);
 
-                float rgba[4];
+                float rgba[4] = { 0, 0, 0, 0 };
                 float *d = _image + 4 * (y * _width + x);
                 if (hit) {
                     _scene->Shade(rgba, isect, ray);
@@ -281,7 +281,7 @@ Scene::Render(int width, int height, double fov,
             Intersection isect;
             bool hit = _accel.Traverse(isect, &_mesh, ray);
 
-            float rgba[4];
+            float rgba[4] = { 0, 0, 0, 0};
             if (hit) {
                 Shade(rgba, isect, ray);
             } else {
@@ -313,7 +313,7 @@ Scene::Shade(float rgba[4], const Intersection &isect, const Ray &ray)
 {
     real3 I = ray.dir;
 
-    real d = vdot(I, isect.normal);
+    real d = std::max(real(0), vdot(I, isect.normal));
     real3 color;
     if (_mode == SHADED) {
         real3 reflect = I - 2 * d * isect.normal;
@@ -338,12 +338,35 @@ Scene::Shade(float rgba[4], const Intersection &isect, const Ray &ray)
             real3 sample = real3(0.5-randomreal(), 0.5-randomreal(), 0.5-randomreal());
             sample.normalize();
             sray.dir = sample * (vdot(sample, isect.normal) > 0 ? -1 : 1);
-            sray.invDir = real3(1.0/sray.dir[0], 1.0/sray.dir[1], 1.0/sray.dir[2]);
+            sray.invDir = sray.dir.neg();
             sray.org = ray.org + ray.dir * isect.t + sray.dir * 0.0001;
             numHits += _accel.Traverse(si, &_mesh, sray) ? 1 : 0;
         }
 
         color[0] = color[1] = color[2] = d * (1.0-numHits/float(numSamples));
+    } else if (_mode == TRANSPARENT) {
+        float alpha = 0.25 * (1.0 - rgba[3]);
+        rgba[0] += d * alpha;
+        rgba[1] += d * alpha;
+        rgba[2] += d * alpha;
+        rgba[3] += alpha;
+
+        if (alpha < 0.9) {
+            Intersection si;
+            Ray sray;
+            sray.dir = ray.dir;
+            sray.invDir = ray.invDir;
+            sray.org = ray.org + ray.dir * (isect.t + 0.0001);
+            if (_accel.Traverse(si, &_mesh, sray)) {
+                Shade(rgba, si, sray);
+            } else {
+                rgba[3] = 1.0;
+                return;
+            }
+        } else {
+            rgba[3] = 1.0;
+        }
+        return;
     }
     rgba[0] = color[0];
     rgba[1] = color[1];

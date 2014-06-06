@@ -628,9 +628,6 @@ display() {
         double fps = 1.0/g_fpsTimer.GetElapsed();
         g_fpsTimer.Start();
 
-        if (g_stepIndex > 0) 
-            g_hud.DrawString(10, -240, 1, 0, 0, "Rendering...");
-
         g_hud.DrawString(10, -200, "# of patches : %8d", g_scene.GetNumPatches());
         g_hud.DrawString(10, -180, "memory       : %8.1f MB",
                          g_scene.GetNumPatches()*16*3*4/1024.0/1024.0);
@@ -639,7 +636,12 @@ display() {
         g_hud.DrawString(10, -140, "Far time     : %8.1f ms", g_farTime);
         g_hud.DrawString(10, -120, "Bezier conv. : %8.1f ms", g_convertTime);
         g_hud.DrawString(10, -100, "BVH build    : %8.1f ms", g_bvhTime);
-        g_hud.DrawString(10, -40,  "Render time  : %5.3f s", g_renderTime);
+        if (g_renderTime > 0) {
+            g_hud.DrawString(10, -40,  "Render time  : %5.3f s", g_renderTime);
+        } else {
+            g_hud.DrawString(10, -40,  1, 0, 0, "Render time  : %2.0f%%",
+                             100*(1-g_stepIndex/float(g_step*g_step)));
+        }
         g_hud.DrawString(10, -20,  "FPS          : %3.1f", fps);
 
         g_hud.Flush();
@@ -839,6 +841,8 @@ initHUD()
                             g_displayStyle==Scene::PATCH_TYPE);
     g_hud.AddPullDownButton(shading_pulldown, "Ambient Occlusion", Scene::AO,
                             g_displayStyle==Scene::AO);
+    g_hud.AddPullDownButton(shading_pulldown, "Transparent", Scene::TRANSPARENT,
+                            g_displayStyle==Scene::TRANSPARENT);
 
     for (int i = 1; i < 11; ++i) {
         char level[16];
@@ -900,6 +904,7 @@ idle() {
     if (g_stepIndex == 0) return;
 
     double fov = 45.0f;
+    g_renderTime = -1.0f;
 
     //printf("%d x %d, %d\n", g_width, g_height, g_step);
 

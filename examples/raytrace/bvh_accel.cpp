@@ -673,20 +673,40 @@ bool BVHAccel::Load(const char *filename) {
 
 namespace {
 
+#if PROFILE
+bool TestLeafNode(Intersection &isect, // [inout]
+                  const BVHNode &node, const std::vector<unsigned int> &indices,
+                  const Mesh *mesh, const Ray &ray) __attribute__ ((noinline));
+
+bool IntersectRayAABB(real &tminOut, // [out]
+                             real &tmaxOut, // [out]
+                             real maxT, real bmin[3], real bmax[3],
+                      real3 rayOrg, real3 rayInvDir, int rayDirSign[3]) __attribute__ ((noinline));
+#endif
+
 const int kMaxStackDepth = 512;
 
-inline bool IntersectRayAABB(real &tminOut, // [out]
+bool IntersectRayAABB(real &tminOut, // [out]
                              real &tmaxOut, // [out]
                              real maxT, real bmin[3], real bmax[3],
                              real3 rayOrg, real3 rayInvDir, int rayDirSign[3]) {
   real tmin, tmax;
 
+#if 0
   const real min_x = rayDirSign[0] ? bmax[0] : bmin[0];
   const real min_y = rayDirSign[1] ? bmax[1] : bmin[1];
   const real min_z = rayDirSign[2] ? bmax[2] : bmin[2];
   const real max_x = rayDirSign[0] ? bmin[0] : bmax[0];
   const real max_y = rayDirSign[1] ? bmin[1] : bmax[1];
   const real max_z = rayDirSign[2] ? bmin[2] : bmax[2];
+#else
+  const real min_x = rayDirSign[0] * bmax[0] + (1-rayDirSign[0]) * bmin[0];
+  const real min_y = rayDirSign[1] * bmax[1] + (1-rayDirSign[1]) * bmin[1];
+  const real min_z = rayDirSign[2] * bmax[2] + (1-rayDirSign[2]) * bmin[2];
+  const real max_x = rayDirSign[0] * bmin[0] + (1-rayDirSign[0]) * bmax[0];
+  const real max_y = rayDirSign[1] * bmin[1] + (1-rayDirSign[1]) * bmax[1];
+  const real max_z = rayDirSign[2] * bmin[2] + (1-rayDirSign[2]) * bmax[2];
+#endif
 
   // X
   const double tmin_x = (min_x - rayOrg[0]) * rayInvDir[0];
@@ -709,6 +729,7 @@ inline bool IntersectRayAABB(real &tminOut, // [out]
   //
   // Hit include (tmin == tmax) edge case(hit 2D plane).
   //
+#if 0
   if ((tmax > 0.0) && (tmin <= tmax) && (tmin <= maxT)) {
 
     tminOut = tmin;
@@ -718,6 +739,9 @@ inline bool IntersectRayAABB(real &tminOut, // [out]
   }
 
   return false; // no hit
+#else
+  return (tmax > 0.0) & (tmin <= tmax) & (tmin <= maxT);
+#endif
 }
 
 inline bool TriangleIsect(real &tInOut, real &uOut, real &vOut, const real3 &v0,
