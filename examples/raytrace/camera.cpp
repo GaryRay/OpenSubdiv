@@ -52,6 +52,15 @@ void Camera::BuildCameraFrame(double const eye[3], double const lookat[3],
     vcross(v, look1, u);
     vnormalize(v);
 
+    double aspect = height/(float)width;
+    u[0] *= aspect;
+    u[1] *= aspect;
+    u[2] *= aspect;
+
+    v[0] /= aspect;
+    v[1] /= aspect;
+    v[2] /= aspect;
+
     vnormalize(look1);
     look1[0] = flen * look1[0] + eye[0];
     look1[1] = flen * look1[1] + eye[1];
