@@ -779,17 +779,20 @@ int windowClose() {
 #endif
 
 //------------------------------------------------------------------------------
+
 static void
 #if GLFW_VERSION_MAJOR>=3
-keyboard(GLFWwindow *, int key, int /* scancode */, int event, int /* mods */) {
+keyboard(GLFWwindow *, unsigned int codepoint){ //to use glfwSetCharCallback
+    char key = (char)(codepoint & 0x7f);//unicode to ascii
+    //if (event == GLFW_RELEASE) return;
 #else
 #define GLFW_KEY_ESCAPE GLFW_KEY_ESC
-keyboard(int key, int event) {
-#endif
-
+keyboard(int key, int event) {                  //to use glfwSetKeyCallback
     if (event == GLFW_RELEASE) return;
+#endif
+    
     if (g_hud.KeyDown(tolower(key))) return;
-
+    
     switch (key) {
         case ' ': startRender(); break;
         case 'Q': g_running = 0; break;
@@ -1062,7 +1065,7 @@ int main(int argc, char ** argv)
     glfwGetFramebufferSize(g_window, &g_frameBufferWidth, &g_frameBufferHeight);
     glfwSetFramebufferSizeCallback(g_window, reshape);
 
-    glfwSetKeyCallback(g_window, keyboard);
+    glfwSetCharCallback(g_window, keyboard);//glfwSetKeyCallback(g_window, keyboard);
     glfwSetCursorPosCallback(g_window, motion);
     glfwSetMouseButtonCallback(g_window, mouse);
     glfwSetWindowCloseCallback(g_window, windowClose);
