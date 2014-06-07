@@ -192,29 +192,38 @@ univar4x4(float u, float B[4], float D[4])
     }
 }
 
-static void evalBezier(float *r, float u, float v, const float *cp)
+static void evalBezier(float *p, float *n, float u, float v, const float *cp)
 {
-    float B[4], BU[3*4];
+    float B[4], D[4], BU[3*4], DU[3*4];
+    float du[3], dv[3];
 
     memset(BU, 0, 3*4*sizeof(float));
+    memset(DU, 0, 3*4*sizeof(float));
+    p[0] = p[1] = p[2] = 0.0f;
+    du[0] = du[1] = du[2] = 0.0f;
+    dv[0] = dv[1] = dv[2] = 0.0f;
 
-    univar4x4(u, B, 0);
+    univar4x4(u, B, D);
     for (int i=0; i<4; ++i) {
         for (int j=0; j<4; ++j) {
             const float *in = cp + (i+j*4)*3;
             for (int k=0; k<3; ++k) {
                 BU[i*3+k] += in[k] * B[j];
+                DU[i*3+k] += in[k] * D[j];
             }
         }
     }
-    univar4x4(v, B, 0);
-
-    r[0] = r[1] = r[2] = 0;
+    univar4x4(v, B, D);
     for (int i=0; i<4; ++i) {
         for (int k=0; k<3; ++k) {
-            r[k] += BU[3*i+k] * B[i];
+            p[k] += BU[3*i+k] * B[i];
+            du[k] += DU[3*i+k] * B[i];
+            dv[k] += BU[3*i+k] * D[i];
         }
     }
+    n[0] = du[1] * dv[2] - du[2] * dv[1];
+    n[1] = du[2] * dv[0] - du[0] * dv[2];
+    n[2] = du[0] * dv[1] - du[1] * dv[0];
 }
 
 void
@@ -225,7 +234,10 @@ Scene::Tessellate(int level)
     int numTriangles = 0;
 
     _mesh.triVertices.clear();
+    _mesh.triNormals.clear();
     _mesh.faces.clear();
+    _mesh.colors.clear();
+    std::vector<float> colors;
     for (size_t patchIndex = 0; patchIndex < _mesh.numBezierPatches; ++patchIndex) {
 
         const OpenSubdiv::FarPatchParam &param = _mesh.patchParams[patchIndex];
@@ -233,13 +245,16 @@ Scene::Tessellate(int level)
         int patchLevel = (bits & 0xf);
         int div = 1 << std::max(0, level-patchLevel);
 
-        float r[3];
+        float p[3], n[3];
         for (int u = 0; u <= div; ++u) {
             for (int v = 0; v <= div; ++v) {
-                evalBezier(r, u/float(div), v/float(div), cp);
-                _mesh.triVertices.push_back(r[0]);
-                _mesh.triVertices.push_back(r[1]);
-                _mesh.triVertices.push_back(r[2]);
+                evalBezier(p, n, u/float(div), v/float(div), cp);
+                _mesh.triVertices.push_back(p[0]);
+                _mesh.triVertices.push_back(p[1]);
+                _mesh.triVertices.push_back(p[2]);
+                _mesh.triNormals.push_back(n[0]);
+                _mesh.triNormals.push_back(n[1]);
+                _mesh.triNormals.push_back(n[2]);
 
                 if (u < div and v < div) {
                     _mesh.faces.push_back(vindex);
@@ -249,6 +264,13 @@ Scene::Tessellate(int level)
                     _mesh.faces.push_back(vindex+div+1);
                     _mesh.faces.push_back(vindex+1);
                     _mesh.faces.push_back(vindex+div+2);
+
+                    colors.push_back(_mesh.colors[patchIndex*3+0]);
+                    colors.push_back(_mesh.colors[patchIndex*3+1]);
+                    colors.push_back(_mesh.colors[patchIndex*3+2]);
+                    colors.push_back(_mesh.colors[patchIndex*3+0]);
+                    colors.push_back(_mesh.colors[patchIndex*3+1]);
+                    colors.push_back(_mesh.colors[patchIndex*3+2]);
                     numTriangles += 2;
                 }
                 ++vindex;
@@ -260,7 +282,7 @@ Scene::Tessellate(int level)
     }
 
     _mesh.numTriangles = numTriangles;
-
+    _mesh.colors.swap(colors);
 
     // clear bezier patch
     _mesh.numBezierPatches = 0;

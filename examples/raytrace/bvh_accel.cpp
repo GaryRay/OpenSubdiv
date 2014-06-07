@@ -852,37 +852,34 @@ void BuildIntersection(Intersection &isect, const Mesh *mesh, Ray &ray)
         isect.v = (v + pv)/(float)level;
     } else {
         // face index
+        isect.patchID = isect.faceID;
+        isect.level = 1;
+
         const unsigned int *faces = &mesh->faces[0];
-        const real *vertices = &mesh->triVertices[0];
         isect.f0 = faces[3 * isect.faceID + 0];
         isect.f1 = faces[3 * isect.faceID + 1];
         isect.f2 = faces[3 * isect.faceID + 2];
 
-        real3 p0, p1, p2;
-        p0[0] = vertices[3 * isect.f0 + 0];
-        p0[1] = vertices[3 * isect.f0 + 1];
-        p0[2] = vertices[3 * isect.f0 + 2];
-        p1[0] = vertices[3 * isect.f1 + 0];
-        p1[1] = vertices[3 * isect.f1 + 1];
-        p1[2] = vertices[3 * isect.f1 + 2];
-        p2[0] = vertices[3 * isect.f2 + 0];
-        p2[1] = vertices[3 * isect.f2 + 1];
-        p2[2] = vertices[3 * isect.f2 + 2];
+        const real *vertices = &mesh->triVertices[0];
+        real3 p0(&vertices[3 * isect.f0]);
+        real3 p1(&vertices[3 * isect.f1]);
+        real3 p2(&vertices[3 * isect.f2]);
 
         // calc shading point.
-        isect.position[0] = ray.org[0] + isect.t * ray.dir[0];
-        isect.position[1] = ray.org[1] + isect.t * ray.dir[1];
-        isect.position[2] = ray.org[2] + isect.t * ray.dir[2];
+        isect.position = ray.org + isect.t * ray.dir;
 
-        // calc geometric normal.
-        real3 p10 = p1 - p0;
-        real3 p20 = p2 - p0;
-        real3 n = vcross(p10, p20);
+        // interpolate normal
+        const real *normals = &mesh->triNormals[0];
+        real3 n0(&normals[3 * isect.f0]);
+        real3 n1(&normals[3 * isect.f1]);
+        real3 n2(&normals[3 * isect.f2]);
+
+        real3 n = n1 * isect.u + n2 * isect.v + n0 * (1 - isect.u - isect.v);
         n.normalize();
+        n = n.neg();
 
         isect.geometricNormal = n;
         isect.normal = n;
-
 #if 0
         if (mesh->facevarying_normals) {
             assert(0);

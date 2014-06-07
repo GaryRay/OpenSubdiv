@@ -14,13 +14,17 @@ struct Mesh {
         return numBezierPatches > 0;
     }
 
+    // triangles
     size_t numTriangles;
     std::vector<real> triVertices;
+    std::vector<real> triNormals;
     std::vector<unsigned int> faces;
 
+    // patches
     size_t numBezierPatches;
     std::vector<real> bezierVertices;              /// [xyz] * 16 * numBezierPatches
     std::vector<real> bezierBounds;                /// [xyz] * [min, max] * numBezierPatches
+
     OpenSubdiv::FarPatchParam const *patchParams;  /// [FarPatchParam] * numBezierPatches
     std::vector<float> colors;                     /// [rgb] * numBezierPatches;
 };
