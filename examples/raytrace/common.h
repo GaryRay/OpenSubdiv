@@ -47,12 +47,12 @@ struct real3 {
 
   void normalize() {
     real len = length();
-    if (fabs(len) > 1.0e-6) {
+//    if (fabs(len) > 1.0e-6) {
       real inv_len = 1.0 / len;
       x *= inv_len;
       y *= inv_len;
       z *= inv_len;
-    }
+//    }
   }
 
   real x, y, z;
