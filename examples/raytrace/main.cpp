@@ -110,7 +110,9 @@ static const char *s0_FS =
     "void main()\n"
     "{\n"
     "  vec2 texUV = textureSize(tex, 0)*uv;\n"
-    "  outColor = texelFetch(tex, ivec2(texUV), 0);\n"
+    "  vec4 c = vec4(0.1, 0.1, 0.1, 0);\n"
+    "  vec4 cs = texelFetch(tex, ivec2(texUV), 0);\n"
+    "  outColor = mix(c, cs, cs.a);\n"
     "}\n";
 
 static const char *s_VS_BVH =
@@ -124,7 +126,7 @@ static const char *s_VS_BVH =
     "void main() {\n"
     "  gMinPos = minPos;\n"
     "  gMaxPos = maxPos;\n"
-    "  gColor = (flag==1) ? vec4(0.8, 0.8, 0.8, 0.5) : vec4(0.2, 0.2, 0.2, 0.5);\n"
+    "  gColor = (flag==1) ? vec4(0.0, 0.8, 0.0, 0.5) : vec4(0.1, 0.3, 0.1, 0.5);\n"
     "}\n";
 
 static const char *s_GS_BVH =
@@ -176,7 +178,8 @@ typedef OpenSubdiv::HbrHalfedge<OpenSubdiv::OsdVertex> OsdHbrHalfedge;
 
 enum HudCheckBox { kHUD_CB_DISPLAY_BVH,
                    kHUD_CB_BLOCK_FILL,
-                   kHUD_CB_PRE_TESSELLATE };
+                   kHUD_CB_PRE_TESSELLATE,
+                   kHUD_CB_ANIMATE };
 
 struct SimpleShape {
     std::string  name;
@@ -221,6 +224,7 @@ std::vector<float> g_image;
 int g_step = 8;
 int g_stepIndex = 0;
 
+
 GLhud g_hud;
 
 // performance
@@ -230,17 +234,21 @@ Stopwatch g_fpsTimer;
 Stopwatch g_renderTimer;
 float g_hbrTime = 0;
 float g_farTime = 0;
+float g_subdivTime = 0;
 float g_convertTime = 0;
+float g_tessellateTime = 0;
 float g_bvhTime = 0;
 float g_renderTime = 0;
 
 // geometry
-std::vector<float> g_orgPositions,
-                   g_positions;
+std::vector<float> g_orgPositions;
 
 int g_level = 1;
 int g_preTess = 0;
 int g_preTessLevel = 1;
+
+int g_animate = 0;
+int g_frame = 0;
 
 struct Transform {
     float ModelViewMatrix[16];
@@ -443,33 +451,31 @@ updateGeom() {
     std::vector<float> vertex;
     vertex.reserve(nverts*3);
 
-    const float *p = &g_orgPositions[0];
-
+    float r = g_animate ? sin(g_frame*0.1f) : 0.0f;
+    const float *pp = &g_orgPositions[0];
     for (int i = 0; i < nverts; ++i) {
-        g_positions[i*3+0] = p[0];
-        g_positions[i*3+1] = p[1];
-        g_positions[i*3+2] = p[2];
-
-        p += 3;
-    }
-
-    p = &g_orgPositions[0];
-    const float *pp = &g_positions[0];
-    for (int i = 0; i < nverts; ++i) {
-        vertex.push_back(pp[0]);
-        vertex.push_back(pp[1]);
-        vertex.push_back(pp[2]);
+        float x = pp[0];
+        float y = pp[1];
+        float z = pp[2];
+        float ct = cos(y * r);
+        float st = sin(y * r);
+        vertex.push_back(x + ct + z * st);
+        vertex.push_back(y);
+        vertex.push_back(- x * st + z * ct);
         pp += 3;
     }
 
     g_cpuVertexBuffer->UpdateData(&vertex[0], 0, nverts);
 
+    Stopwatch s;
+    s.Start();
     OpenSubdiv::OsdCpuComputeController controller;
     controller.Refine(g_cpuComputeContext,
                       g_farMesh->GetKernelBatches(),
                       g_cpuVertexBuffer);
+    s.Stop();
+    g_subdivTime = s.GetElapsed() * 1000.0f;
 
-    Stopwatch s;
     s.Start();
     g_scene.BezierConvert(g_cpuVertexBuffer->BindCpuBuffer(),
                           g_cpuVertexBuffer->GetNumVertices(),
@@ -478,7 +484,12 @@ updateGeom() {
     g_convertTime = s.GetElapsed() * 1000.0f;
 
     if (g_preTess) {
+        s.Start();
         g_scene.Tessellate(g_preTessLevel);
+        s.Stop();
+        g_tessellateTime = s.GetElapsed() * 1000.0f;
+    } else {
+        g_tessellateTime = 0;
     }
 
     s.Start();
@@ -541,8 +552,6 @@ createOsdMesh( const std::string &shape, int level ){
         g_size += (max[j]-min[j])*(max[j]-min[j]);
     }
     g_size = sqrtf(g_size);
-
-    g_positions.resize(g_orgPositions.size(),0.0f);
 
     setCamera();
     updateGeom();
@@ -639,23 +648,26 @@ display() {
         double fps = 1.0/g_fpsTimer.GetElapsed();
         g_fpsTimer.Start();
 
-        g_hud.DrawString(10, -280, "# of patches : %8d", g_scene.GetNumPatches());
-        g_hud.DrawString(10, -240, "PreTess lv   : %d (+/-)", g_preTessLevel);
-        g_hud.DrawString(10, -220, "# of tris    : %8d", g_scene.GetNumTriangles());
+        g_hud.DrawString(10, -300, "# of patches      : %8d", g_scene.GetNumPatches());
+        g_hud.DrawString(10, -280, "PreTess lv        : %d (+/-)", g_preTessLevel);
+        g_hud.DrawString(10, -260, "# of tris         : %8d", g_scene.GetNumTriangles());
 
-        g_hud.DrawString(10, -180, "memory       : %8.1f MB", g_scene.GetMemoryUsage()/1024.0/1024.0);
+        g_hud.DrawString(10, -220, "Memory            : %8.1f MB", g_scene.GetMemoryUsage()/1024.0/1024.0);
 
-        g_hud.DrawString(10, -160, "Hbr time     : %8.1f ms", g_hbrTime);
-        g_hud.DrawString(10, -140, "Far time     : %8.1f ms", g_farTime);
-        g_hud.DrawString(10, -120, "Bezier conv. : %8.1f ms", g_convertTime);
-        g_hud.DrawString(10, -100, "BVH build    : %8.1f ms", g_bvhTime);
+        g_hud.DrawString(10, -200, "Hbr time          : %8.1f ms", g_hbrTime);
+        g_hud.DrawString(10, -180, "Far time          : %8.1f ms", g_farTime);
+        g_hud.DrawString(10, -160, "Subdivision time  : %8.1f ms", g_subdivTime);
+
+        g_hud.DrawString(10, -140, "Bspline to Bezier : %8.1f ms", g_convertTime);
+        g_hud.DrawString(10, -120, "Bezier to Tri     : %8.1f ms", g_tessellateTime);
+        g_hud.DrawString(10,  -80, "BVH build         : %8.1f ms", g_bvhTime);
         if (g_renderTime > 0) {
-            g_hud.DrawString(10, -40,  "Render time  : %5.3f s", g_renderTime);
+            g_hud.DrawString(10, -40,  "Render time       : %5.3f s", g_renderTime);
         } else {
-            g_hud.DrawString(10, -40,  1, 0, 0, "Render time  : %2.0f%%",
+            g_hud.DrawString(10, -40,  1, 0, 0, "Render time       : %2.0f%%",
                              100*(1-g_stepIndex/float(g_step*g_step)));
         }
-        g_hud.DrawString(10, -20,  "FPS          : %3.1f", fps);
+        g_hud.DrawString(10, -20,  "FPS               : %3.1f", fps);
 
         g_hud.Flush();
     }
@@ -741,8 +753,6 @@ reshape(int width, int height) {
     g_width = width;
     g_height = height;
 
-    startRender();
-
     g_frameBufferWidth = width;
     g_frameBufferHeight = height;
 
@@ -751,6 +761,9 @@ reshape(int width, int height) {
     glfwGetWindowSize(g_window, &g_width, &g_height);
 #endif
     g_hud.Rebuild(g_width, g_height);
+
+    setCamera();
+    startRender();
 }
 
 //------------------------------------------------------------------------------
@@ -778,11 +791,12 @@ keyboard(int key, int event) {
     if (g_hud.KeyDown(tolower(key))) return;
 
     switch (key) {
+        case ' ': startRender(); break;
         case 'Q': g_running = 0; break;
         case 'F': fitFrame(); break;
         case '+':
         case '=': g_preTessLevel++; updateGeom(); break;
-        case '-': g_preTessLevel = std::max(g_level, g_preTessLevel-1); updateGeom(); break;
+        case '-': g_preTessLevel = std::max(1, g_preTessLevel-1); updateGeom(); break;
         case GLFW_KEY_ESCAPE: g_hud.SetVisible(!g_hud.IsVisible()); break;
     }
 }
@@ -837,6 +851,10 @@ callbackCheckBox(bool checked, int button)
         g_preTess = checked;
         updateGeom();
         break;
+    case kHUD_CB_ANIMATE:
+        g_animate = checked;
+        updateGeom();
+        break;
     }
     display();
 }
@@ -857,6 +875,8 @@ initHUD()
 
     g_hud.AddCheckBox("Pre tessellate (T)", g_preTess != 0,
                       10, 60, callbackCheckBox, kHUD_CB_PRE_TESSELLATE, 't');
+    g_hud.AddCheckBox("Animate vertices (M)", g_animate != 0,
+                      10, 80, callbackCheckBox, kHUD_CB_ANIMATE, 'm');
 
     int shading_pulldown = g_hud.AddPullDown("Shading (W)", 200, 10, 250, callbackDisplayStyle, 'w');
     g_hud.AddPullDownButton(shading_pulldown, "Shaded", Scene::SHADED,
@@ -927,7 +947,14 @@ initGL()
 //------------------------------------------------------------------------------
 static void
 idle() {
-    if (g_stepIndex == 0) return;
+
+    if (g_stepIndex == 0) {
+        if (g_animate) {
+            ++g_frame;
+            updateGeom();
+        }
+        return;
+    }
 
     double fov = 45.0f;
     g_renderTime = -1.0f;
@@ -1083,7 +1110,7 @@ int main(int argc, char ** argv)
 
         glfwPollEvents();
 
-        if (g_stepIndex == 0) glfwWaitEvents();
+        if (not g_animate and g_stepIndex == 0) glfwWaitEvents();
     }
 
     uninitGL();
