@@ -63,10 +63,12 @@ public:
     ~OsdUtilBezierPatchIntersection() { }
 
     bool Test(Intersection* info, Ray const &r, Real tmin, Real tmax) const {
+
         RangeAABB rng;
         if (intersectAABB(&rng, _min, _max, r, tmin, tmax)) {
             tmin = std::max<float>(tmin, rng.tmin);
             tmax = std::min<float>(tmax, rng.tmax);
+
             return testInternal(info, r, tmin, tmax);
         }
         return false;
@@ -124,6 +126,16 @@ protected:
             info->t = t;
             info->u = u;
             info->v = v;
+            {
+                ValueType du = _patch.EvaluateDu(u,v);
+                ValueType dv = _patch.EvaluateDv(u,v);
+                ValueType normal = cross(du,dv);
+                normal.normalize();
+                info->normal = real3(normal[0], normal[1], normal[2]);
+                info->geometricNormal = real3(normal[0], normal[1], normal[2]);
+                //                info->tangent  = Conv(U);
+                //                info->binormal = Conv(V);
+            }
             return true;
         }
         return false;
@@ -422,8 +434,9 @@ protected:
         if (0 < min[1] || max[1] < 0) return false;//y
         if (max[2] < zmin || zmax < min[2]) return false;//z
         //if(max[0]-min[0]<=EPS2)return false;
-
         if (max[1]-min[1] <= EPS2) return false;
+
+        //        printf("U: %f, %f\n", min[1], max[1]);
 
         if (isEps(min,max,eps) || isLevel(level,max_level)){
             return testBezierClipL(info, patch, u0, u1, v0, v1, zmin, zmax);
@@ -451,7 +464,7 @@ protected:
                 coarseSort(order, tmp);
                 bool bRet = false;
                 for (int i = 0; i < 2; ++i) {
-                    if(testBezierClipV(info, tmp[order[i]], ut[2*order[i]], ut[2*order[i]+1], v0, v1, zmin, zmax, level+1, max_level, eps)){
+                    if (testBezierClipV(info, tmp[order[i]], ut[2*order[i]], ut[2*order[i]+1], v0, v1, zmin, zmax, level+1, max_level, eps)){
                         zmax = info->t;
                         bRet = true;
                     }
@@ -483,6 +496,8 @@ protected:
         //if(max[0]-min[0]<=EPS2)return false;
         if (max[1] - min[1] <= EPS2)return false;
 
+        //        printf("V: %f, %f\n", min[1], max[1]);
+
         if (isEps(min,max,eps) || isLevel(level,max_level)) {
             return testBezierClipL(info, patch, u0, u1, v0, v1, zmin, zmax);
         } else {
@@ -499,9 +514,9 @@ protected:
                 }
             }
 #endif
-            if(tw>=0.4){
+            if (tw >= 0.4) {
                 PatchType tmp[2];
-                patch.SplitU(tmp, 0.5);
+                patch.SplitV(tmp, 0.5);
                 Real vm = (v0+v1)*0.5;
                 Real vt[] = {v0,vm,vm,v1};
 
@@ -509,15 +524,15 @@ protected:
                 coarseSort(order, tmp);
                 bool bRet = false;
                 for (int i = 0; i < 2; ++i) {
-                    if(testBezierClipU(info, tmp[order[i]], u0, u1, vt[2*order[i]], vt[2*order[i]+1], zmin, zmax, level+1, max_level, eps)){
-                        zmax = info->t;
-                        bRet = true;
+                    if (testBezierClipU(info, tmp[order[i]], u0, u1,
+                        vt[2*order[i]], vt[2*order[i]+1], zmin, zmax, level+1, max_level, eps)){
+            return true;
                     }
                 }
-                return bRet;
+                return false;
             }else{
-                tt0 = std::max<REAL>(0.0,tt0-UVEPS);
-                tt1 = std::min<REAL>(tt1+UVEPS,1.0);
+                tt0 = std::max<Real>(0.0,tt0-UVEPS);
+                tt1 = std::min<Real>(tt1+UVEPS,1.0);
                 Real vt[] = {lerp(v0,v1,tt0),lerp(v0,v1,tt1)};
                 PatchType tmp;
                 patch.CropV(tmp, tt0, tt1);
@@ -597,11 +612,14 @@ protected:
     }
     bool intersectAABB(RangeAABB *rng, ValueType const & min, ValueType const & max,
                        Ray const & r, Real tmin, Real tmax) const {
+
         //int phase = r.phase();
         int sign[3] = {r.dirSign[0],r.dirSign[1],r.dirSign[2]};
         ValueType box[2] = { min, max };
+
         ValueType org(r.org[0], r.org[1], r.org[2]);
         ValueType idir(r.invDir[0], r.invDir[1], r.invDir[2]);
+
 
         for (int i = 0; i < 3; ++i) {
             tmin = std::max(tmin, (box[  sign[i]][i]-org[i])*idir[i]);
@@ -614,8 +632,7 @@ protected:
     }
 
 
-
-    PatchType const &_patch;
+    PatchType _patch;
     Real _uRange[2];
     Real _vRange[2];
     ValueType _min;

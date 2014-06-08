@@ -28,7 +28,6 @@ struct float3 {
 
     float operator[](int i) const { return v[i]; }
     float &operator[](int i) { return v[i]; }
-    float v[3];
 
     float length() const { return sqrt(v[0]*v[0] + v[1]*v[1] + v[2]*v[2]); }
     void normalize() {
@@ -40,6 +39,9 @@ struct float3 {
         v[2] *= inv_len;
         //    }
     }
+
+
+    float v[3];
 };
 
 inline static float3 operator*(float f, const float3 &v) {
@@ -366,7 +368,7 @@ public:
     void GetMinMax(ValueType &min, ValueType &max) const {
         min = max = _cp[0];
         for (int i = 1; i < Ncp; ++i) {
-            for (int j = 0; j < ValueType::LENGTH; ++j) {
+            for (int j = 0; j < 3; ++j) {
                 min[j] = std::min(min[j], _cp[i][j]);
                 max[j] = std::max(max[j], _cp[i][j]);
             }
@@ -424,15 +426,17 @@ public:
 
     /// split
     void SplitV(This patches[2], Real v) const {
-        This tmp(*this);
-        transpose_matrix_n<ValueType, N>(tmp._cp);
+        ValueType tmp[Ncp], tmp0[Ncp], tmp1[Ncp];
         for (int i = 0; i < N; ++i) {
-            bezierSplit(&patches[0]._cp[i*N+0],
-                        &patches[1]._cp[i*N+0],
-                        &_cp[i*N+0], v);
+            for(int j = 0; j < N; ++j) {
+                tmp[j] = _cp[j*N+i];
+            }
+            bezierSplit(&tmp0[0], &tmp1[0], &tmp[0], v);
+            for(int j = 0; j < N; ++j) {
+                patches[0]._cp[j*N + i] = tmp0[j];
+                patches[1]._cp[j*N + i] = tmp1[j];
+            }
         }
-        transpose_matrix_n<ValueType, N>(patches[0]._cp);
-        transpose_matrix_n<ValueType, N>(patches[1]._cp);
     }
 
     /// crop
