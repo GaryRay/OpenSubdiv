@@ -3,13 +3,11 @@
 
 #include "bezier.h"
 #include "bilinearIntersect.h"
+#include "math.h"
 
 #include <limits>
 #include <cfloat>
 #include "../common.h"
-
-#include "../bezier_patch.hpp"
-#include "../bezier_patch_intersection.h"
 
 //namespace OpenSubdiv {
 //namespace OPENSUBDIV_VERSION {
@@ -18,28 +16,15 @@
 #define USE_BEZIERCLIP 1
 #define USE_COARSESORT 1
 
-/*
-struct Ray {
-  real3 org;
-  real3 dir;
-  real3 invDir;
-  int dirSign[3];
-};
+namespace OsdUtil {
 
-struct Intersection {
-    real t;
-    real u;
-    real v;
-    unsigned int faceID;
-};
-*/
 
-template<int N=4, class VALUE_TYPE=float3, class REAL=float>
+template<class VALUE_TYPE, class REAL, int N=4>
 class OsdUtilBezierPatchIntersection {
 public:
     typedef VALUE_TYPE ValueType;
     typedef REAL Real;
-    typedef OsdUtilBezierPatch<N, ValueType, Real> PatchType;
+    typedef OsdUtilBezierPatch<ValueType, Real, N> PatchType;
 
     static const REAL EPS = 1e-4;
     static const REAL EPS2 = FLT_MIN; //std::numeric_limits<Real>::min();
@@ -57,7 +42,7 @@ public:
         _uRange[0] = _vRange[0] = 0;
         _uRange[1] = _vRange[1] = 1;
 
-        patch.GetMinMax(_min, _max, 2*EPS*1e-3);
+        patch.GetMinMax(_min, _max, 2*EPS*1e-3 + 2*EPS);
         _eps = EPS;
     }
     ~OsdUtilBezierPatchIntersection() { }
@@ -73,15 +58,6 @@ public:
         }
         return false;
     }
-
-public:
-    bool test    (Intersection* info, const Ray& r, float dist) const {
-        return this->test(info, r, 0, dist);
-    }
-    void finalize(Intersection* info, const Ray& r, float dist)const;
-
-public:
-    void finalize(float u, float v, float t, Intersection* info, const Ray& r, float dist)const;
 
 protected:
     void getZAlign(Matrix4& mat, const Ray &r) const {
@@ -182,6 +158,7 @@ protected:
     }
 
     static bool isEps(ValueType const & min, ValueType const & max, float eps) {
+
         //float zw = max[2]-min[2];
         //if(zw<=eps)return true;
         REAL xd = std::max<REAL>(fabs(min[0]),max[0]);
@@ -429,7 +406,7 @@ protected:
         rotateU(tpatch);
 
         ValueType min, max;
-        tpatch.GetMinMax(min, max);
+        tpatch.GetMinMax(min, max, EPS*1e-3);
         if (0 < min[0] || max[0] < 0) return false;//x
         if (0 < min[1] || max[1] < 0) return false;//y
         if (max[2] < zmin || zmax < min[2]) return false;//z
@@ -489,7 +466,7 @@ protected:
         rotateV(tpatch);
 
         ValueType min, max;
-        tpatch.GetMinMax(min, max);
+        tpatch.GetMinMax(min, max, EPS*1e-3);
         if (0 < min[0] || max[0] < 0) return false;//x
         if (0 < min[1] || max[1] < 0) return false;//y
         if (max[2] < zmin || zmax < min[2])return false;//z
@@ -526,11 +503,12 @@ protected:
                 for (int i = 0; i < 2; ++i) {
                     if (testBezierClipU(info, tmp[order[i]], u0, u1,
                         vt[2*order[i]], vt[2*order[i]+1], zmin, zmax, level+1, max_level, eps)){
-            return true;
+                        zmax = info->t;
+                        bRet = true;
                     }
                 }
-                return false;
-            }else{
+                return bRet;
+            } else {
                 tt0 = std::max<Real>(0.0,tt0-UVEPS);
                 tt1 = std::min<Real>(tt1+UVEPS,1.0);
                 Real vt[] = {lerp(v0,v1,tt0),lerp(v0,v1,tt1)};
@@ -562,8 +540,8 @@ protected:
         return false;
 #else
         bool bRet = false;
-        int nPu = patch.get_nu()-1;
-        int nPv = patch.get_nv()-1;
+        int nPu = N - 1;
+        int nPv = N - 1;
 
         REAL du = REAL(1)/nPu;
         REAL dv = REAL(1)/nPv;
@@ -571,16 +549,14 @@ protected:
         REAL uu = 0;
         REAL vv = 0;
 
-        vector3x P[4];
-        for(int j=0;j<nPv;j++)
-        {
-            for(int i=0;i<nPu;i++)
-            {
-                P[0]=patch.get_cp_at(i  ,j  );
-                P[1]=patch.get_cp_at(i+1,j  );
-                P[2]=patch.get_cp_at(i  ,j+1);
-                P[3]=patch.get_cp_at(i+1,j+1);
-                if(test_bilinear_patch(&t, &u, &v, P, zmin, zmax)){
+        ValueType P[4];
+        for (int j = 0; j < nPv; ++j) {
+            for (int i = 0; i < nPu; ++i) {
+                P[0] = patch.Get(i  ,j  );
+                P[1] = patch.Get(i+1,j  );
+                P[2] = patch.Get(i  ,j+1);
+                P[3] = patch.Get(i+1,j+1);
+                if(testBilinearPatch(&t, &u, &v, P, zmin, zmax)){
 
                     u = lerp(i*du,(i+1)*du,u);
                     v = lerp(j*dv,(j+1)*dv,v);
@@ -601,13 +577,12 @@ protected:
             }
         }
 
-        if(bRet)
-        {
-            vector3x p = patch.evaluate(uu,vv);
+        if(bRet) {
+            ValueType p = patch.Evaluate(uu,vv);
             info->t = p[2];
         }
 
-        return bRet;    
+        return bRet;
 #endif
     }
     bool intersectAABB(RangeAABB *rng, ValueType const & min, ValueType const & max,
@@ -640,6 +615,7 @@ protected:
     Real _eps;
 };
 
+}   // end OsdUtil
 
 //}  // end namespace OPENSUBDIV_VERSION
 //using namespace OPENSUBDIV_VERSION;

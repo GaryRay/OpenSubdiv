@@ -179,7 +179,8 @@ typedef OpenSubdiv::HbrHalfedge<OpenSubdiv::OsdVertex> OsdHbrHalfedge;
 enum HudCheckBox { kHUD_CB_DISPLAY_BVH,
                    kHUD_CB_BLOCK_FILL,
                    kHUD_CB_PRE_TESSELLATE,
-                   kHUD_CB_ANIMATE };
+                   kHUD_CB_ANIMATE,
+                   kHUD_CB_OSD_INTERSECT };
 
 struct SimpleShape {
     std::string  name;
@@ -246,6 +247,7 @@ std::vector<float> g_orgPositions;
 int g_level = 1;
 int g_preTess = 0;
 int g_preTessLevel = 1;
+int g_newIsect = 0;
 
 int g_animate = 0;
 int g_frame = 0;
@@ -858,6 +860,10 @@ callbackCheckBox(bool checked, int button)
         g_animate = checked;
         updateGeom();
         break;
+    case kHUD_CB_OSD_INTERSECT:
+        g_newIsect = checked;
+        updateGeom();
+        break;
     }
     display();
 }
@@ -880,6 +886,9 @@ initHUD()
                       10, 60, callbackCheckBox, kHUD_CB_PRE_TESSELLATE, 't');
     g_hud.AddCheckBox("Animate vertices (M)", g_animate != 0,
                       10, 80, callbackCheckBox, kHUD_CB_ANIMATE, 'm');
+
+    g_hud.AddCheckBox("Osd intersect (H)", g_animate != 0,
+                      10, 110, callbackCheckBox, kHUD_CB_OSD_INTERSECT, 'h');
 
     int shading_pulldown = g_hud.AddPullDown("Shading (W)", 200, 10, 250, callbackDisplayStyle, 'w');
     g_hud.AddPullDownButton(shading_pulldown, "Shaded", Scene::SHADED,
@@ -974,7 +983,7 @@ idle() {
 
     g_scene.Render(g_width, g_height, fov,
                    g_image,
-                   g_eye, g_lookat, g_up, g_step, index);
+                   g_eye, g_lookat, g_up, g_step, index, g_newIsect);
 
     --g_stepIndex;
 
@@ -1027,6 +1036,9 @@ int main(int argc, char ** argv)
     for (int i = 1; i < argc; ++i) {
         if (!strcmp(argv[i], "-d"))
             g_level = atoi(argv[++i]);
+        else if(!strcmp(argv[i], "-H")) {
+            g_newIsect = true;
+        }
         else {
             std::ifstream ifs(argv[1]);
             if (ifs) {

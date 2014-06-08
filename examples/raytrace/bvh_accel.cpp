@@ -15,6 +15,8 @@
 
 #include "bezier_patch.hpp"
 #include "bezier_patch_intersection.h"
+#include "osdutil/bezier.h"
+#include "osdutil/bezierIntersect.h"
 #include <memory>
 
 #define ENABLE_TRACE_PRINT (0)
@@ -668,7 +670,7 @@ bool IntersectRayAABB(real &tminOut, // [out]
   //
   // Hit include (tmin == tmax) edge case(hit 2D plane).
   //
-#if 0
+#if 1
   if ((tmax > 0.0) && (tmin <= tmax) && (tmin <= maxT)) {
 
     tminOut = tmin;
@@ -730,16 +732,24 @@ inline bool TriangleIsect(real &tInOut, real &uOut, real &vOut, const real3 &v0,
 
 inline bool PatchIsect(Intersection &isect,
                        const real *bezierVerts,
-                       const Ray &ray)
+                       const Ray &ray,
+                       bool newIsect)
 {
-    // REPLACE ME, ototoi-san!
-    using namespace mallie;
-    bezier_patch_intersection bzi(bezier_patch<vector3>(4,4,(const vector3*)bezierVerts));
-
-    real t = isect.t;
-    if(bzi.test(&isect, ray, t))
-    {
-      return true;
+    if (not newIsect){
+        using namespace mallie;
+        bezier_patch_intersection bzi(bezier_patch<vector3>(4,4,(const vector3*)bezierVerts));
+        real t = isect.t;
+        if(bzi.test(&isect, ray, t))
+            {
+                return true;
+            }
+    }else{
+        OsdUtil::OsdUtilBezierPatchIntersection<OsdUtil::float3, float, 4> bzi(
+            (const OsdUtil::float3*)bezierVerts);
+        real t = isect.t;
+        if (bzi.Test(&isect, ray, 0, t)) {
+            return true;
+        }
     }
     return false;
 }
@@ -753,7 +763,7 @@ real Inverse(real x)
 
 bool TestLeafNode(Intersection &isect, // [inout]
                   const BVHNode &node, const std::vector<unsigned int> &indices,
-                  const Mesh *mesh, const Ray &ray) {
+                  const Mesh *mesh, const Ray &ray, bool newIsect) {
   bool hit = false;
 
   unsigned int numTriangles = node.data[0];
@@ -783,7 +793,7 @@ bool TestLeafNode(Intersection &isect, // [inout]
       int faceIdx = indices[i + offset];
 
       const real *bv = &mesh->bezierVertices[faceIdx * 16 * 3];
-      if (PatchIsect(isect, bv, tr)) {
+      if (PatchIsect(isect, bv, tr, newIsect)) {
         // Update isect state
         isect.faceID = faceIdx;
         hit = true;
@@ -964,7 +974,7 @@ bool BVHAccel::Traverse(Intersection &isect, const Mesh *mesh, Ray &ray) {
     } else { // leaf node
 
       if (hit) {
-        if (TestLeafNode(isect, node, indices_, mesh, ray)) {
+         if (TestLeafNode(isect, node, indices_, mesh, ray, _newIsect)) {
           hitT = isect.t;
         }
       }

@@ -53,7 +53,7 @@ struct BVHBuildStatistics {
 
 class BVHAccel {
 public:
-  BVHAccel() {};
+  BVHAccel() : _newIsect(false) {};
   ~BVHAccel() {};
 
   ///< Build BVH for input mesh.
@@ -71,6 +71,8 @@ public:
   ///< Traverse into BVH along ray and find closest hit point if found
   bool Traverse(Intersection &isect, const Mesh *mesh, Ray &ray);
 
+    void SetNewIntersect(bool b) {_newIsect = b;}
+
   const std::vector<BVHNode> &GetNodes() const { return nodes_; }
   const std::vector<unsigned int> &GetIndices() const { return indices_; }
 
@@ -83,6 +85,8 @@ private:
   std::vector<BVHNode> nodes_;
   std::vector<unsigned int> indices_; // max 4G triangles.
   BVHBuildStatistics stats_;
+
+  bool _newIsect;
 };
 
 #endif // __BVH_ACCEL_H__

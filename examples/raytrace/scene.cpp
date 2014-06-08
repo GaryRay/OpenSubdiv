@@ -19,6 +19,8 @@
 
 #include <osd/cpuEvalLimitContext.h>
 #include <osd/cpuEvalLimitController.h>
+#include "osdutil/bezier.h"
+#include "osdutil/bezierIntersect.h"
 
 static float const *getAdaptivePatchColor(OpenSubdiv::FarPatchTables::Descriptor const & desc)
 {
@@ -194,9 +196,22 @@ univar4x4(float u, float B[4], float D[4])
 
 static void evalBezier(float *p, float *n, float u, float v, const float *cp)
 {
+#if 1
+    OsdUtil::OsdUtilBezierPatch<OsdUtil::float3, float, 4> patch((const OsdUtil::float3*)cp);
+    OsdUtil::float3 b = patch.Evaluate(u, v);
+    p[0] = b[0];
+    p[1] = b[1];
+    p[2] = b[2];
+    OsdUtil::float3 du = patch.EvaluateDu(u, v);
+    OsdUtil::float3 dv = patch.EvaluateDv(u, v);
+    n[0] = -(du[1] * dv[2] - du[2] * dv[1]);
+    n[1] = -(du[2] * dv[0] - du[0] * dv[2]);
+    n[2] = -(du[0] * dv[1] - du[1] * dv[0]);
+
+
+#else
     float B[4], D[4], BU[3*4], DU[3*4];
     float du[3], dv[3];
-
     memset(BU, 0, 3*4*sizeof(float));
     memset(DU, 0, 3*4*sizeof(float));
     p[0] = p[1] = p[2] = 0.0f;
@@ -224,6 +239,7 @@ static void evalBezier(float *p, float *n, float u, float v, const float *cp)
     n[0] = du[1] * dv[2] - du[2] * dv[1];
     n[1] = du[2] * dv[0] - du[0] * dv[2];
     n[2] = du[0] * dv[1] - du[1] * dv[0];
+#endif
 }
 
 void
@@ -379,13 +395,15 @@ Scene::Render(int width, int height, double fov,
               std::vector<float> &image, // RGB
               const float eye[3],
               const float lookat[3], const float up[3],
-              int step, int stepIndex)
+              int step, int stepIndex, bool newIsect)
 {
     std::vector<int> xs;
     std::vector<int> ys;
     std::srand(unsigned(std::time(0)));
     std::random_shuffle(xs.begin(), xs.end());
     std::random_shuffle(ys.begin(), ys.end());
+
+    _accel.SetNewIntersect(newIsect);
 
     Camera camera;
 
@@ -453,11 +471,11 @@ Scene::Shade(float rgba[4], const Intersection &isect, const Ray &ray)
     real d = std::max(real(0), vdot(I, isect.normal));
     real3 color;
     if (_mode == SHADED) {
-        real3 reflect = I - 2 * d * isect.normal;
+        //        real3 reflect = I - 2 * d * isect.normal;
         real s = 0;//pow(std::max(0.0f, -vdot(ray.dir, reflect)), 32);
         color = d * real3(0.8, 0.8, 0.8) + s * real3(1, 1, 1);
     } else if (_mode == PTEX_COORD) {
-        color = d *real3(isect.u, isect.v, 1);
+        color = real3(isect.u, isect.v, 1);
     } else if (_mode == PATCH_TYPE) {
         float l = isect.level * 0.05;
         color = d * (real3(&_mesh.colors[isect.patchID*3])
