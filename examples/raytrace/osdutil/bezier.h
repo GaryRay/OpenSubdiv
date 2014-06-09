@@ -231,16 +231,10 @@ public:
 
     /// split
     void SplitV(This patches[2], Real v) const {
-        ValueType tmp[Ncp], tmp0[Ncp], tmp1[Ncp];
         for (int i = 0; i < N; ++i) {
-            for(int j = 0; j < N; ++j) {
-                tmp[j] = _cp[j*N+i];
-            }
-            bezierSplit(&tmp0[0], &tmp1[0], &tmp[0], v);
-            for(int j = 0; j < N; ++j) {
-                patches[0]._cp[j*N + i] = tmp0[j];
-                patches[1]._cp[j*N + i] = tmp1[j];
-            }
+            bezierSplitV(&patches[0]._cp[i],
+                         &patches[1]._cp[i],
+                         &_cp[i], v);
         }
     }
 
