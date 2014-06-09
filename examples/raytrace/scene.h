@@ -22,7 +22,7 @@ public:
     void Render(int width, int height, double fov,
                 std::vector<float> &image, // RGB
                 const float eye[3], const float lookat[3], const float up[3],
-                int step, int stepIndex, bool newIsect);
+                int step, int stepIndex, int intersectKernel);
 
     int GetNumPatches() const { return _mesh.numBezierPatches; }
     int GetNumTriangles() const { return _mesh.numTriangles; }

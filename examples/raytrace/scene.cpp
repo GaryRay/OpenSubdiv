@@ -197,13 +197,13 @@ univar4x4(float u, float B[4], float D[4])
 static void evalBezier(float *p, float *n, float u, float v, const float *cp)
 {
 #if 1
-    OsdUtil::OsdUtilBezierPatch<OsdUtil::float3, float, 4> patch((const OsdUtil::float3*)cp);
-    OsdUtil::float3 b = patch.Evaluate(u, v);
+    OsdUtil::OsdUtilBezierPatch<OsdUtil::vec3f, float, 4> patch((const OsdUtil::vec3f*)cp);
+    OsdUtil::vec3f b = patch.Evaluate(u, v);
     p[0] = b[0];
     p[1] = b[1];
     p[2] = b[2];
-    OsdUtil::float3 du = patch.EvaluateDu(u, v);
-    OsdUtil::float3 dv = patch.EvaluateDv(u, v);
+    OsdUtil::vec3f du = patch.EvaluateDu(u, v);
+    OsdUtil::vec3f dv = patch.EvaluateDv(u, v);
     n[0] = -(du[1] * dv[2] - du[2] * dv[1]);
     n[1] = -(du[2] * dv[0] - du[0] * dv[2]);
     n[2] = -(du[0] * dv[1] - du[1] * dv[0]);
@@ -395,7 +395,7 @@ Scene::Render(int width, int height, double fov,
               std::vector<float> &image, // RGB
               const float eye[3],
               const float lookat[3], const float up[3],
-              int step, int stepIndex, bool newIsect)
+              int step, int stepIndex, int intersectKernel)
 {
     std::vector<int> xs;
     std::vector<int> ys;
@@ -403,7 +403,7 @@ Scene::Render(int width, int height, double fov,
     std::random_shuffle(xs.begin(), xs.end());
     std::random_shuffle(ys.begin(), ys.end());
 
-    _accel.SetNewIntersect(newIsect);
+    _accel.SetIntersectKernel(intersectKernel);
 
     Camera camera;
 

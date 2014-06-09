@@ -18,18 +18,29 @@
 
 namespace OsdUtil {
 
+template <typename REAL>
+struct Epsilon {
+    static const REAL EPS = 1e-4;
+    static const REAL EPS2 = FLT_MIN;
+};
+template <>
+struct Epsilon<double> {
+    static const double EPS = 1e-10;    // revisit
+    static const double EPS2 = 1e-37;
+};
 
 template<class VALUE_TYPE, class REAL, int N=4>
 class OsdUtilBezierPatchIntersection {
 public:
+
     typedef VALUE_TYPE ValueType;
     typedef REAL Real;
     typedef OsdUtilBezierPatch<ValueType, Real, N> PatchType;
 
-    static const REAL EPS = 1e-4;
-    static const REAL EPS2 = FLT_MIN; //std::numeric_limits<Real>::min();
+    static const REAL EPS = Epsilon<Real>::EPS;
+    static const REAL EPS2 = Epsilon<Real>::EPS2;
     static const REAL UVEPS = 1.0/32.0;
-    static const int  MAX_LEVEL = 10;
+    static const int  DEFAULT_MAX_LEVEL = 10;
 
     struct RangeAABB {
         Real tmin, tmax;
@@ -38,7 +49,8 @@ public:
         Real u, v, t;
     };
 
-    OsdUtilBezierPatchIntersection(PatchType const &patch) : _patch(patch) {
+    OsdUtilBezierPatchIntersection(PatchType const &patch, int maxLevel=DEFAULT_MAX_LEVEL) :
+        _patch(patch), _maxLevel(maxLevel) {
         _uRange[0] = _vRange[0] = 0;
         _uRange[1] = _vRange[1] = 1;
 
@@ -51,8 +63,8 @@ public:
 
         RangeAABB rng;
         if (intersectAABB(&rng, _min, _max, r, tmin, tmax)) {
-            tmin = std::max<float>(tmin, rng.tmin);
-            tmax = std::min<float>(tmax, rng.tmax);
+            tmin = std::max(tmin, rng.tmin);
+            tmax = std::min(tmax, rng.tmax);
 
             return testInternal(info, r, tmin, tmax);
         }
@@ -60,7 +72,8 @@ public:
     }
 
 protected:
-    void getZAlign(Matrix4& mat, const Ray &r) const {
+    template <typename MATRIX4>
+    void getZAlign(MATRIX4 & mat, const Ray &r) const {
         ValueType org(r.org[0], r.org[1], r.org[2]);
         ValueType dir(r.dir[0], r.dir[1], r.dir[2]);
         ValueType z = dir;
@@ -74,28 +87,28 @@ protected:
         ValueType y = cross(z,x);
         y.normalize();
         x = cross(y,z);
-        Matrix4 rot = Matrix4(x[0],x[1],x[2],0,
+        MATRIX4 rot = MATRIX4(x[0],x[1],x[2],0,
                               y[0],y[1],y[2],0,
                               z[0],z[1],z[2],0,
                               0,0,0,1);
-        Matrix4 trs = Matrix4(1,0,0,-org[0],
+        MATRIX4 trs = MATRIX4(1,0,0,-org[0],
                               0,1,0,-org[1],
                               0,0,1,-org[2],
                               0,0,0,1);
         mat = rot*trs;
     }
 
-    bool testInternal(Intersection* info, const Ray& r, float tmin, float tmax) const {
-        Matrix4 mat;
+    bool testInternal(Intersection* info, const Ray& r, Real tmin, Real tmax) const {
+        matrix4t<Real> mat;
         getZAlign(mat, r);
 
         UVT uvt;
         PatchType patch(_patch);
         patch.Transform(mat);
         if (testBezierPatch(&uvt, patch, tmin, tmax, _eps)) {
-            float t = uvt.t;
-            float u = uvt.u;
-            float v = uvt.v;
+            Real t = uvt.t;
+            Real u = uvt.u;
+            Real v = uvt.v;
 
             u = _uRange[0]*(1-u) + _uRange[1]*u;//global
             v = _vRange[0]*(1-v) + _vRange[1]*v;//global
@@ -124,27 +137,28 @@ protected:
         if (0 < min[1] || max[1] < 0) return false;//y
         if (max[2] < zmin || zmax < min[2]) return false;//z
 
-        return testBezierClipU(info, patch, 0, 1, 0, 1, zmin, zmax, 0, MAX_LEVEL, eps);
+        return testBezierClipU(info, patch, 0, 1, 0, 1, zmin, zmax, 0, _maxLevel, eps);
     }
 
     // ----------------------------------------------------------------------
-    static void getRotate(matrix3x& mat, ValueType const &dx) {
-        static const ValueType z(0, 0, 1);
+    template <typename MATRIX3>
+    static void getRotate(MATRIX3 & mat, ValueType const &dx) {
+        const ValueType z(0, 0, 1);
         ValueType x = dx;
         x[2] = 0;
         typename ValueType::ElementType l = 1.0/sqrt(x[0]*x[0] + x[1]*x[1]);
         x[0] *= l;
         x[1] *= l;
         ValueType y(-x[1], x[0], 0);
-        mat = matrix3x(x[0],x[1],x[2],
-                       y[0],y[1],y[2],
-                       z[0],z[1],z[2]);
+        mat = MATRIX3(x[0],x[1],x[2],
+                      y[0],y[1],y[2],
+                      z[0],z[1],z[2]);
     }
 
     static void rotateU(PatchType& patch)
     {
         ValueType dx = patch.GetLv();
-        matrix3x rot;
+        matrix3t<typename ValueType::ElementType> rot;
         getRotate(rot, dx);
         patch.Transform(rot);
     }
@@ -152,12 +166,12 @@ protected:
     static void rotateV(PatchType& patch)
     {
         ValueType dx = patch.GetLu();
-        matrix3x rot;
+        matrix3t<typename ValueType::ElementType> rot;
         getRotate(rot, dx);
         patch.Transform(rot);
     }
 
-    static bool isEps(ValueType const & min, ValueType const & max, float eps) {
+    static bool isEps(ValueType const & min, ValueType const & max, Real eps) {
 
         //float zw = max[2]-min[2];
         //if(zw<=eps)return true;
@@ -319,8 +333,8 @@ protected:
         if (nn) {
             if (nn != 2) return false;
 
-            float t0 = t[0];
-            float t1 = t[1];
+            Real t0 = t[0];
+            Real t1 = t[1];
 
             if (t0 > t1) std::swap(t0, t1);
 
@@ -340,7 +354,7 @@ protected:
         T v[N];
     };
 
-    static bool getRangeU(Real out[2], PatchType const & patch) {
+    static bool getRangeU(Real out[2], PatchType const & patch) __attribute__((noinline)) {
         Real t0 = 1;
         Real t1 = 0;
         Curve<ValueType> curve;   // actually we just need 2 dim vector though.
@@ -369,7 +383,7 @@ protected:
         return true;
     }
 
-    static bool getRangeV(Real out[2], PatchType const &patch) {
+    static bool getRangeV(Real out[2], PatchType const &patch) __attribute__((noinline))  {
         Real t0 = 1;
         Real t1 = 0;
         Curve<ValueType> curve;
@@ -441,7 +455,8 @@ protected:
                 coarseSort(order, tmp);
                 bool bRet = false;
                 for (int i = 0; i < 2; ++i) {
-                    if (testBezierClipV(info, tmp[order[i]], ut[2*order[i]], ut[2*order[i]+1], v0, v1, zmin, zmax, level+1, max_level, eps)){
+            //                    if (testBezierClipV(info, tmp[order[i]], ut[2*order[i]], ut[2*order[i]+1], v0, v1, zmin, zmax, level+1, max_level, eps)){
+                    if (testBezierClipV(info, tmp[order[i]], ut[2*order[i]], ut[2*order[i]+1], v0, v1, zmin, zmax, level, max_level, eps)){
                         zmax = info->t;
                         bRet = true;
                     }
@@ -453,7 +468,8 @@ protected:
                 Real ut[] = {lerp(u0,u1,tt0),lerp(u0,u1,tt1)};
                 PatchType tmp;
                 patch.CropU(tmp, tt0, tt1);
-                return testBezierClipV(info, tmp, ut[0], ut[1], v0, v1, zmin, zmax, level+1, max_level, eps);
+                //                return testBezierClipV(info, tmp, ut[0], ut[1], v0, v1, zmin, zmax, level+1, max_level, eps);
+                return testBezierClipV(info, tmp, ut[0], ut[1], v0, v1, zmin, zmax, level, max_level, eps);
             }
         }
         return false;
@@ -521,7 +537,7 @@ protected:
     }
 
     static bool testBezierClipL(UVT* info, PatchType const &patch,
-                                Real u0, Real u1, Real v0, Real v1, Real zmin, Real zmax) {
+                                Real u0, Real u1, Real v0, Real v1, Real zmin, Real zmax) __attribute__((noinline))  {
         Real t, u, v;
 #if DIRECT_BILINEAR
         ValueType P[4];
@@ -613,6 +629,7 @@ protected:
     ValueType _min;
     ValueType _max;
     Real _eps;
+    int _maxLevel;
 };
 
 }   // end OsdUtil

@@ -247,7 +247,7 @@ std::vector<float> g_orgPositions;
 int g_level = 1;
 int g_preTess = 0;
 int g_preTessLevel = 1;
-int g_newIsect = 0;
+int g_intersectKernel = 0;
 
 int g_animate = 0;
 int g_frame = 0;
@@ -797,8 +797,8 @@ keyboard(int key, int event) {                  //to use glfwSetKeyCallback
     
     switch (key) {
         case ' ': startRender(); break;
-        case 'Q': g_running = 0; break;
-        case 'F': fitFrame(); break;
+        case 'q': g_running = 0; break;
+        case 'f': fitFrame(); break;
         case '+':
         case '=': g_preTessLevel++; updateGeom(); break;
         case '-': g_preTessLevel = std::max(1, g_preTessLevel-1); updateGeom(); break;
@@ -843,6 +843,14 @@ callbackDisplayStyle(int b)
 }
 
 static void
+callbackIntersect(int b)
+{
+    g_intersectKernel = b;
+
+    startRender();
+}
+
+static void
 callbackCheckBox(bool checked, int button)
 {
     switch (button) {
@@ -858,10 +866,6 @@ callbackCheckBox(bool checked, int button)
         break;
     case kHUD_CB_ANIMATE:
         g_animate = checked;
-        updateGeom();
-        break;
-    case kHUD_CB_OSD_INTERSECT:
-        g_newIsect = checked;
         updateGeom();
         break;
     }
@@ -887,8 +891,10 @@ initHUD()
     g_hud.AddCheckBox("Animate vertices (M)", g_animate != 0,
                       10, 80, callbackCheckBox, kHUD_CB_ANIMATE, 'm');
 
-    g_hud.AddCheckBox("Osd intersect (H)", g_animate != 0,
-                      10, 110, callbackCheckBox, kHUD_CB_OSD_INTERSECT, 'h');
+    int kernel_pulldown = g_hud.AddPullDown("Intersect (I)", 400, 10, 200, callbackIntersect, 'i');
+    g_hud.AddPullDownButton(kernel_pulldown, "Original", 0, g_intersectKernel == 0);
+    g_hud.AddPullDownButton(kernel_pulldown, "Osd float", 1, g_intersectKernel == 1);
+    g_hud.AddPullDownButton(kernel_pulldown, "Osd double", 2, g_intersectKernel == 2);
 
     int shading_pulldown = g_hud.AddPullDown("Shading (W)", 200, 10, 250, callbackDisplayStyle, 'w');
     g_hud.AddPullDownButton(shading_pulldown, "Shaded", Scene::SHADED,
@@ -983,7 +989,7 @@ idle() {
 
     g_scene.Render(g_width, g_height, fov,
                    g_image,
-                   g_eye, g_lookat, g_up, g_step, index, g_newIsect);
+                   g_eye, g_lookat, g_up, g_step, index, g_intersectKernel);
 
     --g_stepIndex;
 
@@ -1037,7 +1043,7 @@ int main(int argc, char ** argv)
         if (!strcmp(argv[i], "-d"))
             g_level = atoi(argv[++i]);
         else if(!strcmp(argv[i], "-H")) {
-            g_newIsect = true;
+            g_intersectKernel = 1;
         }
         else {
             std::ifstream ifs(argv[1]);
