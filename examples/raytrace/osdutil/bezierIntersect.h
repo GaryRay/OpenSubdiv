@@ -457,8 +457,7 @@ protected:
                 coarseSort(order, tmp);
                 bool bRet = false;
                 for (int i = 0; i < 2; ++i) {
-            //                    if (testBezierClipV(info, tmp[order[i]], ut[2*order[i]], ut[2*order[i]+1], v0, v1, zmin, zmax, level+1, max_level, eps)){
-                    if (testBezierClipV(info, tmp[order[i]], ut[2*order[i]], ut[2*order[i]+1], v0, v1, zmin, zmax, level, max_level, eps)){
+                    if (testBezierClipV(info, tmp[order[i]], ut[2*order[i]], ut[2*order[i]+1], v0, v1, zmin, zmax, level+1, max_level, eps)){
                         zmax = info->t;
                         bRet = true;
                     }
@@ -470,8 +469,7 @@ protected:
                 Real ut[] = {lerp(u0,u1,tt0),lerp(u0,u1,tt1)};
                 PatchType tmp;
                 patch.CropU(tmp, tt0, tt1);
-                //                return testBezierClipV(info, tmp, ut[0], ut[1], v0, v1, zmin, zmax, level+1, max_level, eps);
-                return testBezierClipV(info, tmp, ut[0], ut[1], v0, v1, zmin, zmax, level, max_level, eps);
+                return testBezierClipV(info, tmp, ut[0], ut[1], v0, v1, zmin, zmax, level+1, max_level, eps);
             }
         }
         return false;
