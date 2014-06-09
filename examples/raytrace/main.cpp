@@ -275,6 +275,9 @@ Scene g_scene;
 static void
 initializeShapes( ) {
 
+#include <shapes/catmark_extraordinary.h>
+    g_defaultShapes.push_back(SimpleShape(catmark_extraordinary, "catmark_extraordinary", kCatmark));
+
 #include <shapes/catmark_cube_corner0.h>
     g_defaultShapes.push_back(SimpleShape(catmark_cube_corner0, "catmark_cube_corner0", kCatmark));
 
