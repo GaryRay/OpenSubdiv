@@ -171,32 +171,8 @@ Scene::BezierConvert(float *inVertices, int numVertices,
     assert(numTotalPatches*16*3 == (int)_mesh.bezierVertices.size());
 }
 
-inline void
-univar4x4(float u, float B[4], float D[4])
-{
-    float t = u;
-    float s = 1.0f - u;
-
-    float A0 = s * s;
-    float A1 = 2 * s * t;
-    float A2 = t * t;
-
-    B[0] = s * A0;
-    B[1] = t * A0 + s * A1;
-    B[2] = t * A1 + s * A2;
-    B[3] = t * A2;
-
-    if (D) {
-        D[0] =    - A0;
-        D[1] = A0 - A1;
-        D[2] = A1 - A2;
-        D[3] = A2;
-    }
-}
-
 static void evalBezier(float *p, float *n, float u, float v, const float *cp)
 {
-#if 1
     OsdUtil::OsdUtilBezierPatch<OsdUtil::vec3f, float, 4> patch((const OsdUtil::vec3f*)cp);
     OsdUtil::vec3f b = patch.Evaluate(u, v);
     p[0] = b[0];
@@ -207,39 +183,6 @@ static void evalBezier(float *p, float *n, float u, float v, const float *cp)
     n[0] = -(du[1] * dv[2] - du[2] * dv[1]);
     n[1] = -(du[2] * dv[0] - du[0] * dv[2]);
     n[2] = -(du[0] * dv[1] - du[1] * dv[0]);
-
-
-#else
-    float B[4], D[4], BU[3*4], DU[3*4];
-    float du[3], dv[3];
-    memset(BU, 0, 3*4*sizeof(float));
-    memset(DU, 0, 3*4*sizeof(float));
-    p[0] = p[1] = p[2] = 0.0f;
-    du[0] = du[1] = du[2] = 0.0f;
-    dv[0] = dv[1] = dv[2] = 0.0f;
-
-    univar4x4(u, B, D);
-    for (int i=0; i<4; ++i) {
-        for (int j=0; j<4; ++j) {
-            const float *in = cp + (i+j*4)*3;
-            for (int k=0; k<3; ++k) {
-                BU[i*3+k] += in[k] * B[j];
-                DU[i*3+k] += in[k] * D[j];
-            }
-        }
-    }
-    univar4x4(v, B, D);
-    for (int i=0; i<4; ++i) {
-        for (int k=0; k<3; ++k) {
-            p[k] += BU[3*i+k] * B[i];
-            du[k] += DU[3*i+k] * B[i];
-            dv[k] += BU[3*i+k] * D[i];
-        }
-    }
-    n[0] = du[1] * dv[2] - du[2] * dv[1];
-    n[1] = du[2] * dv[0] - du[0] * dv[2];
-    n[2] = du[0] * dv[1] - du[1] * dv[0];
-#endif
 }
 
 void

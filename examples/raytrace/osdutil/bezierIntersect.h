@@ -239,7 +239,7 @@ protected:
     template<typename VECTOR>
     static bool scanMinMax(VECTOR const & p) {
         int nUpper = 0, nLower = 0;
-        for (size_t i = 0; i < VECTOR::LENGTH; ++i) {
+        for (int i = 0; i < VECTOR::LENGTH; ++i) {
             if (p[i][1] > 0) nUpper++;
             else nLower++;
             if (nUpper && nLower) return true;
@@ -540,7 +540,7 @@ protected:
 
     static bool testBezierClipL(UVT* info, PatchType const &patch,
                                 Real u0, Real u1, Real v0, Real v1, Real zmin, Real zmax, int level) {
-        Real t, u, v;
+        Real t = Real(0), u = Real(0), v = Real(0);
 #if DIRECT_BILINEAR
         ValueType P[4];
         P[0] = patch.Get(0, 0);
