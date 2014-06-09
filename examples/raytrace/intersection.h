@@ -12,6 +12,7 @@ typedef struct {
     // patch info
     unsigned int patchID;
     unsigned int level;
+    unsigned int clipLevel;
 
     unsigned int f0;
     unsigned int f1;

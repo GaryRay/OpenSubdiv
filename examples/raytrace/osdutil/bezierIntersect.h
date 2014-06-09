@@ -47,6 +47,7 @@ public:
     };
     struct UVT {
         Real u, v, t;
+        int level;
     };
 
     OsdUtilBezierPatchIntersection(PatchType const &patch, int maxLevel=DEFAULT_MAX_LEVEL) :
@@ -115,6 +116,7 @@ protected:
             info->t = t;
             info->u = u;
             info->v = v;
+            info->clipLevel = uvt.level;
             {
                 ValueType du = _patch.EvaluateDu(u,v);
                 ValueType dv = _patch.EvaluateDv(u,v);
@@ -354,7 +356,7 @@ protected:
         T v[N];
     };
 
-    static bool getRangeU(Real out[2], PatchType const & patch) __attribute__((noinline)) {
+    static bool getRangeU(Real out[2], PatchType const & patch) {
         Real t0 = 1;
         Real t1 = 0;
         Curve<ValueType> curve;   // actually we just need 2 dim vector though.
@@ -383,7 +385,7 @@ protected:
         return true;
     }
 
-    static bool getRangeV(Real out[2], PatchType const &patch) __attribute__((noinline))  {
+    static bool getRangeV(Real out[2], PatchType const &patch) {
         Real t0 = 1;
         Real t1 = 0;
         Curve<ValueType> curve;
@@ -430,7 +432,7 @@ protected:
         //        printf("U: %f, %f\n", min[1], max[1]);
 
         if (isEps(min,max,eps) || isLevel(level,max_level)){
-            return testBezierClipL(info, patch, u0, u1, v0, v1, zmin, zmax);
+            return testBezierClipL(info, patch, u0, u1, v0, v1, zmin, zmax, level);
         } else {
             Real tw = 1;
             Real tt0 = 1;
@@ -492,7 +494,7 @@ protected:
         //        printf("V: %f, %f\n", min[1], max[1]);
 
         if (isEps(min,max,eps) || isLevel(level,max_level)) {
-            return testBezierClipL(info, patch, u0, u1, v0, v1, zmin, zmax);
+            return testBezierClipL(info, patch, u0, u1, v0, v1, zmin, zmax, level);
         } else {
             Real tw = 1;
             Real tt0 = 1;
@@ -537,7 +539,7 @@ protected:
     }
 
     static bool testBezierClipL(UVT* info, PatchType const &patch,
-                                Real u0, Real u1, Real v0, Real v1, Real zmin, Real zmax) __attribute__((noinline))  {
+                                Real u0, Real u1, Real v0, Real v1, Real zmin, Real zmax, int level) {
         Real t, u, v;
 #if DIRECT_BILINEAR
         ValueType P[4];
@@ -551,6 +553,7 @@ protected:
             info->u = u;
             info->v = v;
             info->t = t;
+            info->level = level;
             return true;
         }
         return false;
@@ -588,6 +591,7 @@ protected:
                     info->u = u;
                     info->v = v;
                     info->t = t;
+                    info->level = level;
                     bRet = true;
                 }
             }

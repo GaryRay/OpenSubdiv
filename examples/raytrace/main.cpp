@@ -247,7 +247,7 @@ std::vector<float> g_orgPositions;
 int g_level = 1;
 int g_preTess = 0;
 int g_preTessLevel = 1;
-int g_intersectKernel = 0;
+int g_intersectKernel = 1;
 
 int g_animate = 0;
 int g_frame = 0;
@@ -906,6 +906,8 @@ initHUD()
                             g_displayStyle==Scene::PTEX_COORD);
     g_hud.AddPullDownButton(shading_pulldown, "Patch color", Scene::PATCH_TYPE,
                             g_displayStyle==Scene::PATCH_TYPE);
+    g_hud.AddPullDownButton(shading_pulldown, "Clip level", Scene::CLIP_LEVEL,
+                            g_displayStyle==Scene::CLIP_LEVEL);
     g_hud.AddPullDownButton(shading_pulldown, "Ambient Occlusion", Scene::AO,
                             g_displayStyle==Scene::AO);
     g_hud.AddPullDownButton(shading_pulldown, "Transparent", Scene::TRANSPARENT,

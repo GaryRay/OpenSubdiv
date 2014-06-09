@@ -483,6 +483,13 @@ Scene::Shade(float rgba[4], const Intersection &isect, const Ray &ray)
         color[0] = std::max(real(0), color[0]);
         color[1] = std::max(real(0), color[1]);
         color[2] = std::max(real(0), color[2]);
+    } else if (_mode == CLIP_LEVEL) {
+        float l = isect.clipLevel * 0.05;
+        color = (real3(&_mesh.colors[isect.patchID*3])
+                 - real3(l, l, l));
+        color[0] = std::max(real(0), color[0]);
+        color[1] = std::max(real(0), color[1]);
+        color[2] = std::max(real(0), color[2]);
     } else if (_mode == AO) {
         Intersection si;
         Ray sray;
