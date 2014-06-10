@@ -23,7 +23,6 @@ struct vec3sse {
     typedef matrix4sse Matrix4Type;
 
     vec3sse() {
-        v = _mm_set_ss(1);
     }
     vec3sse(__m128 vec4) {
         v = vec4;
@@ -120,6 +119,16 @@ inline static vec3sse operator*(float f, vec3sse const &v) {
 struct matrix3sse {
 public:
     matrix3sse() { }
+    matrix3sse(vec3sse m0, vec3sse m1, vec3sse m2) {
+        v[0] = m0.v;
+        v[1] = m1.v;
+        v[2] = m2.v;
+        for (int i = 0; i < 3; ++i) {
+            v[i] = _mm_shuffle_ps(v[i], v[i], _MM_SHUFFLE(0, 1, 2, 3));
+            v[i] = _mm_move_ss(v[i], _mm_setzero_ps());
+            v[i] = _mm_shuffle_ps(v[i], v[i], _MM_SHUFFLE(0, 1, 2, 3));
+        }
+    }
     matrix3sse(float m00, float m01, float m02,
                float m10, float m11, float m12,
                float m20, float m21, float m22) {
@@ -130,6 +139,26 @@ public:
         v[0] = _mm_load_ps(m0);
         v[1] = _mm_load_ps(m1);
         v[2] = _mm_load_ps(m2);
+    }
+
+    // getRotate constructor.
+    matrix3sse(vec3sse const &dx) {
+        // [x, y, z, w] -> [x/sqrt(x*x+y*y), y/sqrt(x*x+y*y), 0, 0]
+        __m128 t = _mm_mul_ps(dx.v, dx.v);
+        __m128 n = _mm_add_ps(t, _mm_shuffle_ps(t, t, _MM_SHUFFLE(3, 2, 0, 1)));
+        t = _mm_mul_ps(dx.v, _mm_rsqrt_ps(n));
+        __m128 x = _mm_shuffle_ps(t, _mm_setzero_ps(), _MM_SHUFFLE(3, 2, 1, 0));
+
+        // vec3sse y(-x[1], x[0], 0); // -1 1 0 0
+        __m128 y = _mm_shuffle_ps(x, _mm_setzero_ps(), _MM_SHUFFLE(3, 2, 0, 1));
+        __m128 sign = _mm_castsi128_ps(_mm_set_epi32(0, 0, 0, 0x80000000));
+        y = _mm_xor_ps(y, sign);
+
+        // z=w=0
+        v[0] = _mm_shuffle_ps(x, _mm_setzero_ps(), _MM_SHUFFLE(3, 2, 1, 0));
+        v[1] = _mm_shuffle_ps(y, _mm_setzero_ps(), _MM_SHUFFLE(3, 2, 1, 0));
+        // v[2] = 0 0 1
+        v[2] = _mm_movelh_ps(_mm_setzero_ps(), _mm_set_ss(1));
     }
 
     vec3sse operator*(vec3sse vec) const {

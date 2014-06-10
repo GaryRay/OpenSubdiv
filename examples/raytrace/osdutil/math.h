@@ -53,6 +53,12 @@ struct vec3t {
         v[1] *= inv_len;
         v[2] *= inv_len;
     }
+    void normalize2() {
+        Real inv_len = 1.0 / sqrt(v[0]*v[0] + v[1]*v[1]);
+        v[0] *= inv_len;
+        v[1] *= inv_len;
+        v[2] = 0;
+    }
 
     vec3t min(vec3t const &a) const {
         return vec3t(std::min(v[0], a.v[0]),
@@ -191,6 +197,18 @@ template<class T>
 class matrix3t {
 public:
     matrix3t() { }
+    template <typename V>
+    matrix3t(const V &m0, const V &m1, const V &m2) {
+        m[0] = m0[0];
+        m[1] = m0[1];
+        m[2] = m0[2];
+        m[3] = m1[0];
+        m[4] = m1[1];
+        m[5] = m1[2];
+        m[6] = m2[0];
+        m[7] = m2[1];
+        m[8] = m2[2];
+    }
     matrix3t(T m00, T m01, T m02, T m10, T m11, T m12, T m20, T m21, T m22) {
         m[0] = m00;
         m[1] = m01;
@@ -205,6 +223,26 @@ public:
     matrix3t(const matrix3t& rhs){
         memcpy(m,rhs.m,sizeof(T)*9);
     }
+
+    // getRotate constructor.
+    template <typename V>
+    matrix3t(V const &dx) {
+        V x = dx;
+        x.normalize2();
+        V y(-x[1], x[0], 0);
+        // V z(0, 0, 1);
+
+        m[0] = x[0];
+        m[1] = x[1];
+        m[2] = x[2];
+        m[3] = y[0];
+        m[4] = y[1];
+        m[5] = y[2];
+        m[6] = 0;
+        m[7] = 0;
+        m[8] = 1;
+    }
+
     T* operator[](size_t i)     {return m+3*i;}
     const T* operator[](size_t i)const{return m+3*i;}
 

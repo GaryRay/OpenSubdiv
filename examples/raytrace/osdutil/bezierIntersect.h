@@ -148,31 +148,17 @@ protected:
     }
 
     // ----------------------------------------------------------------------
-    template <typename MATRIX3>
-    static void getRotate(MATRIX3 & mat, ValueType const &dx) {
-        const ValueType z(0, 0, 1);
-        ValueType x = dx;
-        typename ValueType::ElementType l = 1.0/sqrt(x[0]*x[0] + x[1]*x[1]);
-        x = ValueType(x[0]*l, x[1]*l, 0);
-        ValueType y(-x[1], x[0], 0);
-        mat = MATRIX3(x[0],x[1],x[2],
-                      y[0],y[1],y[2],
-                      z[0],z[1],z[2]);
-    }
-
-    static void rotateU(PatchType& patch)
+    static void rotateU(PatchType& patch) NO_INLINE
     {
         ValueType dx = patch.GetLv();
-        typename ValueType::Matrix3Type rot;
-        getRotate(rot, dx);
+        typename ValueType::Matrix3Type rot(dx);
         patch.Transform(rot);
     }
 
-    static void rotateV(PatchType& patch)
+    static void rotateV(PatchType& patch) NO_INLINE
     {
         ValueType dx = patch.GetLu();
-        typename ValueType::Matrix3Type rot;
-        getRotate(rot, dx);
+        typename ValueType::Matrix3Type rot(dx);
         patch.Transform(rot);
     }
 

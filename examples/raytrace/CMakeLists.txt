@@ -24,7 +24,7 @@
 
 # *** raytrace ***
 
-add_definitions( -msse2 )
+add_definitions( -msse2 -fno-exceptions )
 
 set(SHADER_FILES
         #shader.glsl
