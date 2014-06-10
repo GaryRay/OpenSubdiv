@@ -7,11 +7,15 @@
 
 namespace OsdUtil {
 
+template<class REAL> class matrix3t;
+template<class REAL> class matrix4t;
+
 template <typename REAL>
 struct vec3t {
     typedef REAL Real;
     typedef REAL ElementType;
-    static const int LENGTH = 3;
+    typedef matrix3t<REAL> Matrix3Type;
+    typedef matrix4t<REAL> Matrix4Type;
 
     vec3t(Real f) {
         v[0] = v[1] = v[2] = f;
@@ -48,6 +52,30 @@ struct vec3t {
         v[0] *= inv_len;
         v[1] *= inv_len;
         v[2] *= inv_len;
+    }
+
+    vec3t min(vec3t const &a) const {
+        return vec3t(std::min(v[0], a.v[0]),
+                     std::min(v[1], a.v[1]),
+                     std::min(v[2], a.v[2]));
+    }
+
+    vec3t max(vec3t const &a) const {
+        return vec3t(std::max(v[0], a.v[0]),
+                     std::max(v[1], a.v[1]),
+                     std::max(v[2], a.v[2]));
+    }
+
+    static vec3t min(vec3t const &a, vec3t const &b) {
+        return vec3t(std::min(a.v[0], b.v[0]),
+                     std::min(a.v[1], b.v[1]),
+                     std::min(a.v[2], b.v[2]));
+    }
+
+    static vec3t max(vec3t const &a, vec3t const &b) {
+        return vec3t(std::max(a.v[0], b.v[0]),
+                     std::max(a.v[1], b.v[1]),
+                     std::max(a.v[2], b.v[2]));
     }
 
     template <typename T>

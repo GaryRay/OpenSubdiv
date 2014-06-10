@@ -17,6 +17,8 @@
 #include "bezier_patch_intersection.h"
 #include "osdutil/bezier.h"
 #include "osdutil/bezierIntersect.h"
+#include "osdutil/math.h"
+#include "osdutil/math_sse.h"
 #include <memory>
 
 #define ENABLE_TRACE_PRINT (0)
@@ -33,6 +35,12 @@
   { printf(f, __VA_ARGS__); }
 #else
 #define debug(f, ...)
+#endif
+
+#ifdef __GNUC__
+#define NO_INLINE __attribute__((noinline))
+#else
+#define NO_INLINE
 #endif
 
 //
@@ -623,16 +631,14 @@ bool BVHAccel::Load(const char *filename) {
 
 namespace {
 
-#if PROFILE
 bool TestLeafNode(Intersection &isect, // [inout]
                   const BVHNode &node, const std::vector<unsigned int> &indices,
-                  const Mesh *mesh, const Ray &ray) __attribute__ ((noinline));
+                  const Mesh *mesh, const Ray &ray) NO_INLINE;
 
 bool IntersectRayAABB(real &tminOut, // [out]
                              real &tmaxOut, // [out]
                              real maxT, real bmin[3], real bmax[3],
-                      real3 rayOrg, real3 rayInvDir, int rayDirSign[3]) __attribute__ ((noinline));
-#endif
+                      real3 rayOrg, real3 rayInvDir, int rayDirSign[3]) NO_INLINE;
 
 const int kMaxStackDepth = 5120;
 
@@ -733,7 +739,7 @@ inline bool TriangleIsect(real &tInOut, real &uOut, real &vOut, const real3 &v0,
 bool PatchIsect(Intersection &isect,
                        const real *bezierVerts,
                        const Ray &ray,
-                bool newIsect) __attribute__((noinline));
+                bool newIsect) NO_INLINE;
 
 bool PatchIsect(Intersection &isect,
                 const real *bezierVerts,
@@ -751,6 +757,13 @@ bool PatchIsect(Intersection &isect,
             }
     }else if (intersectKernel == BVHAccel::NEW_FLOAT) {
         OsdUtil::OsdUtilBezierPatchIntersection<OsdUtil::vec3f, float, 4> bzi(
+            (const OsdUtil::vec3f*)bezierVerts, /*max level=*/10);
+        real t = isect.t;
+        if (bzi.Test(&isect, ray, 0, t)) {
+            return true;
+        }
+    }else if (intersectKernel == BVHAccel::NEW_SSE) {
+        OsdUtil::OsdUtilBezierPatchIntersection<OsdUtil::vec3sse, float, 4> bzi(
             (const OsdUtil::vec3f*)bezierVerts, /*max level=*/10);
         real t = isect.t;
         if (bzi.Test(&isect, ray, 0, t)) {

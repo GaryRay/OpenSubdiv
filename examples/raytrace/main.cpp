@@ -897,7 +897,8 @@ initHUD()
     int kernel_pulldown = g_hud.AddPullDown("Intersect (I)", 400, 10, 200, callbackIntersect, 'i');
     g_hud.AddPullDownButton(kernel_pulldown, "Original", 0, g_intersectKernel == 0);
     g_hud.AddPullDownButton(kernel_pulldown, "Osd float", 1, g_intersectKernel == 1);
-    g_hud.AddPullDownButton(kernel_pulldown, "Osd double", 2, g_intersectKernel == 2);
+    g_hud.AddPullDownButton(kernel_pulldown, "Osd sse", 2, g_intersectKernel == 2);
+    g_hud.AddPullDownButton(kernel_pulldown, "Osd double", 3, g_intersectKernel == 3);
 
     int shading_pulldown = g_hud.AddPullDown("Shading (W)", 200, 10, 250, callbackDisplayStyle, 'w');
     g_hud.AddPullDownButton(shading_pulldown, "Shaded", Scene::SHADED,

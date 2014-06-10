@@ -24,6 +24,8 @@
 
 # *** raytrace ***
 
+add_definitions( -msse2 )
+
 set(SHADER_FILES
         #shader.glsl
 )

@@ -2,11 +2,16 @@
 #define OSDUTIL_BEZIER_H
 
 #include <cmath>
-#include "math.h"
 
 //#include "../../../opensubdiv/version.h"  // FIXME
 //namespace OpenSubdiv {
 //namespace OPENSUBDIV_VERSION {
+
+#ifdef __GNUC__
+#define NO_INLINE __attribute__((noinline))
+#else
+#define NO_INLINE
+#endif
 
 namespace OsdUtil {
 
@@ -154,9 +159,7 @@ public:
     ValueType GetMin() const {
         ValueType min = _cp[0];
         for (int i = 1; i < Ncp; ++i) {
-            for (int j = 0; j < ValueType::LENGTH; ++j) {
-                min[j] = std::min(min[j], _cp[i][j]);
-            }
+            min = ValueType::min(min, _cp[i]);
         }
         return min;
     }
@@ -164,20 +167,28 @@ public:
     ValueType GetMax() const {
         ValueType max = _cp[0];
         for (int i = 1; i < Ncp; ++i) {
-            for (int j = 0; j < ValueType::LENGTH; ++j) {
-                max[j] = std::max(max[j], _cp[i][j]);
-            }
+            max = ValueType::max(max, _cp[i]);
         }
         return max;
     }
-    void GetMinMax(ValueType &min, ValueType &max) const {
+
+    void GetMinMax(ValueType &min, ValueType &max) const NO_INLINE {
+#if 0
         min = max = _cp[0];
         for (int i = 1; i < Ncp; ++i) {
-            for (int j = 0; j < ValueType::LENGTH; ++j) {
-                min[j] = std::min(min[j], _cp[i][j]);
-                max[j] = std::max(max[j], _cp[i][j]);
-            }
+            min = min.min(_cp[i]);
+            max = max.max(_cp[i]);
         }
+#else
+        min = _cp[0].min(_cp[1]).min(_cp[2]).min(_cp[3])
+            .min(_cp[4]).min(_cp[5]).min(_cp[6]).min(_cp[7])
+            .min(_cp[8]).min(_cp[9]).min(_cp[10]).min(_cp[11])
+            .min(_cp[12]).min(_cp[13]).min(_cp[14]).min(_cp[15]);
+        max = _cp[0].max(_cp[1]).max(_cp[2]).max(_cp[3])
+            .max(_cp[4]).max(_cp[5]).max(_cp[6]).max(_cp[7])
+            .max(_cp[8]).max(_cp[9]).max(_cp[10]).max(_cp[11])
+            .max(_cp[12]).max(_cp[13]).max(_cp[14]).max(_cp[15]);
+#endif
     }
     void GetMinMax(ValueType &min, ValueType &max, Real eps) const {
         GetMinMax(min, max);

@@ -21,6 +21,7 @@
 #include <osd/cpuEvalLimitController.h>
 #include "osdutil/bezier.h"
 #include "osdutil/bezierIntersect.h"
+#include "osdutil/math.h"
 
 static float const *getAdaptivePatchColor(OpenSubdiv::FarPatchTables::Descriptor const & desc)
 {

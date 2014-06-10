@@ -71,7 +71,7 @@ public:
   ///< Traverse into BVH along ray and find closest hit point if found
   bool Traverse(Intersection &isect, const Mesh *mesh, Ray &ray);
 
-  enum { ORIGINAL, NEW_FLOAT, NEW_DOUBLE } IntersectKernel;
+  enum { ORIGINAL, NEW_FLOAT, NEW_SSE, NEW_DOUBLE } IntersectKernel;
   void SetIntersectKernel(int k) {_intersectKernel = k; }
 
   const std::vector<BVHNode> &GetNodes() const { return nodes_; }
