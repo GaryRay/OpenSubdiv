@@ -43,28 +43,6 @@ inline int sgn(int i, int j)
   return ((i+j)&1)?1:-1;
 }
 
-namespace {
-
-	template<class T>
-	class alloca_vector
-	{
-	public:
-		alloca_vector(size_t sz)
-		{
-			ptr_ = (T*)alloca(sz*sizeof(T));
-		}
-		~alloca_vector()
-		{
-			;//
-		}
-		      T& operator[](size_t i){return ptr_[i];}
-		const T& operator[](size_t i)const{return ptr_[i];}
-	private:
-		T* ptr_;
-	};
-
-}
-
 namespace mallie{
 
 	template<class FLOAT>
@@ -239,7 +217,7 @@ namespace mallie{
 			return bezier_evaluate_4(p, t);
 		default:
 			{
-				alloca_vector<FLOAT> B(n);
+                FLOAT* B = (FLOAT*)alloca(sizeof(FLOAT)*n);
 				bernstein_n(t,&B[0],n);
 				return mul_coef(&B[0],p,n);
 			}
@@ -288,7 +266,7 @@ namespace mallie{
 			return bezier_evaluate_deriv_4(p, t);
 		default:
 			{
-				alloca_vector<FLOAT> B(n);
+				FLOAT* B = (FLOAT*)alloca(sizeof(FLOAT)*n);
 				bernstein_deriv_n(t,&B[0],n);
 				return mul_coef(&B[0],p,n);
 			}
@@ -396,7 +374,7 @@ namespace mallie{
           break;
         default:
           {
-            alloca_vector<T> tmp(tn);
+            T* tmp = (T*)alloca(sizeof(T)*tn);
             //---------------------
             for(int j = 0;j<tn;j++){
                 tmp[j] = (1-t)*p[j] + t*p[j+1];//p[j] + t*(p[j+1] - p[j])
@@ -447,7 +425,7 @@ namespace mallie{
 				}
 			}
 		}else{
-			alloca_vector<T> tmp(w*h);
+			T* tmp = (T*)alloca(sizeof(T)*w*h);
 			std::copy(m,m+w*h,&tmp[0]);
 			for(int y = 0;y<h;y++){
 				for(int x = 0;x<w;x++){
@@ -495,8 +473,8 @@ namespace mallie{
     	if(nu==4&&nv==4){
 			bezier_split_4(a, b, c, d, p, u, v);
 		}else{
-			alloca_vector<T> tmp0(nu*nv);//TODO
-			alloca_vector<T> tmp1(nu*nv);//TODO
+			T* tmp0 = (T*)alloca(sizeof(T)*nu*nv);//TODO
+			T* tmp1 = (T*)alloca(sizeof(T)*nu*nv);//TODO
 			//split U
 			for(int i = 0;i<nv;i++){
 				bezier_split_n(&tmp0[i*nu+0], &tmp1[i*nu+0], &p[i*nu+0], nu, u);
@@ -562,9 +540,9 @@ namespace mallie{
                 }
             }
         }else{
-            alloca_vector<T> tmp(nv);
-            alloca_vector<T> atmp(nv);
-            alloca_vector<T> btmp(nv);
+            T* tmp  = (T*)alloca(sizeof(T)*nv);
+            T* atmp = (T*)alloca(sizeof(T)*nv);
+            T* btmp = (T*)alloca(sizeof(T)*nv);
             for(int i = 0;i<nu;i++){
                 for(int j = 0;j<nv;j++){
                     tmp[j] =  p[j*nu+i];
@@ -598,8 +576,8 @@ namespace mallie{
 		    bezier_split_n(&tmp0[0], &tmp1[0], p, n, t1);
 		    bezier_split_n(&tmp1[0], a, &tmp0[0],  n, t0/t1);
         }else{
-		    alloca_vector<T> tmp0(n);
-		    alloca_vector<T> tmp1(n);
+		    T* tmp0 = (T*)alloca(sizeof(T)*n);
+		    T* tmp1 = (T*)alloca(sizeof(T)*n);
 		    bezier_split_n(&tmp0[0], &tmp1[0], p, n, t1);
 		    bezier_split_n(&tmp1[0], a, &tmp0[0],  n, t0/t1);
     	}
@@ -639,8 +617,8 @@ namespace mallie{
 			    for(int j = 0;j<nv;j++)a[j*nu+i]=out[j];
 		    }
         }else{
-            alloca_vector<T> tmp(nv);
-			alloca_vector<T> out(nv);
+            T* tmp = (T*)alloca(sizeof(T)*nv);
+            T* out = (T*)alloca(sizeof(T)*nv);
 		    for(int i = 0;i<nu;i++){    
 			    for(int j = 0;j<nv;j++)tmp[j]=p[j*nu+i];
 			    bezier_crop_n(&out[0], &tmp[0], nv, v0, v1);
@@ -741,12 +719,12 @@ namespace mallie{
 
           return mul_coef(&Bv[0],&pv[0],nv);
       }else{
-          alloca_vector<FLOAT> Bu(nu);
-          alloca_vector<FLOAT> Bv(nv);
+          FLOAT* Bu = (FLOAT*)alloca(sizeof(FLOAT)*nv);
+          FLOAT* Bv = (FLOAT*)alloca(sizeof(FLOAT)*nv);
           bernstein(u,&Bu[0],nu);
           bernstein(v,&Bv[0],nv);
 
-          alloca_vector<T> pv(nv);
+          T* pv = (T*)alloca(sizeof(T)*nv);
           for(int j=0;j<nv;j++){
               pv[j] = mul_coef(&Bu[0], &p[j*nu], nu);
           }
@@ -848,13 +826,13 @@ namespace mallie{
           return mul_coef(&Bu[0],&pu[0],nu);
 
       }else{
-          alloca_vector<FLOAT> Bu(nu);
-          alloca_vector<FLOAT> Bv(nv);
+          FLOAT* Bu = (FLOAT*)alloca(sizeof(FLOAT)*nv);
+          FLOAT* Bv = (FLOAT*)alloca(sizeof(FLOAT)*nv);
           bernstein_deriv_n(u,&Bu[0],nu);
           bernstein_n      (v,&Bv[0],nv);
 
-          alloca_vector<T> pu(nu);
-          alloca_vector<T> pv(nv);
+          T* pu = (T*)alloca(sizeof(T)*nu);
+          T* pv = (T*)alloca(sizeof(T)*nv);
           for(int j = 0;j<nu;j++){
             for(int i = 0;i<nv;i++){
               pv[i] = p[i*nu+j];
@@ -887,13 +865,13 @@ namespace mallie{
 
           return mul_coef(&Bv[0],&pv[0],nv);
       }else{
-          alloca_vector<FLOAT> Bu(nu);
-          alloca_vector<FLOAT> Bv(nv);
+          FLOAT* Bu = (FLOAT*)alloca(sizeof(FLOAT)*nv);
+          FLOAT* Bv = (FLOAT*)alloca(sizeof(FLOAT)*nv);
           bernstein_n      (u,&Bu[0],nu);
           bernstein_deriv_n(v,&Bv[0],nv);
 
-          alloca_vector<T> pu(nu);
-          alloca_vector<T> pv(nv);
+          T* pu = (T*)alloca(sizeof(T)*nu);
+          T* pv = (T*)alloca(sizeof(T)*nv);
           for(int i = 0;i<nv;i++){
             for(int j = 0;j<nu;j++){
               pu[j] = p[i*nu+j];
