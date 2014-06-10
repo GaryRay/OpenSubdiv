@@ -35,6 +35,11 @@ struct vec3sse {
         float_array mm = { x, y, z, 1};
         v = _mm_load_ps(mm);
     }
+    template <typename T>
+    vec3sse(T const &s) {
+        float_array mm = { s[0], s[1], s[2], 1};
+        v = _mm_load_ps(mm);
+    }
 
     vec3sse operator*(float f) const {
         __m128 vf = { f, f, f, 1 };
@@ -77,9 +82,16 @@ struct vec3sse {
     }
 
     void normalize() {
-        float il = 1.0 / length();
-        float_array mm = { il, il, il, 1 };
-        v = _mm_mul_ps(v, _mm_load_ps(mm));
+        __m128 xyzw = _mm_mul_ps(v, v); // xx yy zz 1
+        __m128 yzxw = _mm_shuffle_ps(xyzw, xyzw, _MM_SHUFFLE(3, 0, 2, 1));
+        __m128 zxyw = _mm_shuffle_ps(xyzw, xyzw, _MM_SHUFFLE(3, 1, 0, 2));
+        __m128 n = _mm_add_ps(_mm_add_ps(xyzw, yzxw), zxyw);
+        n = _mm_rsqrt_ps(n);
+        v = _mm_mul_ps(v, n);
+        // set w=0. any other way?
+        v = _mm_shuffle_ps(v, v, _MM_SHUFFLE(0, 1, 2, 3));
+        v = _mm_move_ss(v, _mm_setzero_ps());
+        v = _mm_shuffle_ps(v, v, _MM_SHUFFLE(0, 1, 2, 3));
     }
 
     vec3sse min(vec3sse const &a) const {
@@ -195,6 +207,59 @@ public:
         v[1] = _mm_load_ps(m1);
         v[2] = _mm_load_ps(m2);
         v[3] = _mm_load_ps(m3);
+    }
+    matrix4sse(vec3sse const &rayOrg, vec3sse const &rayDir) NO_INLINE {
+        vec3sse z = rayDir;
+
+        // int plane = 0;
+        // if (fabs(z[1]) < fabs(z[plane])) plane = 1;
+        // if (fabs(z[2]) < fabs(z[plane])) plane = 2;
+        // vec3sse x = (plane == 0) ? vec3sse(1, 0, 0, 0) :
+        //     ((plane == 1) ? vec3sse(0, 1, 0, 0) : vec3sse(0, 0, 1, 0));
+        __m128 sign = _mm_set1_ps(-0.0f);
+        __m128 xyzw = _mm_andnot_ps(sign, rayDir.v);
+        __m128 yzxw = _mm_shuffle_ps(xyzw, xyzw, _MM_SHUFFLE(3, 0, 2, 1));
+        __m128 zxyw = _mm_shuffle_ps(xyzw, xyzw, _MM_SHUFFLE(3, 1, 0, 2));
+        __m128 flag = _mm_and_ps(_mm_and_ps(_mm_cmpgt_ps(xyzw, yzxw), _mm_cmpgt_ps(xyzw, zxyw)),
+                                 _mm_set1_ps(1));
+        vec3sse x(flag);
+
+        vec3sse y = cross(z, x);
+        y.normalize();
+        x = cross(y, z);
+
+        z.v = _mm_shuffle_ps(z.v, z.v, _MM_SHUFFLE(0, 1, 2, 3));
+        z.v = _mm_move_ss(z.v, _mm_set_ss(0));
+        z.v = _mm_shuffle_ps(z.v, z.v, _MM_SHUFFLE(0, 1, 2, 3));
+
+        __m128 t[4];
+        t[0] = _mm_set_ss(1);
+        t[1] = _mm_shuffle_ps(_mm_set_ss(1), _mm_setzero_ps(), _MM_SHUFFLE(3, 2, 0, 1));
+        t[2] = _mm_movelh_ps(_mm_setzero_ps(), _mm_set_ss(1));
+        t[3] = _mm_sub_ps(_mm_setzero_ps(), rayOrg.v);
+        t[3] = _mm_shuffle_ps(t[3], t[3], _MM_SHUFFLE(0, 1, 2, 3));
+        t[3] = _mm_move_ss(t[3], _mm_set_ss(1));
+        t[3] = _mm_shuffle_ps(t[3], t[3], _MM_SHUFFLE(0, 1, 2, 3));
+        // matrix4sse trs = matrix4sse(1,0,0,-rayOrg[0],
+        //                             0,1,0,-rayOrg[1],
+        //                             0,0,1,-rayOrg[2],
+        //                             0,0,0,1);
+        // *this = rot*trs;
+
+        __m128 r[4];
+        for (int i = 0; i < 4; ++i) {
+            __m128 x0 = _mm_mul_ps(x.v, t[i]);
+            __m128 x1 = _mm_mul_ps(y.v, t[i]);
+            __m128 x2 = _mm_mul_ps(z.v, t[i]);
+            __m128 x3 = _mm_mul_ps(t[3], t[i]);
+            _MM_TRANSPOSE4_PS(x0, x1, x2, x3);
+            r[i] = _mm_add_ps(_mm_add_ps(x0, x1), _mm_add_ps(x2, x3));
+        }
+        _MM_TRANSPOSE4_PS(r[0], r[1], r[2], r[3]); //fixme
+        v[0] = r[0];
+        v[1] = r[1];
+        v[2] = r[2];
+        v[3] = r[3];
     }
 
     vec3sse operator*(vec3sse const & vec) const {

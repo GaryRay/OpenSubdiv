@@ -26,6 +26,11 @@ struct vec3t {
     vec3t(Real x, Real y, Real z) {
         v[0] = x; v[1] = y; v[2] = z;
     }
+    template <typename T>
+    vec3t(T const &s) {
+        v[0] = s[0]; v[1] = s[1]; v[2] = s[2];
+    }
+
     vec3t operator*(Real f) const {
         return vec3t(v[0] * f, v[1] * f, v[2] * f);
     }
@@ -139,6 +144,31 @@ public:
         m[14] = m32;
         m[15] = m33;
     }
+
+    template <typename V>
+    matrix4t(V const &rayOrg, V const &rayDir) {
+
+        V z = rayDir;
+        int plane = 0;
+        if (fabs(z[1]) < fabs(z[plane])) plane = 1;
+        if (fabs(z[2]) < fabs(z[plane])) plane = 2;
+
+        V x = (plane == 0) ? V(1, 0, 0) :
+            ((plane == 1) ? V(0, 1, 0) : V(0, 0, 1));
+        V y = cross(z, x);
+        y.normalize();
+        x = cross(y, z);
+        matrix4t rot = matrix4t(x[0],x[1],x[2],0,
+                                y[0],y[1],y[2],0,
+                                z[0],z[1],z[2],0,
+                                0,0,0,1);
+        matrix4t trs = matrix4t(1,0,0,-rayOrg[0],
+                                0,1,0,-rayOrg[1],
+                                0,0,1,-rayOrg[2],
+                                0,0,0,1);
+        *this = rot*trs;
+    }
+
 
     REAL * operator[] (int i){            //pointer what self is const.
         return element[i];

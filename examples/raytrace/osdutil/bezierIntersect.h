@@ -78,35 +78,8 @@ public:
     }
 
 protected:
-    template <typename MATRIX4>
-    void getZAlign(MATRIX4 & mat, const Ray &r) const {
-        ValueType org(r.org[0], r.org[1], r.org[2]);
-        ValueType dir(r.dir[0], r.dir[1], r.dir[2]);
-        ValueType z = dir;
-
-        int plane = 0;
-        if (fabs(z[1]) < fabs(z[plane])) plane = 1;
-        if (fabs(z[2]) < fabs(z[plane])) plane = 2;
-
-        ValueType x = (plane == 0) ? ValueType(1, 0, 0) :
-            ((plane == 1) ? ValueType(0, 1, 0) : ValueType(0, 0, 1));
-        ValueType y = cross(z,x);
-        y.normalize();
-        x = cross(y,z);
-        MATRIX4 rot = MATRIX4(x[0],x[1],x[2],0,
-                              y[0],y[1],y[2],0,
-                              z[0],z[1],z[2],0,
-                              0,0,0,1);
-        MATRIX4 trs = MATRIX4(1,0,0,-org[0],
-                              0,1,0,-org[1],
-                              0,0,1,-org[2],
-                              0,0,0,1);
-        mat = rot*trs;
-    }
-
     bool testInternal(Intersection* info, const Ray& r, Real tmin, Real tmax) const NO_INLINE {
-        typename ValueType::Matrix4Type mat;
-        getZAlign(mat, r);
+        typename ValueType::Matrix4Type mat(ValueType(r.org), ValueType(r.dir)); // getZAlign
 
         UVT uvt;
         PatchType patch(_patch);

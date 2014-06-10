@@ -311,7 +311,7 @@ private:
                 + cp[2] * (3*t2*-3 + 2*t* 3)
                 + cp[3] * (3*t2* 1);
         } else {
-            return ValueType(0);
+            return ValueType();
             // not implemented !
         }
     }
