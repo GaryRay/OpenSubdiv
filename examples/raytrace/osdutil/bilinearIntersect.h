@@ -103,9 +103,11 @@ static bool testBilinearPatch(T *t, T *u, T *v,
         bool bRet = false;
         for (int i = 0; i < nRet; ++i) {
             Scalar vv = root[i];
-            if (0 <= vv && vv <= 1) {
+            if (-0.1 <= vv && vv <= 1.1) {//TODO
+                vv = std::max(Scalar(0), std::min(vv,Scalar(1)));
                 Scalar uu = computeU(A1, A2, B1, B2, C1, C2, D1, D2, vv);
-                if (0 <= uu && uu <= 1) {
+                if (-0.1  <= uu && uu <= 1.1) {//TODO
+                    uu = std::max(Scalar(0), std::min(uu,Scalar(1)));
                     Scalar tt = computeT(a[nPlane], b[nPlane], c[nPlane], d[nPlane],
                                          Scalar(1), uu, vv);
                     if (solveBilinearPatch(t, u, v, tmin, tmax, tt, uu, vv)){

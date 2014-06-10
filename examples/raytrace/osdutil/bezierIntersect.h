@@ -30,7 +30,7 @@ struct Epsilon {
 };
 template <>
 struct Epsilon<double> {
-    static const double EPS = 1e-10;    // revisit
+    static const double EPS = 1e-16;    // revisit
     static const double EPS2 = 1e-37;
 };
 
@@ -60,7 +60,7 @@ public:
         _uRange[0] = _vRange[0] = 0;
         _uRange[1] = _vRange[1] = 1;
 
-        patch.GetMinMax(_min, _max, 2*EPS*1e-3 + 2*EPS);
+        patch.GetMinMax(_min, _max, 0.01);
         _eps = EPS;
     }
     ~OsdUtilBezierPatchIntersection() { }
@@ -138,7 +138,7 @@ protected:
     }
     bool testBezierPatch(UVT* info, PatchType const & patch, Real zmin, Real zmax, Real eps) const {
         ValueType min, max;
-        patch.GetMinMax(min, max, 2*EPS*1e-3);
+        patch.GetMinMax(min, max, EPS*1e-3);
 
         if (0 < min[0] || max[0] < 0) return false;//x
         if (0 < min[1] || max[1] < 0) return false;//y
@@ -177,12 +177,11 @@ protected:
     }
 
     static bool isEps(ValueType const & min, ValueType const & max, Real eps) {
-
         //float zw = max[2]-min[2];
         //if(zw<=eps)return true;
-        REAL xd = std::max<REAL>(fabs(min[0]),max[0]);
-        REAL yd = std::max<REAL>(fabs(min[1]),max[1]);
-        if(!(xd<=eps&&yd<=eps))return false;
+        //REAL xd = std::max<REAL>(fabs(min[0]),max[0]);
+        //REAL yd = std::max<REAL>(fabs(min[1]),max[1]);
+        //if(!(xd<=eps&&yd<=eps))return false;
 
         REAL xw = max[0]-min[0];
         REAL yw = max[1]-min[1];
@@ -436,7 +435,7 @@ protected:
         if (0 < min[1] || max[1] < 0) return false;//y
         if (max[2] < zmin || zmax < min[2]) return false;//z
         //if(max[0]-min[0]<=EPS2)return false;
-        if (max[1]-min[1] <= EPS2) return false;
+        //if (max[1]-min[1] <= EPS2) return false;
 
         //        printf("U: %f, %f\n", min[1], max[1]);
 
@@ -496,7 +495,7 @@ protected:
         if (0 < min[1] || max[1] < 0) return false;//y
         if (max[2] < zmin || zmax < min[2])return false;//z
         //if(max[0]-min[0]<=EPS2)return false;
-        if (max[1] - min[1] <= EPS2)return false;
+        //if (max[1] - min[1] <= EPS2)return false;
 
         //        printf("V: %f, %f\n", min[1], max[1]);
 
