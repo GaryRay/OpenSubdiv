@@ -93,6 +93,41 @@ struct BezierSplit<N, N, STRIDE, VALUE_TYPE, REAL> {
     }
 };
 
+template <int N, int STRIDE, typename VALUE_TYPE, typename REAL>
+struct BezierCrop {
+    typedef VALUE_TYPE ValueType;
+    typedef REAL Real;
+    BezierCrop(ValueType r[], const ValueType p[], Real s, Real t) {
+        ValueType tmp0[N*STRIDE], tmp1[N*STRIDE];
+        BezierSplit<N, 0, STRIDE, ValueType, Real> split1(&tmp0[0], &tmp1[0], p, t);
+        BezierSplit<N, 0, STRIDE, ValueType, Real> split2(&tmp1[0], r, &tmp0[0], s/t);
+    }
+};
+
+template <int STRIDE, typename VALUE_TYPE, typename REAL>
+struct BezierCrop<4, STRIDE, VALUE_TYPE, REAL> {
+    typedef VALUE_TYPE ValueType;
+    typedef REAL Real;
+    BezierCrop(ValueType r[], const ValueType p[], Real s, Real t) {
+        const ValueType &p0 = p[0*STRIDE];
+        const ValueType &p1 = p[1*STRIDE];
+        const ValueType &p2 = p[2*STRIDE];
+        const ValueType &p3 = p[3*STRIDE];
+        // watertight cropping for cubic b-spline
+        //
+        //   p0    p1   p2    p3
+        //   0----s--------t---1
+        //   1----T--------S---0
+        //
+        Real T = 1-s;
+        Real S = 1-t;
+        r[0*STRIDE] = (p0*(T*T)*T + p3*(s*s)*s) + (p1*(s*T)*(3*T)       + p2*(s*s)*(3*T));
+        r[1*STRIDE] = (p0*(T*T)*S + p3*(s*s)*t) + (p1*T*(2*(S*s) + T*t) + p2*s*(2*(t*T) + (s*S)));
+        r[2*STRIDE] = (p3*(t*t)*s + p0*(S*S)*T) + (p2*t*(2*(s*S) + t*T) + p1*S*(2*(T*t) + (S*s)));
+        r[3*STRIDE] = (p3*(t*t)*t + p0*(S*S)*S) + (p2*(S*t)*(3*t)       + p1*(S*S)*(3*t));
+    }
+};
+
 template<class VALUE_TYPE, class REAL, int N=4>
 class OsdUtilBezierPatch {
 public:
@@ -252,18 +287,26 @@ public:
     /// crop
     void CropU(This &patch, Real u0, Real u1) const {
         for (int i = 0; i < N; ++i) {
+#if 0
             ValueType tmp0[N], tmp1[N];
             bezierSplit(&tmp0[0], &tmp1[0], &_cp[i*N+0], u1);
             bezierSplit(&tmp1[0], &patch._cp[i*N+0], &tmp0[0],  u0/u1);
+#else
+            bezierCrop(&patch._cp[i*N+0], &_cp[i*N+0], u0, u1);
+#endif
         }
     }
 
     /// crop
     void CropV(This &patch, Real v0, Real v1) const {
         for (int i = 0; i < N; ++i) {
+#if 0
             ValueType tmp0[N*N], tmp1[N*N];
             bezierSplitV(&tmp0[i], &tmp1[i], &_cp[i], v1);
             bezierSplitV(&tmp1[i], &patch._cp[i], &tmp0[i],  v0/v1);
+#else
+            bezierCropV(&patch._cp[i], &_cp[i], v0, v1);
+#endif
         }
     }
 
@@ -299,6 +342,12 @@ private:
     }
     void bezierSplitV(ValueType a[], ValueType b[], const ValueType p[], Real t) const {
         BezierSplit<N, 0, /*stride*/N, ValueType, Real> split(a, b, p, t);
+    }
+    void bezierCrop(ValueType r[], const ValueType p[], Real s, Real t) const {
+        BezierCrop<N, 1, ValueType, Real> crop(r, p, s, t);
+    }
+    void bezierCropV(ValueType r[], const ValueType p[], Real s, Real t) const {
+        BezierCrop<N, N, ValueType, Real> crop(r, p, s, t);
     }
 
     static void transpose(ValueType m[]) {

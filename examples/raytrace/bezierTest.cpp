@@ -69,7 +69,7 @@ static void compare(VEC const &v0, VEC const &v1)
         }
     }
     if (fail) {
-        printf("(%f, %f, %f) != (%f, %f, %f), delta = (%g, %g, %g)\n",
+        printf("(%.10f, %.10f, %.10f) != (%.10f, %.10f, %.10f), delta = (%g, %g, %g)\n",
                v0[0], v0[1], v0[2],
                v1[0], v1[1], v1[2],
                v1[0]-v0[0], v1[1]-v0[1], v1[2]-v0[2]);
@@ -86,13 +86,13 @@ static void comparePatch(PATCH const &patch0, PATCH const &patch1)
     }
 }
 
-template <typename PATCH, typename VEC>
-static void rotateTest()
+template <typename PATCH, typename VEC, typename REAL>
+static void rotateTest(int seed=0)
 {
     typedef PATCH Patch;
 
     printf("Rotate Test\n");
-    srand(0);
+    srand(seed);
 
     VEC cp[16];
     for (int i = 0; i < 16; ++i) {
@@ -111,11 +111,11 @@ static void rotateTest()
             patch1.Rotate();
         }
         printf("Rotate = %d\n", rotate);
-        //dump(patch0);
-        //dump(patch1);
+        // dump(patch0);
+        // dump(patch1);
 
         Patch result0, result1;
-        double min = 0.3, max = 0.6;
+        REAL min = 0.3, max = 0.6;
 
         patch0.CropU(result0, min, max);
         if (rotate == 1) {
@@ -130,9 +130,8 @@ static void rotateTest()
             // rotate 270, 180, 90
             result1.Rotate();
         }
-
-        dump(result0);
-        dump(result1);
+        // dump(result0);
+        // dump(result1);
 
         comparePatch(result0, result1);
     }
@@ -140,12 +139,12 @@ static void rotateTest()
 }
 
 template <typename PATCH, typename VEC>
-static void evalTest()
+static void evalTest(int seed = 0)
 {
     typedef PATCH Patch;
 
     printf("Eval Test\n");
-    srand(0);
+    srand(seed);
 
     VEC cp[16];
     for (int i = 0; i < 16; ++i) {
@@ -193,18 +192,19 @@ static void evalTest()
 int main()
 {
     printf("original\n");
-    rotateTest<MallieBezierPatch, mallie::vector3>();
-    evalTest<MallieBezierPatch, mallie::vector3>();
+    rotateTest<MallieBezierPatch, mallie::vector3, float>();
+    //    evalTest<MallieBezierPatch, mallie::vector3>();
 
     printf("osd float\n");
-    rotateTest<OsdUtil::OsdUtilBezierPatch<OsdUtil::vec3f, float>, OsdUtil::vec3f>();
-    evalTest<OsdUtil::OsdUtilBezierPatch<OsdUtil::vec3f, float>, OsdUtil::vec3f>();
+    rotateTest<OsdUtil::OsdUtilBezierPatch<OsdUtil::vec3f, float>, OsdUtil::vec3f, float>();
+    //    evalTest<OsdUtil::OsdUtilBezierPatch<OsdUtil::vec3f, float>, OsdUtil::vec3f>();
 
     printf("osd sse\n");
-    rotateTest<OsdUtil::OsdUtilBezierPatch<OsdUtil::vec3sse, float>, OsdUtil::vec3sse>();
-    evalTest<OsdUtil::OsdUtilBezierPatch<OsdUtil::vec3sse, float>, OsdUtil::vec3sse>();
+    rotateTest<OsdUtil::OsdUtilBezierPatch<OsdUtil::vec3f, float>, OsdUtil::vec3f, float>();
+    //rotateTest<OsdUtil::OsdUtilBezierPatch<OsdUtil::vec3sse, float>, OsdUtil::vec3sse>();
+    //    evalTest<OsdUtil::OsdUtilBezierPatch<OsdUtil::vec3sse, float>, OsdUtil::vec3sse>();
 
     printf("osd double\n");
-    rotateTest<OsdUtil::OsdUtilBezierPatch<OsdUtil::vec3d, double>, OsdUtil::vec3d>();
-    evalTest<OsdUtil::OsdUtilBezierPatch<OsdUtil::vec3d, double>, OsdUtil::vec3d>();
+    rotateTest<OsdUtil::OsdUtilBezierPatch<OsdUtil::vec3d, double>, OsdUtil::vec3d, double>();
+    //    evalTest<OsdUtil::OsdUtilBezierPatch<OsdUtil::vec3d, double>, OsdUtil::vec3d>();
 }
