@@ -12,7 +12,8 @@ public:
     ~Scene();
 
     void BezierConvert(float *vertices, int numVertices,
-                       OpenSubdiv::FarPatchTables const *patchTables);
+                       OpenSubdiv::FarPatchTables const *patchTables,
+                       std::vector<int> const &vertexParentIDs);
 
     void Tessellate(int level);
 
@@ -38,6 +39,8 @@ public:
     GLuint GetVBO() const { return _vbo; }
     int GetNumBVHNode() const { return (int)_accel.GetNodes().size(); }
 
+    void SetConsolidatePoints(bool flag) { _consolidatePoints = flag; }
+
     size_t GetMemoryUsage() const {
         size_t mem = 0;
         if (_mesh.IsBezierMesh()) {
@@ -55,6 +58,7 @@ private:
     Mesh _mesh;
     BVHAccel _accel;
     ShadeMode _mode;
+    bool _consolidatePoints;
 
     GLuint _vbo;
 };

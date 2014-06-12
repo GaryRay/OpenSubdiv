@@ -6,6 +6,12 @@
 //namespace OPENSUBDIV_VERSION {
 #include <xmmintrin.h>
 
+#ifdef __GNUC__
+#define NO_INLINE __attribute__((noinline))
+#else
+#define NO_INLINE
+#endif
+
 namespace OsdUtil {
 
 struct matrix3sse;

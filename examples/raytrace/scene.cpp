@@ -23,6 +23,20 @@
 #include "osdutil/bezierIntersect.h"
 #include "osdutil/math.h"
 
+    struct Edge {
+        Edge(int a, int b) {
+            if (a > b) std::swap(a, b);
+            _edges[0] = a;
+            _edges[1] = b;
+        }
+        bool operator < (Edge const &other) const {
+            return (_edges[0] < other._edges[0] ||
+                    (_edges[0] == other._edges[0] && _edges[1]  < other._edges[1]));
+        }
+        int _edges[2];
+    };
+
+
 static float const *getAdaptivePatchColor(OpenSubdiv::FarPatchTables::Descriptor const & desc)
 {
     static float _colors[4][5][4] = {{{1.0f,  1.0f,  1.0f,  1.0f},   // regular
@@ -58,7 +72,7 @@ static float const *getAdaptivePatchColor(OpenSubdiv::FarPatchTables::Descriptor
     }
 }
 
-Scene::Scene() : _vbo(0)
+Scene::Scene() : _vbo(0), _consolidatePoints(false)
 {
 #ifdef OPENSUBDIV_HAS_TBB
     static tbb::task_scheduler_init init;
@@ -72,7 +86,8 @@ Scene::~Scene()
 
 void
 Scene::BezierConvert(float *inVertices, int numVertices,
-                     OpenSubdiv::FarPatchTables const *patchTables)
+                     OpenSubdiv::FarPatchTables const *patchTables,
+                     std::vector<int> const &vertexParentIDs)
 {
     using namespace OpenSubdiv;
 
@@ -118,6 +133,7 @@ Scene::BezierConvert(float *inVertices, int numVertices,
     _mesh.bezierBounds.clear();
     _mesh.colors.clear();
 
+    std::vector<int> cpIndices; // 16 * numPatches
     // iterate patch types.
     for (FarPatchTables::PatchArrayVector::const_iterator it = patchArrays.begin();
          it != patchArrays.end(); ++it) {
@@ -128,26 +144,31 @@ Scene::BezierConvert(float *inVertices, int numVertices,
         case FarPatchTables::REGULAR:
             numPatches = convertRegular(_mesh.bezierVertices,
                                         _mesh.bezierBounds,
+                                        cpIndices,
                                         &vertices[0], patchTables, *it);
             break;
         case FarPatchTables::BOUNDARY:
             numPatches = convertBoundary(_mesh.bezierVertices,
                                          _mesh.bezierBounds,
+                                         cpIndices,
                                          &vertices[0], patchTables, *it);
             break;
         case FarPatchTables::CORNER:
             numPatches = convertCorner(_mesh.bezierVertices,
                                        _mesh.bezierBounds,
+                                       cpIndices,
                                        &vertices[0], patchTables, *it);
             break;
         case FarPatchTables::GREGORY:
             numPatches = convertGregory(_mesh.bezierVertices,
                                         _mesh.bezierBounds,
+                                        cpIndices,
                                         &vertices[0], patchTables, *it);
             break;
         case FarPatchTables::GREGORY_BOUNDARY:
             numPatches = convertBoundaryGregory(_mesh.bezierVertices,
                                                 _mesh.bezierBounds,
+                                                cpIndices,
                                                 &vertices[0], patchTables, *it);
             break;
         default:
@@ -161,6 +182,98 @@ Scene::BezierConvert(float *inVertices, int numVertices,
                 _mesh.colors.push_back(color[0]);
                 _mesh.colors.push_back(color[1]);
                 _mesh.colors.push_back(color[2]);
+            }
+        }
+    }
+
+    // vertex position verification pass
+    if (_consolidatePoints) {
+        using namespace OsdUtil;
+
+        std::vector<int> filled(vertices.size());
+        std::vector<vec3f> sharedPositions(vertices.size());
+        std::vector<int> levels(vertices.size());
+        std::map<Edge, std::pair<vec3f, vec3f> > edgePositions;
+
+        for (int i = 0; i < numTotalPatches; ++i) {
+            int cornerQuad[] = { 0, 3, 12, 15 };
+            int parentQuad[] = { 5, 9, 6, 10 };
+
+            int edgeVerts[][2] = { {1, 2}, {4, 8}, {7, 11}, {13, 14} };
+            int edgeParents[][2] = { {5, 9}, {5, 6}, {9, 6}, {6, 10} };
+            for (int j = 0; j < 4; ++j) {
+                float *v = &_mesh.bezierVertices[(i*16 + cornerQuad[j])*3];
+                int parent = cpIndices[i*16+parentQuad[j]];
+                if (parent < 0) continue;
+                parent = vertexParentIDs[parent];
+                //printf("%d/%d  %d: %f %f %f\n", i, cornerQuad[j], parent, v[0], v[1], v[2]);
+                if (filled[parent] == 0) {
+                    filled[parent] = 1;
+                    sharedPositions[parent] = vec3f(v[0], v[1], v[2]);;
+                    levels[parent] = patchParam[i].bitField.GetDepth();
+                } else {
+                    vec3f pos(v[0], v[1], v[2]);
+                    if (pos != sharedPositions[parent]) {
+                        printf("%d/%d ParentID = %d: (level=%d/%d) delta = %g %g %g, (%g, %g, %g)\n",
+                               i, cornerQuad[j], parent,
+                               patchParam[i].bitField.GetDepth(), levels[parent],
+                               sharedPositions[parent][0]-pos[0],
+                               sharedPositions[parent][1]-pos[1],
+                               sharedPositions[parent][2]-pos[2],
+                               pos[0], pos[1], pos[2]);
+                        // update points
+                        v[0] = sharedPositions[parent][0];
+                        v[1] = sharedPositions[parent][1];
+                        v[2] = sharedPositions[parent][2];
+                    }
+                }
+#if 1
+                // for edge verts
+                float *ppe0 = &_mesh.bezierVertices[(i*16 + edgeVerts[j][0]) * 3];
+                float *ppe1 = &_mesh.bezierVertices[(i*16 + edgeVerts[j][1]) * 3];
+                vec3f e0(ppe0);
+                vec3f e1(ppe1);
+                int ep0 = cpIndices[i*16 + edgeParents[j][0]];
+                int ep1 = cpIndices[i*16 + edgeParents[j][1]];
+                ep0 = vertexParentIDs[ep0];
+                ep1 = vertexParentIDs[ep1];
+                Edge edge(ep0, ep1);
+                if (edgePositions.count(edge) == 0) {
+                    if (edge._edges[0] == ep0) {
+                        edgePositions[edge] = std::pair<vec3f, vec3f>(e0, e1);
+                    } else {
+                        edgePositions[edge] = std::pair<vec3f, vec3f>(e1, e0);
+                    }
+                } else {
+                    std::pair<vec3f, vec3f> ref = edgePositions[edge];
+                    vec3f re0 = ref.first;
+                    vec3f re1 = ref.second;
+                    if (edge._edges[0] != ep0) std::swap(re0, re1);
+
+                    if (e0 != re0) {
+                        printf("Edge %d-%d: (level=%d) delta = %g %g %g\n",
+                               ep0, ep1,
+                               patchParam[i].bitField.GetDepth(),
+                               re0[0] - e0[0],
+                               re0[1] - e0[1],
+                               re0[2] - e0[2]);
+                        ppe0[0] = re0[0];
+                        ppe0[1] = re0[1];
+                        ppe0[2] = re0[2];
+                    }
+                    if (e1 != re1) {
+                        printf("Edge %d-%d: (level=%d) delta = %g %g %g\n",
+                               ep0, ep1,
+                               patchParam[i].bitField.GetDepth(),
+                               re1[0] - e1[0],
+                               re1[1] - e1[1],
+                               re1[2] - e1[2]);
+                        ppe1[0] = re1[0];
+                        ppe1[1] = re1[1];
+                        ppe1[2] = re1[2];
+                    }
+                }
+#endif
             }
         }
     }

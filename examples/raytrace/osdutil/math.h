@@ -1,6 +1,8 @@
 #ifndef OSDUTIL_MATH_H
 #define OSDUTIL_MATH_H
 
+#include <cmath>
+
 //#include "../../../opensubdiv/version.h"  // FIXME
 //namespace OpenSubdiv {
 //namespace OPENSUBDIV_VERSION {
@@ -97,12 +99,24 @@ struct vec3t {
         return *this;
     }
 
+    bool operator==(const vec3t<REAL> &s) {
+        return (v[0] == s.v[0] && v[1] == s.v[1] && v[2] == s.v[2]);
+    }
+
+    bool operator !=(const vec3t<REAL> &s) {
+        return !(*this == s);
+    }
+
     Real v[3];
 };
 
 template <typename REAL>
 inline static vec3t<REAL> operator*(REAL f, const vec3t<REAL> &v) {
     return v*f;
+}
+template <typename REAL>
+inline static vec3t<REAL> operator*(int f, const vec3t<REAL> &v) {
+    return v*(REAL)f;
 }
 
 template <typename REAL>
