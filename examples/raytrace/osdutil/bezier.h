@@ -284,6 +284,15 @@ public:
         CropV(patches[0], 0.25, 0.75);
     }
 
+    void Rotate() { // right 90
+        transpose(_cp);
+        for (int i = 0; i < N; ++i) {
+            for (int j = 0; j < N/2; ++j) {
+                std::swap(_cp[i*N+j], _cp[i*N+N-1-j]);
+            }
+        }
+    }
+
 private:
     void bezierSplit(ValueType a[], ValueType b[], const ValueType p[], Real t) const {
         BezierSplit<N, 0, /*stride*/1, ValueType, Real> split(a, b, p, t);

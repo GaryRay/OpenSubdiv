@@ -79,6 +79,11 @@ _add_glfw_executable(raytrace
     $<TARGET_OBJECTS:examples_common_obj>
 )
 
+_add_executable(bezierTest
+        bezier.cpp
+    bezierTest.cpp
+)
+
 target_link_libraries(raytrace
     ${PLATFORM_LIBRARIES}
 )
