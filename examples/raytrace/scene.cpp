@@ -452,7 +452,7 @@ Scene::Render(int width, int height, double fov,
               std::vector<float> &image, // RGB
               const float eye[3],
               const float lookat[3], const float up[3],
-              int step, int stepIndex, int intersectKernel)
+              int step, int stepIndex, int intersectKernel, float uvMargin)
 {
     std::vector<int> xs;
     std::vector<int> ys;
@@ -461,6 +461,7 @@ Scene::Render(int width, int height, double fov,
     std::random_shuffle(ys.begin(), ys.end());
 
     _accel.SetIntersectKernel(intersectKernel);
+    _accel.SetUVMargin(uvMargin);
 
     Camera camera;
 

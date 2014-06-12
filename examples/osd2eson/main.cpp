@@ -186,25 +186,31 @@ int checkMesh( char const * name, xyzmesh * hmesh, int levels, Scheme scheme=kCa
     int numPatches = 0;
     std::vector<float> bezierVertices;
     std::vector<float> bezierBounds;
+    std::vector<int> cpIndices; // 16 * numPatches
     // iterate patch types.
     for (FarPatchTables::PatchArrayVector::const_iterator it = patchArrays.begin();
          it != patchArrays.end(); ++it) {
 
         switch(it->GetDescriptor().GetType()) {
         case FarPatchTables::REGULAR:
-            numPatches += convertRegular(bezierVertices, bezierBounds, &vertices[0], patchTables, *it);
+            numPatches += convertRegular(bezierVertices, bezierBounds,
+                                         cpIndices, &vertices[0], patchTables, *it);
             break;
         case FarPatchTables::BOUNDARY:
-            numPatches += convertBoundary(bezierVertices, bezierBounds, &vertices[0], patchTables, *it);
+            numPatches += convertBoundary(bezierVertices, bezierBounds,
+                                          cpIndices, &vertices[0], patchTables, *it);
             break;
         case FarPatchTables::CORNER:
-            numPatches += convertCorner(bezierVertices, bezierBounds, &vertices[0], patchTables, *it);
+            numPatches += convertCorner(bezierVertices, bezierBounds,
+                                        cpIndices, &vertices[0], patchTables, *it);
             break;
         case FarPatchTables::GREGORY:
-            numPatches += convertGregory(bezierVertices, bezierBounds, &vertices[0], patchTables, *it);
+            numPatches += convertGregory(bezierVertices, bezierBounds,
+                                         cpIndices, &vertices[0], patchTables, *it);
             break;
         case FarPatchTables::GREGORY_BOUNDARY:
-            numPatches += convertBoundaryGregory(bezierVertices, bezierBounds, &vertices[0], patchTables, *it);
+            numPatches += convertBoundaryGregory(bezierVertices, bezierBounds,
+                                                 cpIndices, &vertices[0], patchTables, *it);
             break;
         default:
             break;
