@@ -65,7 +65,7 @@ static T computeT(T a, T b, T c, T d, T iq, T u, T v)
 
 template<typename T, typename V>
 static bool testBilinearPatch(T *t, T *u, T *v,
-                              V const p[4], T tmin, T tmax) {
+                              V const p[4], T tmin, T tmax, float uvMargin) {
     typedef typename V::ElementType Scalar;
 
     V const & p00 = p[0];
@@ -100,17 +100,14 @@ static bool testBilinearPatch(T *t, T *u, T *v,
     //    printf("<%f, %f, %f>\n", F1, F2, F3);
     int nRet = solve2(root,coeff);
 
-    //const Scalar UVDELTA = 0.1;
-    const Scalar UVDELTA = 0.0;
-
     if (nRet) {
         bool bRet = false;
         for (int i = 0; i < nRet; ++i) {
             Scalar vv = root[i];
-            if (0-UVDELTA <= vv && vv <= 1 + UVDELTA) {//TODO
+            if (0 - uvMargin <= vv && vv <= 1 + uvMargin) {//TODO
                 vv = std::max(Scalar(0), std::min(vv,Scalar(1)));
                 Scalar uu = computeU(A1, A2, B1, B2, C1, C2, D1, D2, vv);
-                if (0-UVDELTA  <= uu && uu <= 1 + UVDELTA) {//TODO
+                if (0 - uvMargin  <= uu && uu <= 1 + uvMargin) {//TODO
                     uu = std::max(Scalar(0), std::min(uu,Scalar(1)));
                     Scalar tt = computeT(a[nPlane], b[nPlane], c[nPlane], d[nPlane],
                                          Scalar(1), uu, vv);

@@ -250,6 +250,7 @@ int g_preTess = 0;
 int g_preTessLevel = 1;
 int g_intersectKernel = 1;
 int g_consolidatePoints = 0;
+float g_uvMargin = 0.1f;
 
 int g_animate = 0;
 int g_frame = 0;
@@ -723,7 +724,10 @@ motion(GLFWwindow *, double dx, double dy) {
 motion(int x, int y) {
 #endif
 
-    if (g_mbutton[0] && !g_mbutton[1] && !g_mbutton[2]) {
+    if (g_hud.MouseCapture()) {
+        // check gui (for slider)
+        g_hud.MouseMotion(x, y);
+    } else if (g_mbutton[0] && !g_mbutton[1] && !g_mbutton[2]) {
         // orbit
         g_rotate[0] += x - g_prev_x;
         g_rotate[1] += y - g_prev_y;
@@ -752,6 +756,9 @@ mouse(GLFWwindow *, int button, int state, int mods) {
 #else
 mouse(int button, int state) {
 #endif
+
+    if (state == GLFW_RELEASE)
+        g_hud.MouseRelease();
 
     if (button == 0 && state == GLFW_PRESS && g_hud.MouseClick(g_prev_x, g_prev_y)) {
         display();
@@ -886,6 +893,15 @@ callbackIntersect(int b)
 }
 
 static void
+callbackSlider(float value, int data)
+{
+    if (data == 0) {
+        g_uvMargin = value;
+        startRender();
+    }
+}
+
+static void
 callbackCheckBox(bool checked, int button)
 {
     switch (button) {
@@ -951,6 +967,9 @@ initHUD()
                             g_displayStyle==Scene::AO);
     g_hud.AddPullDownButton(shading_pulldown, "Transparent", Scene::TRANSPARENT,
                             g_displayStyle==Scene::TRANSPARENT);
+
+    g_hud.AddSlider("UV Margin", 0, 0.1, g_uvMargin,
+                    -200, 450, 20, false, callbackSlider, 0);
 
     for (int i = 1; i < 11; ++i) {
         char level[16];
@@ -1033,7 +1052,8 @@ idle() {
 
     g_scene.Render(g_width, g_height, fov,
                    g_image,
-                   g_eye, g_lookat, g_up, g_step, index, g_intersectKernel);
+                   g_eye, g_lookat, g_up, g_step, index,
+                   g_intersectKernel, g_uvMargin);
 
     --g_stepIndex;
 

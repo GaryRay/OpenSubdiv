@@ -55,8 +55,10 @@ public:
         int level;
     };
 
-    OsdUtilBezierPatchIntersection(PatchType const &patch, int maxLevel=DEFAULT_MAX_LEVEL) NO_INLINE :
-        _patch(patch), _maxLevel(maxLevel) {
+    OsdUtilBezierPatchIntersection(PatchType const &patch,
+                                   float uvMargin=0.1f,
+                                   int maxLevel=DEFAULT_MAX_LEVEL) NO_INLINE :
+        _patch(patch), _maxLevel(maxLevel), _uvMargin(uvMargin) {
         _uRange[0] = _vRange[0] = 0;
         _uRange[1] = _vRange[1] = 1;
 
@@ -117,7 +119,7 @@ protected:
         if (0 < min[1] || max[1] < 0) return false;//y
         if (max[2] < zmin || zmax < min[2]) return false;//z
 
-        return testBezierClipU(info, patch, 0, 1, 0, 1, zmin, zmax, 0, _maxLevel, eps);
+        return testBezierClipU(info, patch, 0, 1, 0, 1, zmin, zmax, 0, _maxLevel, eps, _uvMargin);
     }
 
     // ----------------------------------------------------------------------
@@ -384,7 +386,7 @@ protected:
     static bool testBezierClipU(UVT* info, PatchType const & patch,
                                 Real u0, Real u1,
                                 Real v0, Real v1, Real zmin, Real zmax,
-                                int level, int max_level, REAL eps) NO_INLINE {
+                                int level, int max_level, Real eps, Real uvMargin) NO_INLINE {
         PatchType tpatch(patch);
         rotateU(tpatch);
 
@@ -399,7 +401,7 @@ protected:
         //        printf("U: %f, %f\n", min[1], max[1]);
 
         if (isEps(min,max,eps) || isLevel(level,max_level)){
-            return testBezierClipL(info, patch, u0, u1, v0, v1, zmin, zmax, level);
+            return testBezierClipL(info, patch, u0, u1, v0, v1, zmin, zmax, level, uvMargin);
         } else {
             Real tw = 1;
             Real tt0 = 1;
@@ -424,7 +426,8 @@ protected:
                 coarseSort(order, tmp);
                 bool bRet = false;
                 for (int i = 0; i < 2; ++i) {
-                    if (testBezierClipV(info, tmp[order[i]], ut[2*order[i]], ut[2*order[i]+1], v0, v1, zmin, zmax, level+1, max_level, eps)){
+                    if (testBezierClipV(info, tmp[order[i]], ut[2*order[i]], ut[2*order[i]+1],
+                                        v0, v1, zmin, zmax, level+1, max_level, eps, uvMargin)){
                         zmax = info->t;
                         bRet = true;
                     }
@@ -436,7 +439,8 @@ protected:
                 Real ut[] = {lerp(u0,u1,tt0),lerp(u0,u1,tt1)};
                 PatchType tmp;
                 patch.CropU(tmp, tt0, tt1);
-                return testBezierClipV(info, tmp, ut[0], ut[1], v0, v1, zmin, zmax, level+1, max_level, eps);
+                return testBezierClipV(info, tmp, ut[0], ut[1],
+                                       v0, v1, zmin, zmax, level+1, max_level, eps, uvMargin);
             }
         }
         return false;
@@ -444,7 +448,7 @@ protected:
 
     static bool testBezierClipV(UVT *info, PatchType const &patch,
                                 Real u0, Real u1, Real v0, Real v1, Real zmin, Real zmax,
-                                int level, int max_level, Real eps) NO_INLINE {
+                                int level, int max_level, Real eps, Real uvMargin) NO_INLINE {
         PatchType tpatch(patch);
         rotateV(tpatch);
 
@@ -459,7 +463,7 @@ protected:
         //        printf("V: %f, %f\n", min[1], max[1]);
 
         if (isEps(min,max,eps) || isLevel(level,max_level)) {
-            return testBezierClipL(info, patch, u0, u1, v0, v1, zmin, zmax, level);
+            return testBezierClipL(info, patch, u0, u1, v0, v1, zmin, zmax, level, uvMargin);
         } else {
             Real tw = 1;
             Real tt0 = 1;
@@ -485,7 +489,8 @@ protected:
                 bool bRet = false;
                 for (int i = 0; i < 2; ++i) {
                     if (testBezierClipU(info, tmp[order[i]], u0, u1,
-                        vt[2*order[i]], vt[2*order[i]+1], zmin, zmax, level+1, max_level, eps)){
+                                        vt[2*order[i]], vt[2*order[i]+1],
+                                        zmin, zmax, level+1, max_level, eps, uvMargin)){
                         zmax = info->t;
                         bRet = true;
                     }
@@ -497,14 +502,16 @@ protected:
                 Real vt[] = {lerp(v0,v1,tt0),lerp(v0,v1,tt1)};
                 PatchType tmp;
                 patch.CropV(tmp, tt0, tt1);
-                return testBezierClipU(info, tmp, u0, u1, vt[0], vt[1], zmin, zmax, level+1, max_level, eps);
+                return testBezierClipU(info, tmp, u0, u1,
+                                       vt[0], vt[1], zmin, zmax, level+1, max_level, eps, uvMargin);
             }
         }
         return false;
     }
 
     static bool testBezierClipL(UVT* info, PatchType const &patch,
-                                Real u0, Real u1, Real v0, Real v1, Real zmin, Real zmax, int level) NO_INLINE {
+                                Real u0, Real u1, Real v0, Real v1, Real zmin, Real zmax,
+                                int level, float uvMargin) NO_INLINE {
         Real t = Real(0), u = Real(0), v = Real(0);
 #if DIRECT_BILINEAR
         ValueType P[4];
@@ -512,7 +519,7 @@ protected:
         P[1] = patch.Get(N-1, 0);
         P[2] = patch.Get(0, N-1);
         P[3] = patch.Get(N-1, N-1);
-        if (testBilinearPatch(&t, &u, &v, P, zmin, zmax)) {
+        if (testBilinearPatch(&t, &u, &v, P, zmin, zmax, uvMargin)) {
             u = u0*(1-u)+u1*u;
             v = v0*(1-v)+v1*v;
             info->u = u;
@@ -540,7 +547,7 @@ protected:
                 P[1] = patch.Get(i+1,j  );
                 P[2] = patch.Get(i  ,j+1);
                 P[3] = patch.Get(i+1,j+1);
-                if(testBilinearPatch(&t, &u, &v, P, zmin, zmax)){
+                if(testBilinearPatch(&t, &u, &v, P, zmin, zmax, uvMargin)){
 
                     u = lerp(i*du,(i+1)*du,u);
                     v = lerp(j*dv,(j+1)*dv,v);
@@ -598,6 +605,7 @@ protected:
     ValueType _max;
     Real _eps;
     int _maxLevel;
+    float _uvMargin;
 };
 
 }   // end OsdUtil
