@@ -36,19 +36,19 @@ int convertRegular(std::vector<float> &bezierVertices,
 {
     int numPatches = parray.GetNumPatches();
 
-    // convert bspline to bezier
-    const float Q[4][4] = {
-        { 1.f/6.f, 4.f/6.f, 1.f/6.f, 0.f },
-        { 0.f,     4.f/6.f, 2.f/6.f, 0.f },
-        { 0.f,     2.f/6.f, 4.f/6.f, 0.f },
-        { 0.f,     1.f/6.f, 4.f/6.f, 1.f/6.f } };
-
     // regular to bezier
     for (int i = 0; i < numPatches; i++) {
         float min[3] = {FLT_MAX, FLT_MAX, FLT_MAX};
         float max[3] = {-FLT_MAX, -FLT_MAX, -FLT_MAX};
         const unsigned int *verts = &patchTables->GetPatchTable()[parray.GetVertIndex() + i*16];
 #if 0
+        // convert bspline to bezier
+        const float Q[4][4] = {
+            { 1.f/6.f, 4.f/6.f, 1.f/6.f, 0.f },
+            { 0.f,     4.f/6.f, 2.f/6.f, 0.f },
+            { 0.f,     2.f/6.f, 4.f/6.f, 0.f },
+            { 0.f,     1.f/6.f, 4.f/6.f, 1.f/6.f } };
+
         for (int j = 0; j < 4; j++) {
             for (int k = 0; k < 4; k++) {
                 float H[4][3];
@@ -114,8 +114,8 @@ int convertRegular(std::vector<float> &bezierVertices,
         // Watertight evaluation.
         using namespace OsdUtil;
         vec3f P[16];
-        for (int i = 0; i < 16; ++i) {
-            P[i] = vec3f(&vertices[verts[i]*3]);
+        for (int j = 0; j < 16; ++j) {
+            P[j] = vec3f(&vertices[verts[j]*3]);
         }
         vec3f BP[16];
 
@@ -135,19 +135,19 @@ int convertRegular(std::vector<float> &bezierVertices,
         BP[13] = (4*(P[5] + P[7]) + 2*(P[9] + P[11])) + 4*(4*P[6] + 2*P[10]);
         BP[14] = (4*(P[9] + P[11]) + 2*(P[5] + P[7])) + 4*(4*P[10] + 2*P[6]);
         BP[15] =(((P[5] + P[15]) + (P[7] + P[13])) + (4*(P[6]+P[14]) + 4*(P[9]+P[11]))) + 16*P[10];
-        for (int i = 0; i < 16; ++i) {
-            BP[i] = BP[i]*(1.0/36.0);
+        for (int j = 0; j < 16; ++j) {
+            BP[j] = BP[j]*(1.0/36.0);
         }
-        for (int i = 0; i < 16; ++i) {
-            min[0] = std::min(min[0], BP[i][0]);
-            min[1] = std::min(min[1], BP[i][1]);
-            min[2] = std::min(min[2], BP[i][2]);
-            max[0] = std::max(max[0], BP[i][0]);
-            max[1] = std::max(max[1], BP[i][1]);
-            max[2] = std::max(max[2], BP[i][2]);
-            bezierVertices.push_back(BP[i][0]);
-            bezierVertices.push_back(BP[i][1]);
-            bezierVertices.push_back(BP[i][2]);
+        for (int j = 0; j < 16; ++j) {
+            min[0] = std::min(min[0], BP[j][0]);
+            min[1] = std::min(min[1], BP[j][1]);
+            min[2] = std::min(min[2], BP[j][2]);
+            max[0] = std::max(max[0], BP[j][0]);
+            max[1] = std::max(max[1], BP[j][1]);
+            max[2] = std::max(max[2], BP[j][2]);
+            bezierVertices.push_back(BP[j][0]);
+            bezierVertices.push_back(BP[j][1]);
+            bezierVertices.push_back(BP[j][2]);
         }
 #endif
         bezierBounds.push_back(min[0]);
