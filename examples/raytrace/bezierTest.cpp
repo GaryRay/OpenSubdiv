@@ -13,7 +13,7 @@ namespace {
 void
 EvalCubicBSplineFloat(float u, float N[4], float NU[4])
 {
-  float T = u;
+  float T = 1.0f - (1.0f - u); // = u. without this trick, test will fail.
   float S = 1.0f - u;
 
   N[0] = S * S * S;
@@ -36,7 +36,9 @@ bool my_float_eq(float x, float y)
 
 #define my_eq_fassert(x, y) { \
   if (!my_float_eq((x), (y))) { \
-    fprintf(stderr, "assert failed. x = %f(0x%08x), y = %f(0x%08x). line:%d\n", x, *reinterpret_cast<unsigned int *>(&(x)), y, *reinterpret_cast<unsigned int *>(&(y)), __LINE__); \
+    float xx = (x); \
+    float yy = (y); \
+    fprintf(stderr, "assert failed. x = %f(0x%08x), y = %f(0x%08x). line:%d\n", xx, *reinterpret_cast<unsigned int *>(&(xx)), yy, *reinterpret_cast<unsigned int *>(&(yy)), __LINE__); \
     exit(1); \
   } \
 }
@@ -49,33 +51,36 @@ bool my_float_eq(float x, float y)
 }
 
 void
-TestCubic()
+TestEvalCubic()
 {
   // 0.0 ~ 1.0. sign = 0
-  for (int e = 125; e < 126; e++) { // exponential
-    printf("e = %d\n", e);
-    for (int m = 0; m < 83886082; m++) { // mantissa: 8388608 = 2**23
-      unsigned int ui = (e << 23) + m;
-      float f = (*reinterpret_cast<float *>(&ui));
-      printf("f = %f, %d\n", f, f <= 1.0f);
-      my_bool_assert(f <= 1.0f);
-      my_bool_assert(f >= 0.0f);
+  // brute force testing.
+  for (unsigned int e = 0u; e < 126u; ++e) {
+    printf("e = %u / %u\n", e, 125u);
+    for (unsigned int m = 0u; m < (1u << 23u); ++m) {
+      unsigned int uint_a = (e << 23u) + m;
+      float a = *reinterpret_cast<float *>(&uint_a);
+      float one_minus_a = 1.0f - a;
+      //float one_minus_one_minus_a = 1.0f - one_minus_a;
+
+      if (!(a <= 1.0f)) {printf("err %f\n", a); exit(-1);}
+      if (!(a >= 0.0f)) {printf("err %f\n", a); exit(-1);}
 
       float N0[4], N1[4];
       float NU0[4], NU1[4];
-      EvalCubicBSplineFloat(f, N0, NU0);
-      EvalCubicBSplineFloat(1.0f - f, N1, NU1);
 
-      //printf("%f, %f\n", N0[0], N1[3]);
+      EvalCubicBSplineFloat(a, N0, NU0);
+      EvalCubicBSplineFloat(one_minus_a, N1, NU1);
+
       my_eq_fassert(N0[0], N1[3]);
       my_eq_fassert(N0[1], N1[2]);
       my_eq_fassert(N0[2], N1[1]);
       my_eq_fassert(N0[3], N1[0]);
 
-      //my_eq_fassert(NU0[0], NU1[3]);
-      //my_eq_fassert(NU0[1], NU1[2]);
-      //my_eq_fassert(NU0[2], NU1[1]);
-      //my_eq_fassert(NU0[3], NU1[0]);
+      my_eq_fassert(NU0[0], -NU1[3]);
+      my_eq_fassert(NU0[1], -NU1[2]);
+      my_eq_fassert(NU0[2], -NU1[1]);
+      my_eq_fassert(NU0[3], -NU1[0]);
     }
   }
 }
@@ -285,6 +290,6 @@ int main()
     //    evalTest<OsdUtil::OsdUtilBezierPatch<OsdUtil::vec3d, double>, OsdUtil::vec3d>();
 
     // May take time
-    // todo
-    //TestCubic();
+    printf("eval cubic\n");
+    TestEvalCubic();
 }
