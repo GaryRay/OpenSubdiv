@@ -11,7 +11,7 @@
 //namespace OpenSubdiv {
 //namespace OPENSUBDIV_VERSION {
 
-#define DIRECT_BILINEAR 1
+#define DIRECT_BILINEAR 0
 #define USE_BEZIERCLIP 1
 #define USE_COARSESORT 1
 
@@ -26,12 +26,10 @@ namespace OsdUtil {
 template <typename REAL>
 struct Epsilon {
     static const REAL EPS = 1e-4;
-    static const REAL EPS2 = FLT_MIN;
 };
 template <>
 struct Epsilon<double> {
     static const double EPS = 1e-16;    // revisit
-    static const double EPS2 = 1e-37;
 };
 
 template<class VALUE_TYPE, class REAL, int N=4>
@@ -43,7 +41,6 @@ public:
     typedef OsdUtilBezierPatch<ValueType, Real, N> PatchType;
 
     static const REAL EPS = Epsilon<Real>::EPS;
-    static const REAL EPS2 = Epsilon<Real>::EPS2;
     static const REAL UVEPS = 1.0/32.0;
     static const int  DEFAULT_MAX_LEVEL = 10;
 
@@ -113,7 +110,7 @@ protected:
     }
     bool testBezierPatch(UVT* info, PatchType const & patch, Real zmin, Real zmax, Real eps) const {
         ValueType min, max;
-        patch.GetMinMax(min, max, EPS*1e-3);
+        patch.GetMinMax(min, max, eps*1e-3);
 
         if (0 < min[0] || max[0] < 0) return false;//x
         if (0 < min[1] || max[1] < 0) return false;//y
@@ -138,22 +135,15 @@ protected:
     }
 
     static bool isEps(ValueType const & min, ValueType const & max, Real eps) {
-        //float zw = max[2]-min[2];
-        //if(zw<=eps)return true;
-        //REAL xd = std::max<REAL>(fabs(min[0]),max[0]);
-        //REAL yd = std::max<REAL>(fabs(min[1]),max[1]);
-        //if(!(xd<=eps&&yd<=eps))return false;
-
-        REAL xw = max[0]-min[0];
-        REAL yw = max[1]-min[1];
-        //
-        if(xw<=eps && yw<=eps)return true;
-        else return false;
+        return ((max[1]-min[1])<=eps);
+        //REAL xw = max[0]-min[0];
+        //REAL yw = max[1]-min[1];
+        //if(xw<=eps && yw<=eps)return true;
+        //else return false;
     }
 
     static bool isLevel(int level, int max_level) {
         return (level>=max_level);
-        //return false;
     }
 
     static bool isClip(int level) {
@@ -391,23 +381,20 @@ protected:
         rotateU(tpatch);
 
         ValueType min, max;
-        tpatch.GetMinMax(min, max, EPS*1e-3);
+        tpatch.GetMinMax(min, max, eps*1e-3);
         if (0 < min[0] || max[0] < 0) return false;//x
         if (0 < min[1] || max[1] < 0) return false;//y
         if (max[2] < zmin || zmax < min[2]) return false;//z
-        //if(max[0]-min[0]<=EPS2)return false;
-        //if (max[1]-min[1] <= EPS2) return false;
-
-        //        printf("U: %f, %f\n", min[1], max[1]);
-
-        if (isEps(min,max,eps) || isLevel(level,max_level)){
+        
+        bool bClip = isClip(level);
+        if (bClip && (isEps(min,max,eps) || isLevel(level,max_level))){
             return testBezierClipL(info, patch, u0, u1, v0, v1, zmin, zmax, level, uvMargin);
         } else {
             Real tw = 1;
             Real tt0 = 1;
             Real tt1 = 0;
 #if USE_BEZIERCLIP
-            if (isClip(level)) {
+            if (bClip) {
                 Real rng[2];
                 if (getRangeU(rng, tpatch)) {
                     tt0 = rng[0];
@@ -453,23 +440,20 @@ protected:
         rotateV(tpatch);
 
         ValueType min, max;
-        tpatch.GetMinMax(min, max, EPS*1e-3);
+        tpatch.GetMinMax(min, max, eps*1e-3);
         if (0 < min[0] || max[0] < 0) return false;//x
         if (0 < min[1] || max[1] < 0) return false;//y
         if (max[2] < zmin || zmax < min[2])return false;//z
-        //if(max[0]-min[0]<=EPS2)return false;
-        //if (max[1] - min[1] <= EPS2)return false;
 
-        //        printf("V: %f, %f\n", min[1], max[1]);
-
-        if (isEps(min,max,eps) || isLevel(level,max_level)) {
+        bool bClip = isClip(level);
+        if (bClip && (isEps(min,max,eps) || isLevel(level,max_level))) {
             return testBezierClipL(info, patch, u0, u1, v0, v1, zmin, zmax, level, uvMargin);
         } else {
             Real tw = 1;
             Real tt0 = 1;
             Real tt1 = 0;
 #if USE_BEZIERCLIP
-            if (isClip(level)) {
+            if (bClip) {
                 Real rng[2];
                 if (getRangeV(rng, tpatch)) {
                     tt0 = rng[0];
