@@ -26,10 +26,12 @@ namespace OsdUtil {
 template <typename REAL>
 struct Epsilon {
     static const REAL EPS = 1e-4;
+    static const REAL UVEPS = 1.0/32.0;
 };
 template <>
 struct Epsilon<double> {
-    static const double EPS = 1e-16;    // revisit
+    static const double EPS = 1e-4;    // Emprically it seems work(@syoyo). At least 1e-6 or smaller cause some crack. 2014/06/15. revisit
+    static const double UVEPS = 1.0/32.0;
 };
 
 template<class VALUE_TYPE, class REAL, int N=4>
@@ -41,7 +43,7 @@ public:
     typedef OsdUtilBezierPatch<ValueType, Real, N> PatchType;
 
     static const REAL EPS = Epsilon<Real>::EPS;
-    static const REAL UVEPS = 1.0/32.0;
+    static const REAL UVEPS = Epsilon<Real>::UVEPS;
     static const int  DEFAULT_MAX_LEVEL = 10;
 
     struct RangeAABB {

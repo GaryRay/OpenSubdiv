@@ -424,7 +424,10 @@ public:
                 if (hit) {
                     _scene->Shade(rgba, isect, ray);
                 } else {
-                    rgba[0] = rgba[1] = rgba[2] = 0.1f;
+                    // Maya like gradation. Maybe helpful to check crack visually.
+                    rgba[0] = 0.1f; 
+                    rgba[1] = 0.1f;
+                    rgba[2] = 0.4f * ((_width - x - 1)/(double)_width);
                     rgba[3] = 1.0f;
                 }
                 d[0] = rgba[0];
@@ -454,12 +457,6 @@ Scene::Render(int width, int height, double fov,
               const float lookat[3], const float up[3],
               int step, int stepIndex, int intersectKernel, float uvMargin)
 {
-    std::vector<int> xs;
-    std::vector<int> ys;
-    std::srand(unsigned(std::time(0)));
-    std::random_shuffle(xs.begin(), xs.end());
-    std::random_shuffle(ys.begin(), ys.end());
-
     _accel.SetIntersectKernel(intersectKernel);
     _accel.SetUVMargin(uvMargin);
 
@@ -498,7 +495,10 @@ Scene::Render(int width, int height, double fov,
             if (hit) {
                 Shade(rgba, isect, ray);
             } else {
-                rgba[0] = rgba[1] = rgba[2] = 0.1f;
+                // Maya like gradation. Maybe helpful to check crack visually.
+                rgba[0] = 0.1f; 
+                rgba[1] = 0.1f;
+                rgba[2] = 0.4f * ((height - y - 1)/(double)height);
                 rgba[3] = 1.0f;
             }
             image[4 * (y * width + x) + 0] = rgba[0];
