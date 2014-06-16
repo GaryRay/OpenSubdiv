@@ -78,8 +78,10 @@ struct BezierSplit {
         a[I*STRIDE] = p[0];
         b[tn*STRIDE] = p[tn*STRIDE];
         ValueType tmp[(N-1)*STRIDE];
+        Real s = 1-t;
+        t = 1-s;
         for (int j = 0; j < tn; j++) {
-            tmp[j*STRIDE] = (1-t)*p[j*STRIDE] + t*p[(j+1)*STRIDE];//p[j] + t*(p[j+1] - p[j])
+            tmp[j*STRIDE] = s*p[j*STRIDE] + t*p[(j+1)*STRIDE];//p[j] + t*(p[j+1] - p[j])
         }
         BezierSplit<N, I+1, STRIDE, VALUE_TYPE, REAL>(a, b, &tmp[0], t);
     }
@@ -121,6 +123,8 @@ struct BezierCrop<4, STRIDE, VALUE_TYPE, REAL> {
         //
         Real T = 1-s;
         Real S = 1-t;
+        s = 1 - T;
+        t = 1 - S;
         r[0*STRIDE] = (p0*(T*T)*T + p3*(s*s)*s) + (p1*(s*T)*(3*T)       + p2*(s*s)*(3*T));
         r[1*STRIDE] = (p0*(T*T)*S + p3*(s*s)*t) + (p1*T*(2*(S*s) + T*t) + p2*s*(2*(t*T) + (s*S)));
         r[2*STRIDE] = (p3*(t*t)*s + p0*(S*S)*T) + (p2*t*(2*(s*S) + t*T) + p1*S*(2*(T*t) + (S*s)));

@@ -168,11 +168,11 @@ static void comparePatch(PATCH const &patch0, PATCH const &patch1)
 }
 
 template <typename PATCH, typename VEC, typename REAL>
-static void rotateTest(int seed=0)
+static void cropTest(int seed=0)
 {
     typedef PATCH Patch;
 
-    printf("Rotate Test\n");
+    printf("Crop Test\n");
     srand(seed);
 
     VEC cp[16];
@@ -216,7 +216,66 @@ static void rotateTest(int seed=0)
 
         comparePatch(result0, result1);
     }
-    printf("Rotate Test end\n");
+    printf("Crop Test end\n");
+}
+
+template <typename PATCH, typename VEC, typename REAL>
+static void splitTest(int seed=0)
+{
+    typedef PATCH Patch;
+
+    printf("Split Test\n");
+    srand(seed);
+
+    VEC cp[16];
+    for (int i = 0; i < 16; ++i) {
+        double x = std::rand()/double(RAND_MAX);
+        double y = std::rand()/double(RAND_MAX);
+        double z = std::rand()/double(RAND_MAX);
+        cp[i] = VEC(x, y, z);
+    }
+
+    for (int rotate = 1; rotate < 4; ++rotate) {
+        Patch patch0(cp);
+        Patch patch1(cp);
+
+        for (int i = 0; i < rotate; ++i) {
+            // rotate 90, 180, 270
+            patch1.Rotate();
+        }
+        printf("Rotate = %d\n", rotate);
+        // dump(patch0);
+        // dump(patch1);
+
+        Patch result0[2], result1[2];
+        REAL split = 0.3;
+
+        patch0.SplitU(result0, split);
+        if (rotate == 1) {
+            patch1.SplitV(result1, split);
+        } else if (rotate == 2) {
+            patch1.SplitU(result1, 1-split);
+        } else {
+            patch1.SplitV(result1, 1-split);
+        }
+
+        for (int i = 0; i < 4-rotate; ++i) {
+            // rotate 270, 180, 90
+            result1[0].Rotate();
+            result1[1].Rotate();
+        }
+        if (rotate >= 2) {
+            std::swap(result1[0], result1[1]);
+        }
+        // dump(result0[0]);
+        // dump(result0[1]);
+        // dump(result1[0]);
+        // dump(result1[1]);
+
+        comparePatch(result0[0], result1[0]);
+        comparePatch(result0[1], result1[1]);
+    }
+    printf("Split Test end\n");
 }
 
 template <typename PATCH, typename VEC>
@@ -272,21 +331,24 @@ static void evalTest(int seed = 0)
 
 int main()
 {
-    printf("original\n");
-    rotateTest<MallieBezierPatch, mallie::vector3, float>();
+    //printf("original\n");
+    //cropTest<MallieBezierPatch, mallie::vector3, float>();
     //    evalTest<MallieBezierPatch, mallie::vector3>();
 
     printf("osd float\n");
-    rotateTest<OsdUtil::OsdUtilBezierPatch<OsdUtil::vec3f, float>, OsdUtil::vec3f, float>();
+    cropTest<OsdUtil::OsdUtilBezierPatch<OsdUtil::vec3f, float>, OsdUtil::vec3f, float>();
+    splitTest<OsdUtil::OsdUtilBezierPatch<OsdUtil::vec3f, float>, OsdUtil::vec3f, float>();
     //    evalTest<OsdUtil::OsdUtilBezierPatch<OsdUtil::vec3f, float>, OsdUtil::vec3f>();
 
     printf("osd sse\n");
-    rotateTest<OsdUtil::OsdUtilBezierPatch<OsdUtil::vec3f, float>, OsdUtil::vec3f, float>();
+    cropTest<OsdUtil::OsdUtilBezierPatch<OsdUtil::vec3f, float>, OsdUtil::vec3f, float>();
+    splitTest<OsdUtil::OsdUtilBezierPatch<OsdUtil::vec3f, float>, OsdUtil::vec3f, float>();
     //rotateTest<OsdUtil::OsdUtilBezierPatch<OsdUtil::vec3sse, float>, OsdUtil::vec3sse>();
     //    evalTest<OsdUtil::OsdUtilBezierPatch<OsdUtil::vec3sse, float>, OsdUtil::vec3sse>();
 
     printf("osd double\n");
-    rotateTest<OsdUtil::OsdUtilBezierPatch<OsdUtil::vec3d, double>, OsdUtil::vec3d, double>();
+    cropTest<OsdUtil::OsdUtilBezierPatch<OsdUtil::vec3d, double>, OsdUtil::vec3d, double>();
+    splitTest<OsdUtil::OsdUtilBezierPatch<OsdUtil::vec3d, double>, OsdUtil::vec3d, double>();
     //    evalTest<OsdUtil::OsdUtilBezierPatch<OsdUtil::vec3d, double>, OsdUtil::vec3d>();
 
     // May take time
