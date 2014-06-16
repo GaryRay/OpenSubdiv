@@ -1,3 +1,4 @@
+#define NEED_HBR_FACE_INDEX
 #include "scene.h"
 #include "convert_bezier.h"
 #include "camera.h"
@@ -23,19 +24,100 @@
 #include "osdutil/bezierIntersect.h"
 #include "osdutil/math.h"
 
-    struct Edge {
-        Edge(int a, int b) {
-            if (a > b) std::swap(a, b);
-            _edges[0] = a;
-            _edges[1] = b;
-        }
-        bool operator < (Edge const &other) const {
-            return (_edges[0] < other._edges[0] ||
-                    (_edges[0] == other._edges[0] && _edges[1]  < other._edges[1]));
-        }
-        int _edges[2];
-    };
+#define VERBOSE(x, ...)
+//#define VERBOSE(x, ...) printf(x, __VA_ARGS__)
 
+struct Edge {
+    Edge(int a, int b) {
+        if (a > b) std::swap(a, b);
+        _edges[0] = a;
+        _edges[1] = b;
+    }
+    bool operator < (Edge const &other) const {
+        return (_edges[0] < other._edges[0] ||
+                (_edges[0] == other._edges[0] && _edges[1]  < other._edges[1]));
+    }
+    int _edges[2];
+};
+
+struct Bezier {
+    Bezier() {}
+    Bezier(OsdUtil::vec3f p[4]) {
+        cp[0] = p[0];
+        cp[1] = p[1];
+        cp[2] = p[2];
+        cp[3] = p[3];
+    }
+    Bezier(OsdUtil::vec3f const &p0, OsdUtil::vec3f const &p1,
+           OsdUtil::vec3f const &p2, OsdUtil::vec3f const &p3) {
+        cp[0] = p0;
+        cp[1] = p1;
+        cp[2] = p2;
+        cp[3] = p3;
+    }
+    void Reverse() {
+        std::swap(cp[0], cp[3]);
+        std::swap(cp[1], cp[2]);
+    }
+    OsdUtil::vec3f cp[4];
+};
+
+static float diffBezier(const Bezier &a, const Bezier &b)
+{
+    return (a.cp[0]-b.cp[0]).length()
+        + (a.cp[1]-b.cp[1]).length()
+        + (a.cp[2]-b.cp[2]).length()
+        + (a.cp[3]-b.cp[3]).length();
+}
+
+// brute-force matching
+static bool consolidateBezier(const Bezier &r0, const Bezier &r1, float *v)
+{
+    using namespace OsdUtil;
+
+    int edgeVerts[][4] = { {0, 4, 8, 12},
+                           {12, 13, 14, 15},
+                           {15, 11, 7, 3},
+                           {3, 2, 1, 0} };
+
+    Bezier testBezier[4];
+    testBezier[0] = r0;
+    testBezier[1] = r1;
+    testBezier[2] = r0;
+    testBezier[3] = r1;
+    testBezier[2].Reverse();
+    testBezier[3].Reverse();
+
+    float dmin = 1.0f;
+    int imin = -1, jmin = -1;
+    for (int i = 0; i < 4; ++i) {
+        Bezier bezier(vec3f(v + edgeVerts[i][0]*3),
+                      vec3f(v + edgeVerts[i][1]*3),
+                      vec3f(v + edgeVerts[i][2]*3),
+                      vec3f(v + edgeVerts[i][3]*3));
+
+        for (int j = 0; j < 4; ++j) {
+            float d = diffBezier(testBezier[j], bezier);
+            if (d < dmin) {
+                dmin = d;
+                imin = i;
+                jmin = j;
+            }
+        }
+    }
+
+    if (dmin < 0.00001f && imin >=0 && jmin >= 0) {
+//        VERBOSE("DMIN = %.10f\n", dmin);
+        for (int k = 0; k < 4; ++k) {
+            for (int l = 0; l < 3; ++l) {
+                v[edgeVerts[imin][k]*3+l] = testBezier[jmin].cp[k][l];
+            }
+        }
+        return true;
+    } else {
+        return false;
+    }
+}
 
 static float const *getAdaptivePatchColor(OpenSubdiv::FarPatchTables::Descriptor const & desc)
 {
@@ -72,7 +154,7 @@ static float const *getAdaptivePatchColor(OpenSubdiv::FarPatchTables::Descriptor
     }
 }
 
-Scene::Scene() : _vbo(0), _consolidatePoints(false)
+Scene::Scene() : _vbo(0), _watertight(false)
 {
 #ifdef OPENSUBDIV_HAS_TBB
     static tbb::task_scheduler_init init;
@@ -87,7 +169,8 @@ Scene::~Scene()
 void
 Scene::BezierConvert(float *inVertices, int numVertices,
                      OpenSubdiv::FarPatchTables const *patchTables,
-                     std::vector<int> const &vertexParentIDs)
+                     std::vector<int> const &farToHbr,
+                     OsdHbrMesh *hbrMesh)
 {
     using namespace OpenSubdiv;
 
@@ -119,6 +202,7 @@ Scene::BezierConvert(float *inVertices, int numVertices,
 #if 1
             vertices.push_back((v[0]-center[0])/radius);
             vertices.push_back((v[1]-center[1])/radius);
+            //vertices.push_back(0);
             vertices.push_back((v[2]-center[2])/radius);
 #else
             vertices.push_back(v[0]);
@@ -140,6 +224,8 @@ Scene::BezierConvert(float *inVertices, int numVertices,
 
         int numPatches = 0;
         FarPatchTables::Descriptor desc = it->GetDescriptor();
+        VERBOSE("TransitionType = %d\n", desc.GetPattern());
+
         switch(desc.GetType()) {
         case FarPatchTables::REGULAR:
             numPatches = convertRegular(_mesh.bezierVertices,
@@ -186,27 +272,45 @@ Scene::BezierConvert(float *inVertices, int numVertices,
         }
     }
 
+    // for (int i = 0; i < hbrMesh->GetNumFaces(); ++i) {
+    //     OsdHbrFace *f = hbrMesh->GetFace(i);
+    //     bool out = ((f->isTransitionPatch() or f->_adaptiveFlags.patchType!=OsdHbrFace::kEnd) and
+    //                 (not f->_adaptiveFlags.isExtraordinary) and
+    //                 (f->_adaptiveFlags.bverts!=1));
+    //     VERBOSE("Patch %d out=%x\n", i, out);
+    // }
+
+
     // vertex position verification pass
-    if (_consolidatePoints) {
+    if (_watertight) {
         using namespace OsdUtil;
 
         std::vector<int> filled(vertices.size());
         std::vector<vec3f> sharedPositions(vertices.size());
         std::vector<int> levels(vertices.size());
-        std::map<Edge, std::pair<vec3f, vec3f> > edgePositions;
+        std::map<Edge, Bezier > edgeBeziers;
 
         for (int i = 0; i < numTotalPatches; ++i) {
+            int hbrFace = patchParam[i].hbrFaceIndex;
+            OsdHbrFace *face = hbrMesh->GetFace(hbrFace);
+            VERBOSE("\n============ patch %d (HBR : %d)==============\n", i, face->GetID());
             int cornerQuad[] = { 0, 3, 12, 15 };
-            int parentQuad[] = { 5, 9, 6, 10 };
+            int parentQuad[] = { 0, 2, 1, 3 };
 
-            int edgeVerts[][2] = { {1, 2}, {4, 8}, {7, 11}, {13, 14} };
-            int edgeParents[][2] = { {5, 9}, {5, 6}, {9, 6}, {6, 10} };
+            int edgeVerts[][4] = { {0, 1, 2, 3}, {0, 4, 8, 12}, {3, 7, 11, 15}, {12, 13, 14, 15} };
+//            int edgeVerts[][4] = { {0, 4, 8, 12},{12, 13, 14, 15}, {15, 11, 7, 3}, {3, 2, 1, 0} };
+
+            int edgeParents[][2] = { {0, 2}, {0, 1}, {2, 3}, {1, 3} };
             for (int j = 0; j < 4; ++j) {
                 float *v = &_mesh.bezierVertices[(i*16 + cornerQuad[j])*3];
-                int parent = cpIndices[i*16+parentQuad[j]];
+                int parent = cpIndices[i*4+parentQuad[j]];
                 if (parent < 0) continue;
-                parent = vertexParentIDs[parent];
-                //printf("%d/%d  %d: %f %f %f\n", i, cornerQuad[j], parent, v[0], v[1], v[2]);
+                // parent mapping
+                // parent = vertexParentIDs[parent];
+                parent = farToHbr[parent];
+                //VERBOSE("%d/%d  %d: %f %f %f\n", i, cornerQuad[j], parent, v[0], v[1], v[2]);
+#if 0
+                VERBOSE("%d\n", parent);
                 if (filled[parent] == 0) {
                     filled[parent] = 1;
                     sharedPositions[parent] = vec3f(v[0], v[1], v[2]);;
@@ -214,7 +318,7 @@ Scene::BezierConvert(float *inVertices, int numVertices,
                 } else {
                     vec3f pos(v[0], v[1], v[2]);
                     if (pos != sharedPositions[parent]) {
-                        printf("%d/%d ParentID = %d: (level=%d/%d) delta = %g %g %g, (%g, %g, %g)\n",
+                        VERBOSE("%d/%d ParentID = %d: (level=%d/%d) delta = %g %g %g, (%g, %g, %g)\n",
                                i, cornerQuad[j], parent,
                                patchParam[i].bitField.GetDepth(), levels[parent],
                                sharedPositions[parent][0]-pos[0],
@@ -227,31 +331,39 @@ Scene::BezierConvert(float *inVertices, int numVertices,
                         v[2] = sharedPositions[parent][2];
                     }
                 }
-#if 1
+#endif
+
                 // for edge verts
-                float *ppe0 = &_mesh.bezierVertices[(i*16 + edgeVerts[j][0]) * 3];
-                float *ppe1 = &_mesh.bezierVertices[(i*16 + edgeVerts[j][1]) * 3];
-                vec3f e0(ppe0);
-                vec3f e1(ppe1);
-                int ep0 = cpIndices[i*16 + edgeParents[j][0]];
-                int ep1 = cpIndices[i*16 + edgeParents[j][1]];
-                ep0 = vertexParentIDs[ep0];
-                ep1 = vertexParentIDs[ep1];
+                vec3f e0(&_mesh.bezierVertices[(i*16 + edgeVerts[j][0]) * 3]);
+                vec3f e1(&_mesh.bezierVertices[(i*16 + edgeVerts[j][1]) * 3]);
+                vec3f e2(&_mesh.bezierVertices[(i*16 + edgeVerts[j][2]) * 3]);
+                vec3f e3(&_mesh.bezierVertices[(i*16 + edgeVerts[j][3]) * 3]);
+
+                int ep0 = cpIndices[i*4 + edgeParents[j][0]];
+                int ep1 = cpIndices[i*4 + edgeParents[j][1]];
+                //ep0 = vertexParentIDs[ep0];
+                //ep1 = vertexParentIDs[ep1];
+                ep0 = farToHbr[ep0];
+                ep1 = farToHbr[ep1];
                 Edge edge(ep0, ep1);
-                if (edgePositions.count(edge) == 0) {
+                VERBOSE("(%d, %d) (%f, %f, %f)-(%f, %f, %f)\n", ep0, ep1,
+                       e0[0], e0[1], e0[2],
+                       e3[0], e3[1], e3[2]);
+                if (edgeBeziers.count(edge) == 0) {
                     if (edge._edges[0] == ep0) {
-                        edgePositions[edge] = std::pair<vec3f, vec3f>(e0, e1);
+                        edgeBeziers[edge] = Bezier(e0, e1, e2, e3);
                     } else {
-                        edgePositions[edge] = std::pair<vec3f, vec3f>(e1, e0);
+                        edgeBeziers[edge] = Bezier(e3, e2, e1, e0);
                     }
                 } else {
+#if 0
                     std::pair<vec3f, vec3f> ref = edgePositions[edge];
                     vec3f re0 = ref.first;
                     vec3f re1 = ref.second;
                     if (edge._edges[0] != ep0) std::swap(re0, re1);
 
                     if (e0 != re0) {
-                        printf("Edge %d-%d: (level=%d) delta = %g %g %g\n",
+                        VERBOSE("Edge %d-%d: (level=%d) delta = %g %g %g\n",
                                ep0, ep1,
                                patchParam[i].bitField.GetDepth(),
                                re0[0] - e0[0],
@@ -262,7 +374,7 @@ Scene::BezierConvert(float *inVertices, int numVertices,
                         ppe0[2] = re0[2];
                     }
                     if (e1 != re1) {
-                        printf("Edge %d-%d: (level=%d) delta = %g %g %g\n",
+                        VERBOSE("Edge %d-%d: (level=%d) delta = %g %g %g\n",
                                ep0, ep1,
                                patchParam[i].bitField.GetDepth(),
                                re1[0] - e1[0],
@@ -272,11 +384,114 @@ Scene::BezierConvert(float *inVertices, int numVertices,
                         ppe1[1] = re1[1];
                         ppe1[2] = re1[2];
                     }
-                }
 #endif
+                }
+            }
+        }
+
+        // different level subdivision
+        // water-tight critical
+        for (int i = 0; i < numTotalPatches; ++i) {
+            int hbrFace = patchParam[i].hbrFaceIndex;
+            OsdHbrFace *face = hbrMesh->GetFace(hbrFace);
+
+            if (not face->_adaptiveFlags.isCritical) continue;
+
+            VERBOSE("Critical patch %d, %d----\n", i, hbrFace);
+
+            OsdHbrFace *parentFace = face->GetParent();
+
+            if (not parentFace) continue;
+
+            if (parentFace->GetNumVertices() != 4) {
+                VERBOSE("non-quad parent %d\n", parentFace->GetID());
+                continue;
+            }
+            // printf("parent face = <%d, lv=%d>, extraordinary = %d ", parentFace->GetID(), parentFace->GetDepth(), parentFace->_adaptiveFlags.isExtraordinary);
+            // for (int j = 0; j < 4; ++j) {
+            //     printf("%d, ", parentFace->GetVertex(j)->GetID());
+            // }
+            // printf("\n");
+
+            int childIndex = -1;
+            bool watertightEdges[4] = { false, false, false, false };
+            for (int j = 0; j < 4; ++j) {
+                OsdHbrHalfedge *edge = parentFace->GetEdge(j)->GetOpposite();
+                if (edge) {
+                    OsdHbrFace *f = edge->GetFace();
+                    
+                    bool out = ((f->isTransitionPatch() or f->_adaptiveFlags.patchType!=OsdHbrFace::kEnd) and
+                                (not f->_adaptiveFlags.isExtraordinary) and
+                                (f->_adaptiveFlags.bverts!=1));
+
+                    watertightEdges[j] = out;
+                    VERBOSE("[%d: face=%d end=%d] ", j, f->GetID(), out);
+                }
+                if(parentFace->GetChild(j) == face) childIndex = j;
+            }
+            VERBOSE(" CHILD=%d, rot=%d\n", childIndex, face->_adaptiveFlags.rots);
+
+            if (childIndex == -1) continue;
+
+            // for (int j = 0; j < 4; ++j) {
+            //     int edgeParents[][2] = { {0, 2}, {0, 1}, {2, 3}, {1, 3} };
+            //     int ep0 = cpIndices[i*4 + edgeParents[j][0]];
+            //     int ep1 = cpIndices[i*4 + edgeParents[j][1]];
+            //     ep0 = farToHbr[ep0];
+            //     ep1 = farToHbr[ep1];
+            //     VERBOSE("Edge %d-%d\n", ep0, ep1);
+            // }
+
+            // childindex 0 -> edge 3, 0
+            // childindex 1 -> edge 0, 1
+            // childindex 2 -> edge 1, 2
+            // childindex 3 -> edge 2, 3
+            // for each edge
+            int edgeScan[4][2] = { {3, 0}, {0, 1}, {1, 2}, {2, 3} };
+            for (int j = 0; j < 2; ++j) {
+                int edge = edgeScan[childIndex][j];
+                if (not watertightEdges[edge]) continue;
+
+                // at this point, we know the parent edge is T-node
+
+                OsdHbrHalfedge *ed = parentFace->GetEdge(edge);
+
+                // pick two vertices of the parent face
+                OsdHbrVertex *v0 = ed->GetVertex();//parentFace->GetVertex(edge);
+                OsdHbrVertex *v1 = ed->GetNext()->GetVertex(); //parentFace->GetVertex((edge+1)%4);
+
+                Edge e(v0->GetID(), v1->GetID());
+                VERBOSE( " search %d-%d edge, face %d \n", v0->GetID(), v1->GetID(),
+                         parentFace->GetEdge(edge)->GetOpposite()->GetFace()->GetID());
+
+                if (edgeBeziers.count(e) != 0) {
+                    Bezier parentEdge = edgeBeziers[e];  // todo, lookup
+                    if (e._edges[0] != v0->GetID()) {
+                        parentEdge.Reverse();
+                    }
+
+                    // find corresponding edge at patch[i]
+                    // cut original bezier
+                    vec3f tmp[2][4];
+                    OsdUtil::BezierSplit<4, 0, /*stride*/1, vec3f, float> split(
+                        tmp[0], tmp[1], edgeBeziers[e].cp, 0.5);
+
+                    VERBOSE("[[%f %f %f - ", tmp[0][0][0], tmp[0][0][1], tmp[0][0][2]);
+                    VERBOSE("%f %f %f - ", tmp[1][0][0], tmp[1][0][1], tmp[1][0][2]);
+                    VERBOSE("%f %f %f]]\n", tmp[1][3][0], tmp[1][3][1], tmp[1][3][2]);
+
+                    if (consolidateBezier(Bezier(tmp[0]), Bezier(tmp[1]),
+                                          &_mesh.bezierVertices[(i*16*3)]) == false) {
+                        printf("Matching error. face = %d, hbr face=%d\n", i, face->GetID());
+                    }
+                } else {
+                    printf("Topology error --- Not found hbr verts in edge dict%d,%d\n",
+                           v0->GetID(), v1->GetID());
+                }
             }
         }
     }
+
 
     _mesh.numTriangles = 0;
     _mesh.numBezierPatches = numTotalPatches;

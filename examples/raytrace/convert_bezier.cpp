@@ -157,11 +157,11 @@ int convertRegular(std::vector<float> &bezierVertices,
         bezierBounds.push_back(max[1]);
         bezierBounds.push_back(max[2]);
 
-        // save cp indices
-        for (int j = 0; j < 16; ++j) {
-            int vert = patchTables->GetPatchTable()[parray.GetVertIndex() + i*16 + j];
-            cpIndices.push_back(vert);
-        }
+        // save center quad indices
+        cpIndices.push_back(patchTables->GetPatchTable()[parray.GetVertIndex() + i*16 + 5]);
+        cpIndices.push_back(patchTables->GetPatchTable()[parray.GetVertIndex() + i*16 + 6]);
+        cpIndices.push_back(patchTables->GetPatchTable()[parray.GetVertIndex() + i*16 + 9]);
+        cpIndices.push_back(patchTables->GetPatchTable()[parray.GetVertIndex() + i*16 + 10]);
     }
     return numPatches;
 }
@@ -228,19 +228,18 @@ int convertBoundary(std::vector<float> &bezierVertices,
         bezierBounds.push_back(max[1]);
         bezierBounds.push_back(max[2]);
 
-        // save cp indices
-#if 0
-        for (int j = 0; j < 12; ++j) {
-            int vert = patchTables->GetPatchTable()[parray.GetVertIndex() + i*12 + j];
-            cpIndices.push_back(vert);
-        }
-        for (int j = 12; j < 16; ++j) {
-            cpIndices.push_back(-1);
-        }
+        // save center quad indices
+#if 1
+        cpIndices.push_back(patchTables->GetPatchTable()[parray.GetVertIndex() + i*12 + 1]);
+        cpIndices.push_back(patchTables->GetPatchTable()[parray.GetVertIndex() + i*12 + 2]);
+        cpIndices.push_back(patchTables->GetPatchTable()[parray.GetVertIndex() + i*12 + 5]);
+        cpIndices.push_back(patchTables->GetPatchTable()[parray.GetVertIndex() + i*12 + 6]);
+#else
+        cpIndices.push_back(-1);
+        cpIndices.push_back(-1);
+        cpIndices.push_back(-1);
+        cpIndices.push_back(-1);
 #endif
-        for (int j = 0; j < 16; ++j) {
-            cpIndices.push_back(-1);
-        }
     }
     return numPatches;
 }
@@ -302,22 +301,18 @@ int convertCorner(std::vector<float> &bezierVertices,
         bezierBounds.push_back(max[1]);
         bezierBounds.push_back(max[2]);
 
-        // save cp indices
+        // save center quad indices
 #if 0
-        for (int j = 0; j < 9; ++j) {
-            int vert = patchTables->GetPatchTable()[parray.GetVertIndex() + i*9 + j];
-            cpIndices.push_back(vert);
-        }
-        for (int j = 9; j < 16; ++j) {
-            cpIndices.push_back(-1);
-        }
-        for (int j = 9; j < 16; ++j) {
-            cpIndices.push_back(-1);
-        }
+        cpIndices.push_back(patchTables->GetPatchTable()[parray.GetVertIndex() + i*9 + 0]);
+        cpIndices.push_back(patchTables->GetPatchTable()[parray.GetVertIndex() + i*9 + 3]);
+        cpIndices.push_back(patchTables->GetPatchTable()[parray.GetVertIndex() + i*9 + 1]);
+        cpIndices.push_back(patchTables->GetPatchTable()[parray.GetVertIndex() + i*9 + 4]);
+#else
+        cpIndices.push_back(-1);
+        cpIndices.push_back(-1);
+        cpIndices.push_back(-1);
+        cpIndices.push_back(-1);
 #endif
-        for (int j = 0; j < 16; ++j) {
-            cpIndices.push_back(-1);
-        }
     }
     return numPatches;
 }
@@ -554,20 +549,18 @@ int convertGregory(std::vector<float> &bezierVertices,
         bezierBounds.push_back(max[1]);
         bezierBounds.push_back(max[2]);
 
-        // XXX: tricky...
-        // save cp indices
+        // save center quad indices
 #if 0
-        for (int j = 0; j < 4; ++j) {
-            int vert = patchTables->GetPatchTable()[parray.GetVertIndex() + patchIndex*4 + j];
-            cpIndices.push_back(vert);
-        }
-        for (int j = 4; j < 16; ++j) {
-            cpIndices.push_back(-1);
-        }
+        cpIndices.push_back(patchTables->GetPatchTable()[parray.GetVertIndex() + patchIndex*4 + 0]);
+        cpIndices.push_back(patchTables->GetPatchTable()[parray.GetVertIndex() + patchIndex*4 + 1]);
+        cpIndices.push_back(patchTables->GetPatchTable()[parray.GetVertIndex() + patchIndex*4 + 2]);
+        cpIndices.push_back(patchTables->GetPatchTable()[parray.GetVertIndex() + patchIndex*4 + 3]);
+#else
+        cpIndices.push_back(-1);
+        cpIndices.push_back(-1);
+        cpIndices.push_back(-1);
+        cpIndices.push_back(-1);
 #endif
-        for (int j = 0; j < 16; ++j) {
-            cpIndices.push_back(-1);
-        }
     }
 
     return parray.GetNumPatches();
@@ -951,20 +944,17 @@ int convertBoundaryGregory(std::vector<float> &bezierVertices,
         bezierBounds.push_back(max[1]);
         bezierBounds.push_back(max[2]);
 
-        // XXX: tricky...
-        // save cp indices
 #if 0
-        for (int j = 0; j < 4; ++j) {
-            int vert = patchTables->GetPatchTable()[parray.GetVertIndex() + patchIndex*4 + j];
-            cpIndices.push_back(vert);
-        }
-        for (int j = 4; j < 16; ++j) {
-            cpIndices.push_back(-1);
-        }
+        cpIndices.push_back(patchTables->GetPatchTable()[parray.GetVertIndex() + patchIndex*4 + 0]);
+        cpIndices.push_back(patchTables->GetPatchTable()[parray.GetVertIndex() + patchIndex*4 + 1]);
+        cpIndices.push_back(patchTables->GetPatchTable()[parray.GetVertIndex() + patchIndex*4 + 2]);
+        cpIndices.push_back(patchTables->GetPatchTable()[parray.GetVertIndex() + patchIndex*4 + 3]);
+#else
+        cpIndices.push_back(-1);
+        cpIndices.push_back(-1);
+        cpIndices.push_back(-1);
+        cpIndices.push_back(-1);
 #endif
-        for (int j = 0; j < 16; ++j) {
-            cpIndices.push_back(-1);
-        }
     }
 
     return parray.GetNumPatches();

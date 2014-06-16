@@ -46,6 +46,8 @@
     #include <GL/glfw.h>
 #endif
 
+#define NEED_HBR_FACE_INDEX
+
 #include <far/mesh.h>
 #include <far/meshFactory.h>
 
@@ -178,7 +180,7 @@ typedef OpenSubdiv::HbrHalfedge<OpenSubdiv::OsdVertex> OsdHbrHalfedge;
 
 enum HudCheckBox { kHUD_CB_DISPLAY_BVH,
                    kHUD_CB_BLOCK_FILL,
-                   kHUD_CB_CONSOLIDATE_POINTS,
+                   kHUD_CB_WATERTIGHT,
                    kHUD_CB_PRE_TESSELLATE,
                    kHUD_CB_ANIMATE,
                    kHUD_CB_OSD_INTERSECT };
@@ -197,6 +199,7 @@ static void setCamera();
 
 std::vector<SimpleShape> g_defaultShapes;
 OpenSubdiv::FarMesh<OpenSubdiv::OsdVertex> *g_farMesh = NULL;
+OsdHbrMesh *g_hbrMesh = NULL;
 
 int g_currentShape = 0;
 
@@ -245,11 +248,11 @@ float g_renderTime = 0;
 // geometry
 std::vector<float> g_orgPositions;
 
-int g_level = 1;
+int g_level = 2;
 int g_preTess = 0;
 int g_preTessLevel = 1;
 int g_intersectKernel = 1;
-int g_consolidatePoints = 0;
+int g_watertight = 1;
 float g_uvMargin = 0.1f;
 
 int g_animate = 0;
@@ -274,6 +277,7 @@ float g_up[] = {0, 1, 0, 0};
 
 Scene g_scene;
 std::vector<int> g_vertexParentIDs;
+std::vector<int> g_farToHbrVertexRemap;
 
 //------------------------------------------------------------------------------
 static void
@@ -485,13 +489,15 @@ updateGeom() {
     s.Stop();
     g_subdivTime = s.GetElapsed() * 1000.0f;
 
-    g_scene.SetConsolidatePoints(g_consolidatePoints);
+    g_scene.SetWatertight(g_watertight);
 
     s.Start();
     g_scene.BezierConvert(g_cpuVertexBuffer->BindCpuBuffer(),
                           g_cpuVertexBuffer->GetNumVertices(),
                           g_farMesh->GetPatchTables(),
-                          g_vertexParentIDs);
+                          //g_vertexParentIDs,
+                          g_farToHbrVertexRemap,
+                          g_hbrMesh);
     s.Stop();
     g_convertTime = s.GetElapsed() * 1000.0f;
 
@@ -525,7 +531,8 @@ createOsdMesh( const std::string &shape, int level ){
     Stopwatch s;
 
     s.Start();
-    OsdHbrMesh * hmesh = simpleHbr<OpenSubdiv::OsdVertex>(shape.c_str(), kCatmark, g_orgPositions);
+    if (g_hbrMesh) delete g_hbrMesh;
+    g_hbrMesh = simpleHbr<OpenSubdiv::OsdVertex>(shape.c_str(), kCatmark, g_orgPositions);
     s.Stop();
 
     g_hbrTime = s.GetElapsed() * 1000.0f;
@@ -536,7 +543,7 @@ createOsdMesh( const std::string &shape, int level ){
 
     // create farmesh
     s.Start();
-    OpenSubdiv::FarMeshFactory<OpenSubdiv::OsdVertex> meshFactory(hmesh, level, true);
+    OpenSubdiv::FarMeshFactory<OpenSubdiv::OsdVertex> meshFactory(g_hbrMesh, level, true);
     g_farMesh = meshFactory.Create();
     s.Stop();
 
@@ -549,8 +556,9 @@ createOsdMesh( const std::string &shape, int level ){
 //    printf("\n");
 
     std::vector<int> parentIDs(remap.size());
+    std::vector<int> farToHbrVertexRemap(remap.size());
     for (int i = 0; i < remap.size(); ++i) {
-        OsdHbrVertex *vertex = hmesh->GetVertex(i);
+        OsdHbrVertex *vertex = g_hbrMesh->GetVertex(i);
         int parentID = i;
         do {
             parentID = vertex->GetID();
@@ -558,17 +566,17 @@ createOsdMesh( const std::string &shape, int level ){
         } while(vertex);
 
         parentIDs[remap[i]] = remap[parentID];
+        farToHbrVertexRemap[remap[i]] = i;
     }
     // for (int i = 0; i < parentIDs.size(); ++i) {
     //     printf("%d ", parentIDs[i]);
     // }
     // printf("\n");
     g_vertexParentIDs = parentIDs;
+    g_farToHbrVertexRemap = farToHbrVertexRemap;
 
 
     g_farTime = s.GetElapsed() * 1000.0f;
-    // Hbr mesh can be deleted
-    delete hmesh;
 
     g_cpuComputeContext = OpenSubdiv::OsdCpuComputeContext::Create(
         g_farMesh->GetSubdivisionTables(), g_farMesh->GetVertexEditTables());
@@ -919,8 +927,8 @@ callbackCheckBox(bool checked, int button)
         g_animate = checked;
         updateGeom();
         break;
-    case kHUD_CB_CONSOLIDATE_POINTS:
-        g_consolidatePoints = checked;
+    case kHUD_CB_WATERTIGHT:
+        g_watertight = checked;
         updateGeom();
         break;
     }
@@ -941,8 +949,8 @@ initHUD()
     g_hud.AddCheckBox("Block Fill (K)", g_blockFill != 0,
                       10, 30, callbackCheckBox, kHUD_CB_BLOCK_FILL, 'k');
 
-    g_hud.AddCheckBox("Consolidate Points (C)", g_consolidatePoints != 0,
-                      10, 60, callbackCheckBox, kHUD_CB_CONSOLIDATE_POINTS, 'c');
+    g_hud.AddCheckBox("Watertight (C)", g_watertight != 0,
+                      10, 60, callbackCheckBox, kHUD_CB_WATERTIGHT, 'c');
     g_hud.AddCheckBox("Pre tessellate (T)", g_preTess != 0,
                       10, 80, callbackCheckBox, kHUD_CB_PRE_TESSELLATE, 't');
     g_hud.AddCheckBox("Animate vertices (M)", g_animate != 0,

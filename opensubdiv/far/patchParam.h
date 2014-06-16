@@ -56,6 +56,10 @@ namespace OPENSUBDIV_VERSION {
 ///
 struct FarPatchParam {
     unsigned int faceIndex:32; // Ptex face index
+
+#ifdef NEED_HBR_FACE_INDEX
+    unsigned int hbrFaceIndex;
+#endif
     
     struct BitField {
         unsigned int field:32;

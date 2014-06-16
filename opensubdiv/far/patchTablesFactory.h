@@ -1180,6 +1180,13 @@ FarPatchTablesFactory<T>::computePatchParam(HbrFace<T> const * f, FarPatchParam 
 
     if (coord == NULL) return NULL;
 
+#ifdef NEED_HBR_FACE_INDEX
+    coord->hbrFaceIndex = f->GetID();
+#endif
+
+    //printf("Parent type = %d, Critical = %d\n", f->GetParent()->_adaptiveFlags.patchType,
+    //f->_adaptiveFlags.isCritical);
+
     // save the rotation state of the coarse face
     unsigned char rots = (unsigned char)f->_adaptiveFlags.rots;
 

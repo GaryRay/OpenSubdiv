@@ -2,8 +2,15 @@
 #define SCENE_H
 
 #include "bvh_accel.h"
+#include <far/meshFactory.h>
 #include <far/patchTables.h>
 #include <osd/opengl.h>
+#include <osd/vertex.h>
+
+typedef OpenSubdiv::HbrMesh<OpenSubdiv::OsdVertex>     OsdHbrMesh;
+typedef OpenSubdiv::HbrVertex<OpenSubdiv::OsdVertex>   OsdHbrVertex;
+typedef OpenSubdiv::HbrFace<OpenSubdiv::OsdVertex>     OsdHbrFace;
+typedef OpenSubdiv::HbrHalfedge<OpenSubdiv::OsdVertex> OsdHbrHalfedge;
 
 class Scene
 {
@@ -13,7 +20,9 @@ public:
 
     void BezierConvert(float *vertices, int numVertices,
                        OpenSubdiv::FarPatchTables const *patchTables,
-                       std::vector<int> const &vertexParentIDs);
+                       std::vector<int> const &farToHbr,
+                       //std::vector<int> const &vertexParentIDs,
+                       OsdHbrMesh *hbrMesh);
 
     void Tessellate(int level);
 
@@ -39,7 +48,7 @@ public:
     GLuint GetVBO() const { return _vbo; }
     int GetNumBVHNode() const { return (int)_accel.GetNodes().size(); }
 
-    void SetConsolidatePoints(bool flag) { _consolidatePoints = flag; }
+    void SetWatertight(bool flag) { _watertight = flag; }
 
     size_t GetMemoryUsage() const {
         size_t mem = 0;
@@ -58,7 +67,7 @@ private:
     Mesh _mesh;
     BVHAccel _accel;
     ShadeMode _mode;
-    bool _consolidatePoints;
+    bool _watertight;
 
     GLuint _vbo;
 };
