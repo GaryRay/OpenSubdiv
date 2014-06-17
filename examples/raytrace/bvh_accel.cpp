@@ -750,6 +750,7 @@ bool PatchIsect(Intersection &isect,
                 float uvMargin,
                 bool cropUV)
 {
+    int maxLevel = 10;
     if (intersectKernel == BVHAccel::ORIGINAL) {
         using namespace mallie;
         bezier_patch_intersection bzi(bezier_patch<vector3>(4,4,(const vector3*)bezierVerts));
@@ -760,21 +761,21 @@ bool PatchIsect(Intersection &isect,
             }
     }else if (intersectKernel == BVHAccel::NEW_FLOAT) {
         OsdUtil::OsdUtilBezierPatchIntersection<OsdUtil::vec3f, float, 4> bzi(
-            (const OsdUtil::vec3f*)bezierVerts, uvMargin, /*max level=*/10,cropUV);
+            (const OsdUtil::vec3f*)bezierVerts, uvMargin, maxLevel, cropUV);
         real t = isect.t;
         if (bzi.Test(&isect, ray, 0, t)) {
             return true;
         }
     }else if (intersectKernel == BVHAccel::NEW_SSE) {
         OsdUtil::OsdUtilBezierPatchIntersection<OsdUtil::vec3sse, float, 4> bzi(
-            (const OsdUtil::vec3f*)bezierVerts, uvMargin, /*max level=*/10,cropUV);
+            (const OsdUtil::vec3f*)bezierVerts, uvMargin, maxLevel, cropUV);
         real t = isect.t;
         if (bzi.Test(&isect, ray, 0, t)) {
             return true;
         }
     }else if (intersectKernel == BVHAccel::NEW_DOUBLE) {
         OsdUtil::OsdUtilBezierPatchIntersection<OsdUtil::vec3d, double, 4> bzi(
-            (const OsdUtil::vec3f*)bezierVerts, uvMargin, /*max level=*/10,cropUV);
+            (const OsdUtil::vec3f*)bezierVerts, uvMargin, maxLevel, cropUV);
         real t = isect.t;
         if (bzi.Test(&isect, ray, 0, t)) {
             return true;
