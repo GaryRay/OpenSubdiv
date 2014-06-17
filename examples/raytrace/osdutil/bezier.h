@@ -152,6 +152,14 @@ public:
     }
 
     /// Constructor.
+    OsdUtilBezierPatch(OsdUtilBezierPatch const &other, Real u0, Real u1, Real v0, Real v1) {//with crop
+        for (int i = 0; i < Ncp; ++i) _cp[i] = other._cp[i];
+        ValueType tmp[Ncp];
+        for (int i = 0; i < N; ++i) bezierCrop (&tmp[i*N+0], &_cp[i*N+0], u0, u1);
+        for (int i = 0; i < N; ++i) bezierCropV(&_cp[i], &tmp[i], v0, v1);
+    }
+
+    /// Constructor.
     template<class T>
     OsdUtilBezierPatch(T const *p) {
         for (int i = 0; i < Ncp; ++i) _cp[i] = p[i];

@@ -181,6 +181,7 @@ typedef OpenSubdiv::HbrHalfedge<OpenSubdiv::OsdVertex> OsdHbrHalfedge;
 enum HudCheckBox { kHUD_CB_DISPLAY_BVH,
                    kHUD_CB_BLOCK_FILL,
                    kHUD_CB_WATERTIGHT,
+                   kHUD_CB_CROP_UV,
                    kHUD_CB_PRE_TESSELLATE,
                    kHUD_CB_ANIMATE,
                    kHUD_CB_OSD_INTERSECT };
@@ -253,6 +254,7 @@ int g_preTess = 0;
 int g_preTessLevel = 1;
 int g_intersectKernel = 1;
 int g_watertight = 1;
+int g_cropUV = 1;
 float g_uvMargin = 0.1f;
 
 int g_animate = 0;
@@ -931,6 +933,10 @@ callbackCheckBox(bool checked, int button)
         g_watertight = checked;
         updateGeom();
         break;
+    case kHUD_CB_CROP_UV:
+        g_cropUV = checked;
+        updateGeom();
+        break;
     }
     display();
 }
@@ -951,10 +957,14 @@ initHUD()
 
     g_hud.AddCheckBox("Watertight (C)", g_watertight != 0,
                       10, 60, callbackCheckBox, kHUD_CB_WATERTIGHT, 'c');
+
+    g_hud.AddCheckBox("Crop UV (U)", g_cropUV != 0,
+                      10, 80, callbackCheckBox, kHUD_CB_CROP_UV, 'u');
+
     g_hud.AddCheckBox("Pre tessellate (T)", g_preTess != 0,
-                      10, 80, callbackCheckBox, kHUD_CB_PRE_TESSELLATE, 't');
+                      10, 100, callbackCheckBox, kHUD_CB_PRE_TESSELLATE, 't');
     g_hud.AddCheckBox("Animate vertices (M)", g_animate != 0,
-                      10, 100, callbackCheckBox, kHUD_CB_ANIMATE, 'm');
+                      10, 120, callbackCheckBox, kHUD_CB_ANIMATE, 'm');
 
     int kernel_pulldown = g_hud.AddPullDown("Intersect (I)", 400, 10, 200, callbackIntersect, 'i');
     g_hud.AddPullDownButton(kernel_pulldown, "Original", 0, g_intersectKernel == 0);
@@ -1061,7 +1071,7 @@ idle() {
     g_scene.Render(g_width, g_height, fov,
                    g_image,
                    g_eye, g_lookat, g_up, g_step, index,
-                   g_intersectKernel, g_uvMargin);
+                   g_intersectKernel, g_uvMargin, g_cropUV);
 
     --g_stepIndex;
 

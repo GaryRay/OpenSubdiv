@@ -53,7 +53,7 @@ struct BVHBuildStatistics {
 
 class BVHAccel {
 public:
-  BVHAccel(float uvMargin=0.1f) : _intersectKernel(ORIGINAL), _uvMargin(uvMargin) {}
+  BVHAccel(float uvMargin=0.1f) : _intersectKernel(ORIGINAL), _uvMargin(uvMargin), _cropUV(true) {}
   ~BVHAccel() {};
 
   ///< Build BVH for input mesh.
@@ -74,6 +74,7 @@ public:
   enum { ORIGINAL, NEW_FLOAT, NEW_SSE, NEW_DOUBLE } IntersectKernel;
   void SetIntersectKernel(int k) {_intersectKernel = k; }
   void SetUVMargin(float margin) { _uvMargin = margin; }
+  void SetCropUV(bool flag) {_cropUV = flag;}
 
   const std::vector<BVHNode> &GetNodes() const { return nodes_; }
   const std::vector<unsigned int> &GetIndices() const { return indices_; }
@@ -90,6 +91,7 @@ private:
 
   int _intersectKernel;
   float _uvMargin;
+  bool _cropUV;
 };
 
 #endif // __BVH_ACCEL_H__

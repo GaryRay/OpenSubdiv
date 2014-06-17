@@ -744,7 +744,8 @@ bool PatchIsect(Intersection &isect,
                 const Ray &ray,
                 int level,
                 int intersectKernel,
-                float uvMargin)
+                float uvMargin,
+                bool cropUV)
 {
     if (intersectKernel == BVHAccel::ORIGINAL) {
         using namespace mallie;
@@ -756,21 +757,21 @@ bool PatchIsect(Intersection &isect,
             }
     }else if (intersectKernel == BVHAccel::NEW_FLOAT) {
         OsdUtil::OsdUtilBezierPatchIntersection<OsdUtil::vec3f, float, 4> bzi(
-            (const OsdUtil::vec3f*)bezierVerts, uvMargin, /*max level=*/10);
+            (const OsdUtil::vec3f*)bezierVerts, uvMargin, /*max level=*/10,cropUV);
         real t = isect.t;
         if (bzi.Test(&isect, ray, 0, t)) {
             return true;
         }
     }else if (intersectKernel == BVHAccel::NEW_SSE) {
         OsdUtil::OsdUtilBezierPatchIntersection<OsdUtil::vec3sse, float, 4> bzi(
-            (const OsdUtil::vec3f*)bezierVerts, uvMargin, /*max level=*/10);
+            (const OsdUtil::vec3f*)bezierVerts, uvMargin, /*max level=*/10,cropUV);
         real t = isect.t;
         if (bzi.Test(&isect, ray, 0, t)) {
             return true;
         }
     }else if (intersectKernel == BVHAccel::NEW_DOUBLE) {
         OsdUtil::OsdUtilBezierPatchIntersection<OsdUtil::vec3d, double, 4> bzi(
-            (const OsdUtil::vec3f*)bezierVerts, uvMargin, /*max level=*/10);
+            (const OsdUtil::vec3f*)bezierVerts, uvMargin, /*max level=*/10,cropUV);
         real t = isect.t;
         if (bzi.Test(&isect, ray, 0, t)) {
             return true;
@@ -788,7 +789,7 @@ real Inverse(real x)
 
 bool TestLeafNode(Intersection &isect, // [inout]
                   const BVHNode &node, const std::vector<unsigned int> &indices,
-                  const Mesh *mesh, const Ray &ray, int intersectKernel, float uvMargin) {
+                  const Mesh *mesh, const Ray &ray, int intersectKernel, float uvMargin, bool cropUV) {
   bool hit = false;
 
   unsigned int numTriangles = node.data[0];
@@ -823,7 +824,7 @@ bool TestLeafNode(Intersection &isect, // [inout]
       unsigned int bits = param.bitField.field;
       int level = (bits & 0xf);
 
-      if (PatchIsect(isect, bv, tr, level, intersectKernel, uvMargin)) {
+      if (PatchIsect(isect, bv, tr, level, intersectKernel, uvMargin, cropUV)) {
         // Update isect state
         isect.faceID = faceIdx;
         hit = true;
@@ -1006,7 +1007,7 @@ bool BVHAccel::Traverse(Intersection &isect, const Mesh *mesh, Ray &ray) {
     } else { // leaf node
 
       if (hit) {
-          if (TestLeafNode(isect, node, indices_, mesh, ray, _intersectKernel, _uvMargin)) {
+          if (TestLeafNode(isect, node, indices_, mesh, ray, _intersectKernel, _uvMargin, _cropUV)) {
           hitT = isect.t;
         }
       }
