@@ -182,6 +182,7 @@ enum HudCheckBox { kHUD_CB_DISPLAY_BVH,
                    kHUD_CB_BLOCK_FILL,
                    kHUD_CB_WATERTIGHT,
                    kHUD_CB_CROP_UV,
+                   kHUD_CB_BEZIER_CLIP,
                    kHUD_CB_PRE_TESSELLATE,
                    kHUD_CB_ANIMATE,
                    kHUD_CB_OSD_INTERSECT };
@@ -255,7 +256,8 @@ int g_preTessLevel = 1;
 int g_intersectKernel = 1;
 int g_watertight = 1;
 int g_cropUV = 1;
-float g_uvMargin = 0.1f;
+int g_bezierClip = 1;
+float g_uvMargin = 0.01f;
 float g_displaceScale = 0.0f;
 
 int g_animate = 0;
@@ -942,6 +944,10 @@ callbackCheckBox(bool checked, int button)
         g_cropUV = checked;
         updateGeom();
         break;
+    case kHUD_CB_BEZIER_CLIP:
+        g_bezierClip = checked;
+        updateGeom();
+        break;
     }
     display();
 }
@@ -966,10 +972,13 @@ initHUD()
     g_hud.AddCheckBox("Crop UV (U)", g_cropUV != 0,
                       10, 80, callbackCheckBox, kHUD_CB_CROP_UV, 'u');
 
+    g_hud.AddCheckBox("Bezier Clip (J)", g_bezierClip != 0,
+                      10, 100, callbackCheckBox, kHUD_CB_BEZIER_CLIP, 'j');
+
     g_hud.AddCheckBox("Pre tessellate (T)", g_preTess != 0,
-                      10, 100, callbackCheckBox, kHUD_CB_PRE_TESSELLATE, 't');
+                      10, 120, callbackCheckBox, kHUD_CB_PRE_TESSELLATE, 't');
     g_hud.AddCheckBox("Animate vertices (M)", g_animate != 0,
-                      10, 120, callbackCheckBox, kHUD_CB_ANIMATE, 'm');
+                      10, 140, callbackCheckBox, kHUD_CB_ANIMATE, 'm');
 
     int kernel_pulldown = g_hud.AddPullDown("Intersect (I)", 400, 10, 200, callbackIntersect, 'i');
     g_hud.AddPullDownButton(kernel_pulldown, "Original", 0, g_intersectKernel == 0);
@@ -991,7 +1000,7 @@ initHUD()
     g_hud.AddPullDownButton(shading_pulldown, "Transparent", Scene::TRANSPARENT,
                             g_displayStyle==Scene::TRANSPARENT);
 
-    g_hud.AddSlider("UV Margin", 0, 0.1, g_uvMargin,
+    g_hud.AddSlider("UV Margin", 0, 0.01, g_uvMargin,
                     10, 450, 20, false, callbackSlider, 0);
     g_hud.AddSlider("Displacement", 0, 0.1, g_displaceScale,
                     10, 480, 20, false, callbackSlider, 1);
@@ -1079,7 +1088,7 @@ idle() {
     g_scene.Render(g_width, g_height, fov,
                    g_image,
                    g_eye, g_lookat, g_up, g_step, index,
-                   g_intersectKernel, g_uvMargin, g_cropUV, g_displaceScale);
+                   g_intersectKernel, g_uvMargin, g_cropUV, g_bezierClip, g_displaceScale);
 
     --g_stepIndex;
 
