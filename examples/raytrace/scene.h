@@ -21,8 +21,8 @@ public:
     void BezierConvert(float *vertices, int numVertices,
                        OpenSubdiv::FarPatchTables const *patchTables,
                        std::vector<int> const &farToHbr,
-                       //std::vector<int> const &vertexParentIDs,
-                       OsdHbrMesh *hbrMesh);
+                       OsdHbrMesh *hbrMesh,
+                       float displaceBound);
 
     void Tessellate(int level);
 
@@ -32,7 +32,8 @@ public:
     void Render(int width, int height, double fov,
                 std::vector<float> &image, // RGB
                 const float eye[3], const float lookat[3], const float up[3],
-                int step, int stepIndex, int intersectKernel, float uvMargin, bool cropUV);
+                int step, int stepIndex, int intersectKernel, float uvMargin,
+                bool cropUV, float displaceScale);
 
     int GetNumPatches() const { return _mesh.numBezierPatches; }
     int GetNumTriangles() const { return _mesh.numTriangles; }

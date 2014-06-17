@@ -256,6 +256,7 @@ int g_intersectKernel = 1;
 int g_watertight = 1;
 int g_cropUV = 1;
 float g_uvMargin = 0.1f;
+float g_displaceScale = 0.0f;
 
 int g_animate = 0;
 int g_frame = 0;
@@ -499,7 +500,8 @@ updateGeom() {
                           g_farMesh->GetPatchTables(),
                           //g_vertexParentIDs,
                           g_farToHbrVertexRemap,
-                          g_hbrMesh);
+                          g_hbrMesh,
+                          g_displaceScale/*bound*/);
     s.Stop();
     g_convertTime = s.GetElapsed() * 1000.0f;
 
@@ -908,6 +910,9 @@ callbackSlider(float value, int data)
     if (data == 0) {
         g_uvMargin = value;
         startRender();
+    } else if (data == 1) {
+        g_displaceScale = value;
+        updateGeom();
     }
 }
 
@@ -987,7 +992,9 @@ initHUD()
                             g_displayStyle==Scene::TRANSPARENT);
 
     g_hud.AddSlider("UV Margin", 0, 0.1, g_uvMargin,
-                    -200, 450, 20, false, callbackSlider, 0);
+                    10, 450, 20, false, callbackSlider, 0);
+    g_hud.AddSlider("Displacement", 0, 0.1, g_displaceScale,
+                    10, 480, 20, false, callbackSlider, 1);
 
     for (int i = 1; i < 11; ++i) {
         char level[16];
@@ -997,7 +1004,8 @@ initHUD()
 
     int pulldown_handle = g_hud.AddPullDown("Shape (N)", -300, 10, 300, callbackModel, 'n');
     for (int i = 0; i < (int)g_defaultShapes.size(); ++i) {
-        g_hud.AddPullDownButton(pulldown_handle, g_defaultShapes[i].name.c_str(),i);
+        g_hud.AddPullDownButton(pulldown_handle, g_defaultShapes[i].name.c_str(), i,
+                                i == g_currentShape);
     }   
 }
 
@@ -1071,7 +1079,7 @@ idle() {
     g_scene.Render(g_width, g_height, fov,
                    g_image,
                    g_eye, g_lookat, g_up, g_step, index,
-                   g_intersectKernel, g_uvMargin, g_cropUV);
+                   g_intersectKernel, g_uvMargin, g_cropUV, g_displaceScale);
 
     --g_stepIndex;
 

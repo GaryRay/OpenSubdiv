@@ -7,7 +7,7 @@
 #include "common.h"
 
 struct Mesh {
-    Mesh() : numTriangles(0), numBezierPatches(0), patchParams(NULL) {
+    Mesh() : numTriangles(0), numBezierPatches(0), patchParams(NULL), displaceBound(0) {
     }
 
     bool IsBezierMesh() const {
@@ -27,6 +27,8 @@ struct Mesh {
 
     OpenSubdiv::FarPatchParam const *patchParams;  /// [FarPatchParam] * numBezierPatches
     std::vector<float> colors;                     /// [rgb] * numBezierPatches;
+
+    float displaceBound;
 };
 
 #endif // __MESH_H__

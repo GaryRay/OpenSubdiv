@@ -170,7 +170,8 @@ void
 Scene::BezierConvert(float *inVertices, int numVertices,
                      OpenSubdiv::FarPatchTables const *patchTables,
                      std::vector<int> const &farToHbr,
-                     OsdHbrMesh *hbrMesh)
+                     OsdHbrMesh *hbrMesh,
+                     float displaceBound)
 {
     using namespace OpenSubdiv;
 
@@ -497,6 +498,8 @@ Scene::BezierConvert(float *inVertices, int numVertices,
     _mesh.numBezierPatches = numTotalPatches;
     _mesh.patchParams = &(patchParam[0]);
 
+    _mesh.displaceBound = displaceBound;
+
     assert(numTotalPatches*16*3 == (int)_mesh.bezierVertices.size());
 }
 
@@ -670,11 +673,13 @@ Scene::Render(int width, int height, double fov,
               std::vector<float> &image, // RGB
               const float eye[3],
               const float lookat[3], const float up[3],
-              int step, int stepIndex, int intersectKernel, float uvMargin, bool cropUV)
+              int step, int stepIndex, int intersectKernel,
+              float uvMargin, bool cropUV, float displaceScale)
 {
     _accel.SetIntersectKernel(intersectKernel);
     _accel.SetUVMargin(uvMargin);
     _accel.SetCropUV(cropUV);
+    _accel.SetDisplaceScale(displaceScale);
 
     Camera camera;
 
@@ -748,6 +753,9 @@ Scene::Shade(float rgba[4], const Intersection &isect, const Ray &ray)
         //        real3 reflect = I - 2 * d * isect.normal;
         real s = 0;//pow(std::max(0.0f, -vdot(ray.dir, reflect)), 32);
         color = d * real3(0.8, 0.8, 0.8) + s * real3(1, 1, 1);
+        //color = ray.org + ray.dir * isect.t;
+        //color[2] = color[2]  * 10;
+        //color = isect.normal * 0.5 + real3(0.5, 0.5, 0.5);
     } else if (_mode == PTEX_COORD) {
         color = real3(isect.u, isect.v, 1);
     } else if (_mode == PATCH_TYPE) {

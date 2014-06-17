@@ -202,6 +202,14 @@ public:
         return evaluateD(v, b);
     }
 
+    ValueType EvaluateNormal(Real u, Real v) const {
+        ValueType du = EvaluateDu(u, v);
+        ValueType dv = EvaluateDv(u, v);
+        ValueType normal = cross(du, dv);
+        normal.normalize();
+        return normal;
+    }
+
     /// min
     ValueType GetMin() const {
         ValueType min = _cp[0];
