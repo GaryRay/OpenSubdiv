@@ -563,7 +563,7 @@ createOsdMesh( const std::string &shape, int level ){
 
     std::vector<int> parentIDs(remap.size());
     std::vector<int> farToHbrVertexRemap(remap.size());
-    for (int i = 0; i < remap.size(); ++i) {
+    for (int i = 0; i < (int)remap.size(); ++i) {
         OsdHbrVertex *vertex = g_hbrMesh->GetVertex(i);
         int parentID = i;
         do {
