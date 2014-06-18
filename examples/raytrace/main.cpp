@@ -971,6 +971,11 @@ initHUD()
     g_hud.AddCheckBox("Animate vertices (M)", g_animate != 0,
                       10, 120, callbackCheckBox, kHUD_CB_ANIMATE, 'm');
 
+    g_hud.AddSlider("UV Margin", 0, 0.1, g_uvMargin,
+                    10, 160, 20, false, callbackSlider, 0);
+    g_hud.AddSlider("Displacement", 0, 0.1, g_displaceScale,
+                    10, 190, 20, false, callbackSlider, 1);
+
     int kernel_pulldown = g_hud.AddPullDown("Intersect (I)", 400, 10, 200, callbackIntersect, 'i');
     g_hud.AddPullDownButton(kernel_pulldown, "Original", 0, g_intersectKernel == 0);
     g_hud.AddPullDownButton(kernel_pulldown, "Osd float", 1, g_intersectKernel == 1);
@@ -990,11 +995,6 @@ initHUD()
                             g_displayStyle==Scene::AO);
     g_hud.AddPullDownButton(shading_pulldown, "Transparent", Scene::TRANSPARENT,
                             g_displayStyle==Scene::TRANSPARENT);
-
-    g_hud.AddSlider("UV Margin", 0, 0.1, g_uvMargin,
-                    10, 450, 20, false, callbackSlider, 0);
-    g_hud.AddSlider("Displacement", 0, 0.1, g_displaceScale,
-                    10, 480, 20, false, callbackSlider, 1);
 
     for (int i = 1; i < 11; ++i) {
         char level[16];

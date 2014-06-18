@@ -783,6 +783,47 @@ bool PatchIsect(Intersection &isect,
     return false;
 }
 
+static void
+sideCrop(float &umin, float &umax, float &vmin, float &vmax,
+         bool uFlag[2], bool vFlag[2],
+         Intersection const &hIs, Intersection const uIs[2], Intersection const vIs[2])
+{
+    if (uFlag[0]) {
+        umin = 0;
+        umax = hIs.u;
+    } else if (uFlag[1]) {
+        umin = hIs.u;
+        umax = 1;
+    } else {
+        if (vFlag[0]) {
+            umin = std::min(vIs[0].u, hIs.u);
+            umax = std::max(vIs[0].u, hIs.u);
+        } else if (vFlag[1]) {
+            umin = std::min(vIs[1].u, hIs.u);
+            umax = std::max(vIs[1].u, hIs.u);
+        } else {
+            // error.
+        }
+    }
+    if (vFlag[0]) {
+        vmin = 0;
+        vmax = hIs.v;
+    } else if (vFlag[1]) {
+        vmin = hIs.v;
+        vmax = 1;
+    } else {
+        if (uFlag[0]) {
+            vmin = std::min(uIs[0].u, hIs.v);
+            vmax = std::max(uIs[0].u, hIs.v);
+        } else if (uFlag[1]) {
+            vmin = std::min(uIs[1].u, hIs.v);
+            vmax = std::max(uIs[1].u, hIs.v);
+        } else {
+            // error.
+        }
+    }
+}
+    
 bool PatchIsectDisp(Intersection &isect,
                     const real *bezierVerts,
                     const Ray &ray,
@@ -793,7 +834,7 @@ bool PatchIsectDisp(Intersection &isect,
                     float displaceScale)
 {
     float upperBound = displaceScale; // this has to be per-patch
-    float lowerBound = upperBound;
+    float lowerBound = 0;//upperBound;
     using namespace OsdUtil;
 
     typedef OsdUtilBezierPatch<vec3f, float, 4> PatchType;
@@ -809,7 +850,7 @@ bool PatchIsectDisp(Intersection &isect,
             vec3f p = patch.Get(i, j);
             vec3f n = patch.EvaluateNormal(i/3.0, j/3.0);
             upperPatch.Set(i, j, p - n * upperBound);
-            lowerPatch.Set(i, j, p + n * upperBound);
+            lowerPatch.Set(i, j, p + n * lowerBound);
         }
     }
 
@@ -830,43 +871,101 @@ bool PatchIsectDisp(Intersection &isect,
         umax = std::max(upperIs.u, lowerIs.u);
         vmin = std::min(upperIs.v, lowerIs.v);
         vmax = std::max(upperIs.v, lowerIs.v);
-    } else if (upperFlag) {
-        vec3f du = upperPatch.EvaluateDu(upperIs.u, upperIs.v);
-        vec3f dv = upperPatch.EvaluateDv(upperIs.u, upperIs.v);
-        if ((du[0]*ray.dir[0] + du[1]*ray.dir[1] + du[2]*ray.dir[2]) < 0) {
-            umax = upperIs.u;
-        } else {
-            umin = upperIs.u;
-        }
-        if ((dv[0]*ray.dir[0] + dv[1]*ray.dir[1] + dv[2]*ray.dir[2]) < 0) {
-            vmax = upperIs.v;
-        } else {
-            vmin = upperIs.v;
-        }
-    } else if (lowerFlag) {
-        vec3f dv = lowerPatch.EvaluateDv(lowerIs.u, lowerIs.v);
-        vec3f du = lowerPatch.EvaluateDu(lowerIs.u, lowerIs.v);
-        if ((du[0]*ray.dir[0] + du[1]*ray.dir[1] + du[2]*ray.dir[2]) < 0) {
-            umin = lowerIs.u;
-        } else {
-            umax = lowerIs.u;
-        }
-        if ((dv[0]*ray.dir[0] + dv[1]*ray.dir[1] + dv[2]*ray.dir[2]) < 0) {
-            vmin = lowerIs.v;
-        } else {
-            vmax = lowerIs.v;
-        }
     } else {
-        // TODO: no-upper-lower case
-        return false;
+        PatchType uPatch[2], vPatch[2];
+        for (int i = 0; i < 4; ++i) {
+            uPatch[0].Set(i, 0, upperPatch.Get(0, i));
+            uPatch[0].Set(i, 3, lowerPatch.Get(0, i));
+            uPatch[1].Set(i, 0, upperPatch.Get(3, i));
+            uPatch[1].Set(i, 3, lowerPatch.Get(3, i));
+            vPatch[0].Set(i, 0, upperPatch.Get(i, 0));
+            vPatch[0].Set(i, 3, lowerPatch.Get(i, 0));
+            vPatch[1].Set(i, 0, upperPatch.Get(i, 3));
+            vPatch[1].Set(i, 3, lowerPatch.Get(i, 3));
+
+            for (int j = 0; j < 2; ++j) {
+                uPatch[j].Set(i, 1, (uPatch[j].Get(i, 0)*2 + uPatch[j].Get(i, 3)  )*(1.0/3.0));
+                uPatch[j].Set(i, 2, (uPatch[j].Get(i, 0)   + uPatch[j].Get(i, 3)*2)*(1.0/3.0));
+                vPatch[j].Set(i, 1, (vPatch[j].Get(i, 0)*2 + vPatch[j].Get(i, 3)  )*(1.0/3.0));
+                vPatch[j].Set(i, 2, (vPatch[j].Get(i, 0)   + vPatch[j].Get(i, 3)*2)*(1.0/3.0));
+            }
+        }
+        bool uFlag[2] = { false, false };
+        bool vFlag[2] = { false, false };
+        Intersection uIs[2] = { isect, isect };
+        Intersection vIs[2] = { isect, isect };
+        for (int i = 0; i < 2; ++i) {
+            Intersect uIsect(uPatch[i], uvMargin, 10);
+            Intersect vIsect(vPatch[i], uvMargin, 10);
+            uFlag[i] = uIsect.Test(&uIs[i], ray, 0, t);
+            vFlag[i] = vIsect.Test(&vIs[i], ray, 0, t);
+        }
+
+        if (upperFlag) {
+            sideCrop(umin, umax, vmin, vmax, uFlag, vFlag,
+                     upperIs, uIs, vIs);
+        } else if (lowerFlag) {
+            if (uFlag[0]) {
+                umin = 0;
+                umax = lowerIs.u;
+            } else if (uFlag[1]) {
+                umin = lowerIs.u;
+                umax = 1;
+            } else {
+                if (vFlag[0]) {
+                    umin = std::min(vIs[0].u, lowerIs.u);
+                    umax = std::max(vIs[0].u, lowerIs.u);
+                } else if (vFlag[1]) {
+                    umin = std::min(vIs[1].u, lowerIs.u);
+                    umax = std::max(vIs[1].u, lowerIs.u);
+                } else {
+                    //printf("Error\n");
+                }
+            }
+            if (vFlag[0]) {
+                vmin = 0;
+                vmax = lowerIs.v;
+            } else if (vFlag[1]) {
+                vmin = lowerIs.v;
+                vmax = 1;
+            } else {
+                if (uFlag[0]) {
+                    vmin = std::min(uIs[0].u, lowerIs.v);
+                    vmax = std::max(uIs[0].u, lowerIs.v);
+                } else if (uFlag[1]) {
+                    vmin = std::min(uIs[1].u, lowerIs.v);
+                    vmax = std::max(uIs[1].u, lowerIs.v);
+                } else {
+                    //printf("Error\n");
+                }
+            }
+        } else if (uFlag[0] == false and
+                   vFlag[0] == false and
+                   uFlag[1] == false and
+                   vFlag[1] == false) {
+            return false;
+        } else {
+            // corner case
+            // TODO clip uvmin/max
+        }
     }
 
-    //    umin -= 0.1;
-    //    vmin -= 0.1;
-    //    umax += 0.1;
-    //    vmax += 0.1;
+    // tekitou
+    float eps = 1.e-2;
+    if ((umax - umin) < 2*eps) {
+        umin -= eps;
+        umax += eps;
+    }
+    if ((vmax - vmin) < 2*eps) {
+        vmin -= eps;
+        vmax += eps;
+    }
+    umin -= eps;
+    vmin -= eps;
+    umax += eps;
+    vmax += eps;
     // umin = vmin = 0;
-    // umax = vmax =1;
+    // umax = vmax = 1;
 
     umin = std::max(0.0f, umin);
     vmin = std::max(0.0f, vmin);
@@ -876,7 +975,7 @@ bool PatchIsectDisp(Intersection &isect,
     // TODO: ray differential
     diceLevel = 1 << std::max((int)((umax - umin)/0.0125), (int)((vmax - vmin)/0.0125));
     diceLevel = std::max(1, diceLevel);
-    diceLevel = std::min(16, diceLevel);
+    diceLevel = std::min(8, diceLevel);
 
     float step = (16/(float)(1<<level));
 
@@ -885,7 +984,7 @@ bool PatchIsectDisp(Intersection &isect,
     real vstep = (vmax-vmin)/diceLevel;
     bool hit = false;
 
-    real freq = 100;
+    real freq = 200;
     for (int lu = 0; lu < diceLevel; ++lu) {
         for (int lv = 0; lv < diceLevel; ++lv) {
 
@@ -912,8 +1011,8 @@ bool PatchIsectDisp(Intersection &isect,
                                {umax2, vmin2}, {umax2, vmax2} };
             for (int i = 0; i < 4; ++i) {
                 vec3f n = patch.EvaluateNormal(uv[i][0], uv[i][1]);
-                float displacement = 0.5*upperBound * sin(p[i][0]*freq)*cos(p[i][1]*freq);
-                vec3f dp = p[i] + n * displacement;
+                float displacement = upperBound * 0.5 * (1+sin(p[i][0]*freq)*cos(p[i][1]*freq));
+                vec3f dp = p[i] - n * displacement;
                 v[i] = real3(dp[0], dp[1], dp[2]);
             }
 
@@ -927,6 +1026,9 @@ bool PatchIsectDisp(Intersection &isect,
                 real3 n = vcross(v[2]-v[0], v[1]-v[0]);
                 n.normalize();
                 isect.normal = n;
+
+                isect.u = ustep;
+                isect.v = vstep;
 
                 hit = true;
             }
