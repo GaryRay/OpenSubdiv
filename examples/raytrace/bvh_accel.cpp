@@ -868,6 +868,19 @@ bool PatchIsectDisp(Intersection &isect,
             lowerPatch.Set(i, j, p + n * lowerBound);
         }
     }
+    /*
+      volume crop
+                         u--*
+               +----------+ |
+              /        u /| v
+           u / up/low / /u|
+          / /     v--* // |
+         * +----------+*  +
+         | |      u--*|| /
+         v |         ||v/
+           |         v|/
+           +----------+
+     */
 
     real t = isect.t;
     Intersection upperIs = isect, lowerIs = isect;
@@ -878,8 +891,6 @@ bool PatchIsectDisp(Intersection &isect,
     bool lowerFlag = lowerIsect.Test(&lowerIs, ray, 0, t);
 
     real umin = 0, umax = 1, vmin = 0, vmax = 1;
-
-    int diceLevel = 1;
 
     if (upperFlag and lowerFlag) {
         umin = std::min(upperIs.u, lowerIs.u);
@@ -922,14 +933,27 @@ bool PatchIsectDisp(Intersection &isect,
         } else if (lowerFlag) {
             sideCrop(umin, umax, vmin, vmax, uFlag, vFlag,
                      lowerIs, uIs, vIs);
-        } else if (uFlag[0] == false and
-                   vFlag[0] == false and
-                   uFlag[1] == false and
-                   vFlag[1] == false) {
+        } else if (uFlag[0] == false and vFlag[0] == false and
+                   uFlag[1] == false and vFlag[1] == false) {
+            // complete out
             return false;
         } else {
             // corner case
-            // TODO clip uvmin/max
+            if (uFlag[0] and vFlag[0] and !uFlag[1] and !vFlag[1]) {
+                umax = vIs[0].u;
+                vmax = uIs[0].u;
+            } else if(uFlag[0] and !vFlag[0] and !uFlag[1] and vFlag[1]) {
+                vmin = uIs[0].u;
+                umax = vIs[1].u;
+            } else if(!uFlag[0] and vFlag[0] and uFlag[1] and !vFlag[1]) {
+                vmax = uIs[1].u;
+                umin = vIs[0].u;
+            } else if(!uFlag[0] and !vFlag[0] and uFlag[1] and vFlag[1]) {
+                umin = vIs[1].u;
+                vmin = uIs[1].u;
+            } else {
+                // TODO grazing ray, umin-umax / vmin-vmax;
+            }
         }
     }
 
@@ -953,7 +977,7 @@ bool PatchIsectDisp(Intersection &isect,
     // umax = vmax = 1;
 
     // TODO: ray differential
-    diceLevel = (int)(ulen * 100);
+    int diceLevel = (int)(ulen * 400);
     diceLevel = std::max(1, diceLevel);
     diceLevel = std::min(16, diceLevel);
 
@@ -987,6 +1011,7 @@ bool PatchIsectDisp(Intersection &isect,
             p[3] = subPatch.Get(3,3);
 
 #define DISPLACEMENT(x, y) (upperBound * pow(0.5 * (1+sin(x*freq)*cos(y*freq)), 5))
+            //#define DISPLACEMENT(x, y) (upperBound * 0.8)
 
             real3 v[4];
             float uv[4][2] = { {umin2, vmin2}, {umin2, vmax2},
@@ -1026,8 +1051,9 @@ bool PatchIsectDisp(Intersection &isect,
                 vec3f N = cross(Su, Sv);
                 N.normalize();
 
-                float duD = (DISPLACEMENT(Spu[0], Spu[1]) - DISPLACEMENT(Sp[0], Sp[1]))/delta;
-                float dvD = (DISPLACEMENT(Spv[0], Spv[1]) - DISPLACEMENT(Sp[0], Sp[1]))/delta;
+                float d = DISPLACEMENT(Sp[0], Sp[1]);
+                float duD = (DISPLACEMENT(Spu[0], Spu[1]) - d)/delta;
+                float dvD = (DISPLACEMENT(Spv[0], Spv[1]) - d)/delta;
 
                 Su = Su + N * duD;
                 Sv = Sv - N * dvD;
