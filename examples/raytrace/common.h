@@ -38,6 +38,9 @@ struct real3 {
   real3 operator/(const real3 &f2) const {
     return real3(x / f2.x, y / f2.y, z / f2.z);
   }
+  real3 operator/(real f2) const {
+    return real3(x / f2, y / f2, z / f2);
+  }
   real operator[](int i) const { return (&x)[i]; }
   real &operator[](int i) { return (&x)[i]; }
 
@@ -75,11 +78,28 @@ inline real vdot(real3 a, real3 b) {
   return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 }
 
+// Ray differentials
+struct RayDifferential {
+
+  real3      org; /// Previous hit point
+  real3      dir; /// Previous direction
+  real3      P;   /// The position at hit point
+  real3      D;   /// The direction at hit point
+  real3      dP;  /// The derivative of P
+  real3      dD;  /// The derivative of D
+};
+
 struct Ray {
   real3 org;
   real3 dir;
   real3 invDir;
   int dirSign[3];
+
+  bool hasDifferential;
+  RayDifferential rx;
+  RayDifferential ry;
+
 };
+
 
 #endif // __COMMON_H__
