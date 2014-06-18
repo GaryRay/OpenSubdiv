@@ -825,7 +825,7 @@ sideCrop(float &umin, float &umax, float &vmin, float &vmax,
         }
     }
 }
-    
+
 bool PatchIsectDisp(Intersection &isect,
                     const real *bezierVerts,
                     const Ray &ray,
@@ -834,7 +834,19 @@ bool PatchIsectDisp(Intersection &isect,
                     float uvMargin,
                     bool cropUV,
                     bool bezierClip,
-                    float displaceScale)
+                    float displaceScale,
+                    float displaceFreq) NO_INLINE;
+
+bool PatchIsectDisp(Intersection &isect,
+                    const real *bezierVerts,
+                    const Ray &ray,
+                    int level,
+                    int intersectKernel,
+                    float uvMargin,
+                    bool cropUV,
+                    bool bezierClip,
+                    float displaceScale,
+                    float displaceFreq)
 {
     float upperBound = displaceScale; // this has to be per-patch
     float lowerBound = 0;//upperBound;
@@ -908,40 +920,8 @@ bool PatchIsectDisp(Intersection &isect,
             sideCrop(umin, umax, vmin, vmax, uFlag, vFlag,
                      upperIs, uIs, vIs);
         } else if (lowerFlag) {
-            if (uFlag[0]) {
-                umin = 0;
-                umax = lowerIs.u;
-            } else if (uFlag[1]) {
-                umin = lowerIs.u;
-                umax = 1;
-            } else {
-                if (vFlag[0]) {
-                    umin = std::min(vIs[0].u, lowerIs.u);
-                    umax = std::max(vIs[0].u, lowerIs.u);
-                } else if (vFlag[1]) {
-                    umin = std::min(vIs[1].u, lowerIs.u);
-                    umax = std::max(vIs[1].u, lowerIs.u);
-                } else {
-                    //printf("Error\n");
-                }
-            }
-            if (vFlag[0]) {
-                vmin = 0;
-                vmax = lowerIs.v;
-            } else if (vFlag[1]) {
-                vmin = lowerIs.v;
-                vmax = 1;
-            } else {
-                if (uFlag[0]) {
-                    vmin = std::min(uIs[0].u, lowerIs.v);
-                    vmax = std::max(uIs[0].u, lowerIs.v);
-                } else if (uFlag[1]) {
-                    vmin = std::min(uIs[1].u, lowerIs.v);
-                    vmax = std::max(uIs[1].u, lowerIs.v);
-                } else {
-                    //printf("Error\n");
-                }
-            }
+            sideCrop(umin, umax, vmin, vmax, uFlag, vFlag,
+                     lowerIs, uIs, vIs);
         } else if (uFlag[0] == false and
                    vFlag[0] == false and
                    uFlag[1] == false and
@@ -953,51 +933,48 @@ bool PatchIsectDisp(Intersection &isect,
         }
     }
 
-    // tekitou
-    float eps = 1.e-2;
-    if ((umax - umin) < 2*eps) {
-        umin -= eps;
-        umax += eps;
-    }
-    if ((vmax - vmin) < 2*eps) {
-        vmin -= eps;
-        vmax += eps;
-    }
-    umin -= eps;
-    vmin -= eps;
-    umax += eps;
-    vmax += eps;
-    // umin = vmin = 0;
-    // umax = vmax = 1;
+    // make square for better cropping
+    real ulen = umax - umin;
+    real vlen = vmax - vmin;
+    ulen = std::max(ulen, vlen);
+    real ucenter = (umin+umax)*0.5;
+    real vcenter = (vmin+vmax)*0.5;
+    umin = ucenter - ulen;
+    umax = ucenter + ulen;
+    vmin = vcenter - ulen; // use u
+    vmax = vcenter + ulen;
 
     umin = std::max(0.0f, umin);
     vmin = std::max(0.0f, vmin);
     umax = std::min(1.0f, umax);
     vmax = std::min(1.0f, vmax);
 
-    // TODO: ray differential
-    diceLevel = 1 << std::max((int)((umax - umin)/0.0125), (int)((vmax - vmin)/0.0125));
-    diceLevel = std::max(1, diceLevel);
-    diceLevel = std::min(8, diceLevel);
+    // umin = vmin = 0;
+    // umax = vmax = 1;
 
-    float step = (16/(float)(1<<level));
+    // TODO: ray differential
+    diceLevel = (int)(ulen * 100);
+    diceLevel = std::max(1, diceLevel);
+    diceLevel = std::min(16, diceLevel);
 
     // dice & displace patch
     real ustep = (umax-umin)/diceLevel;
     real vstep = (vmax-vmin)/diceLevel;
     bool hit = false;
 
-    real freq = 200;
+    real freq = displaceFreq;
+    const real kEPS = 1.0e-4;
+
     for (int lu = 0; lu < diceLevel; ++lu) {
+        real umin2 = umin + ustep*lu - kEPS;
+        real umax2 = umin + ustep*(lu+1) + kEPS;
+        PatchType tmp;
+        patch.CropU(tmp, umin2, umax2);
+
         for (int lv = 0; lv < diceLevel; ++lv) {
-
-            real umin2 = umin + ustep*lu;
-            real umax2 = umin + ustep*(lu+1);
-            real vmin2 = vmin + vstep*lv;
-            real vmax2 = vmin + vstep*(lv+1);
-
-            PatchType tmp, subPatch;
-            patch.CropU(tmp, umin2, umax2);
+            real vmin2 = vmin + vstep*lv - kEPS;
+            real vmax2 = vmin + vstep*(lv+1) + kEPS;
+            PatchType subPatch;
             tmp.CropV(subPatch, vmin2, vmax2);
 
             // triangle intersect
@@ -1009,31 +986,58 @@ bool PatchIsectDisp(Intersection &isect,
             p[2] = subPatch.Get(3,0);
             p[3] = subPatch.Get(3,3);
 
+#define DISPLACEMENT(x, y) (upperBound * pow(0.5 * (1+sin(x*freq)*cos(y*freq)), 5))
+
             real3 v[4];
             float uv[4][2] = { {umin2, vmin2}, {umin2, vmax2},
                                {umax2, vmin2}, {umax2, vmax2} };
             for (int i = 0; i < 4; ++i) {
                 vec3f n = patch.EvaluateNormal(uv[i][0], uv[i][1]);
-                float displacement = upperBound * 0.5 * (1+sin(p[i][0]*freq)*cos(p[i][1]*freq));
+                float displacement = DISPLACEMENT(p[i][0], p[i][1]);
                 vec3f dp = p[i] - n * displacement;
                 v[i] = real3(dp[0], dp[1], dp[2]);
             }
 
             real ou, ov;
-            if (TriangleIsect(t, ou, ov, v[0], v[1], v[2], ray.org, ray.dir) or
-                TriangleIsect(t, ou, ov, v[1], v[2], v[3], ray.org, ray.dir)) {
+            bool i0 = TriangleIsect(t, ou, ov, v[0], v[1], v[2], ray.org, ray.dir);
+            bool i1 = i0 ? false : TriangleIsect(t, ou, ov, v[1], v[2], v[3], ray.org, ray.dir);
+
+            if (i0 | i1) {
                 isect.t = t;
-                isect.u = umin2;
-                isect.v = vmin2;
+                if (i0) {
+                    isect.u = umin2 * ou + umax2 * ov + umin2 * (1 - ou - ov);
+                    isect.v = vmax2 * ou + vmin2 * ov + vmin2 * (1 - ou - ov);
+                } else {
+                    isect.u = umax2 * ou + umax2 * ov + umin2 * (1 - ou - ov);
+                    isect.v = vmin2 * ou + vmax2 * ov + vmax2 * (1 - ou - ov);
+                }
 
-                real3 n = vcross(v[2]-v[0], v[1]-v[0]);
+                // analytical displaced normal approximation
+                // (ignoring weingarten term)
+                // du Ns' = du S + Ns du D
+                // dv Ns' = dv S + Ns dv D
+
+                float delta = 1.0e-4;
+                vec3f Sp = patch.Evaluate(isect.u, isect.v);
+                vec3f Spu = patch.Evaluate(isect.u + delta, isect.v);
+                vec3f Spv = patch.Evaluate(isect.u, isect.v + delta);
+                vec3f Su = patch.EvaluateDu(isect.u, isect.v);
+                vec3f Sv = -1.0 * patch.EvaluateDv(isect.u, isect.v);
+                vec3f N = cross(Su, Sv);
+                N.normalize();
+
+                float duD = (DISPLACEMENT(Spu[0], Spu[1]) - DISPLACEMENT(Sp[0], Sp[1]))/delta;
+                float dvD = (DISPLACEMENT(Spv[0], Spv[1]) - DISPLACEMENT(Sp[0], Sp[1]))/delta;
+
+                Su = Su + N * duD;
+                Sv = Sv - N * dvD;
+
+                vec3f n = -1.0*cross(Su, Sv);
                 n.normalize();
-                isect.normal = n;
-
-                isect.u = ustep;
-                isect.v = vstep;
+                isect.normal = real3(n[0], n[1], n[2]);
 
                 hit = true;
+#undef DISPLACEMNT
             }
         }
     }
@@ -1050,7 +1054,8 @@ real Inverse(real x)
 bool TestLeafNode(Intersection &isect, // [inout]
                   const BVHNode &node, const std::vector<unsigned int> &indices,
                   const Mesh *mesh, const Ray &ray, int intersectKernel,
-                  float uvMargin, bool cropUV, bool bezierClip, float displaceScale) {
+                  float uvMargin, bool cropUV, bool bezierClip,
+                  float displaceScale, float displaceFreq) {
   bool hit = false;
 
   unsigned int numTriangles = node.data[0];
@@ -1092,7 +1097,7 @@ bool TestLeafNode(Intersection &isect, // [inout]
               hit = true;
           }
       } else {
-          if (PatchIsectDisp(isect, bv, tr, level, intersectKernel, uvMargin, cropUV, bezierClip, displaceScale)) {
+          if (PatchIsectDisp(isect, bv, tr, level, intersectKernel, uvMargin, cropUV, bezierClip, displaceScale, displaceFreq)) {
               // Update isect state
               isect.faceID = faceIdx;
               hit = true;
@@ -1277,7 +1282,8 @@ bool BVHAccel::Traverse(Intersection &isect, const Mesh *mesh, Ray &ray) {
 
       if (hit) {
           if (TestLeafNode(isect, node, indices_, mesh, ray,
-                           _intersectKernel, _uvMargin, _cropUV, _bezierClip, _displaceScale)) {
+                           _intersectKernel, _uvMargin, _cropUV, _bezierClip,
+                           _displaceScale, _displaceFreq)) {
           hitT = isect.t;
         }
       }

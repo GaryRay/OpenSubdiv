@@ -55,7 +55,7 @@ class BVHAccel {
 public:
   BVHAccel(float uvMargin=0.1f) : _intersectKernel(ORIGINAL),
                                   _uvMargin(uvMargin), _cropUV(true),
-                                  _bezierClip(true), _displaceScale(0) {}
+                                  _bezierClip(true), _displaceScale(0), _displaceFreq(100) {}
   ~BVHAccel() {};
 
   ///< Build BVH for input mesh.
@@ -78,7 +78,7 @@ public:
   void SetUVMargin(float margin) { _uvMargin = margin; }
   void SetCropUV(bool flag) {_cropUV = flag;}
   void SetBezierClip(bool flag) {_bezierClip = flag;}
-  void SetDisplaceScale(float scale) { _displaceScale = scale; }
+  void SetDisplacement(float scale, float freq) { _displaceScale = scale; _displaceFreq = freq; }
 
   const std::vector<BVHNode> &GetNodes() const { return nodes_; }
   const std::vector<unsigned int> &GetIndices() const { return indices_; }
@@ -98,6 +98,7 @@ private:
   bool _cropUV;
   bool _bezierClip;
   float _displaceScale;
+  float _displaceFreq;
 };
 
 #endif // __BVH_ACCEL_H__

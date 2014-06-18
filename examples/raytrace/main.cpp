@@ -259,6 +259,7 @@ int g_cropUV = 1;
 int g_bezierClip = 1;
 float g_uvMargin = 0.01f;
 float g_displaceScale = 0.0f;
+float g_displaceFreq = 100.0f;
 
 int g_animate = 0;
 int g_frame = 0;
@@ -915,6 +916,9 @@ callbackSlider(float value, int data)
     } else if (data == 1) {
         g_displaceScale = value;
         updateGeom();
+    } else if (data == 2) {
+        g_displaceFreq = value;
+        startRender();
     }
 }
 
@@ -982,8 +986,10 @@ initHUD()
 
     g_hud.AddSlider("UV Margin", 0, 0.01, g_uvMargin,
                     10, 160, 20, false, callbackSlider, 0);
-    g_hud.AddSlider("Displacement", 0, 0.1, g_displaceScale,
+    g_hud.AddSlider("Disp scale", 0, 0.1, g_displaceScale,
                     10, 190, 20, false, callbackSlider, 1);
+    g_hud.AddSlider("Disp freq", 0, 200, g_displaceFreq,
+                    10, 220, 20, false, callbackSlider, 2);
 
     int kernel_pulldown = g_hud.AddPullDown("Intersect (I)", 400, 10, 200, callbackIntersect, 'i');
     g_hud.AddPullDownButton(kernel_pulldown, "Original", 0, g_intersectKernel == 0);
@@ -1008,7 +1014,7 @@ initHUD()
     for (int i = 1; i < 11; ++i) {
         char level[16];
         sprintf(level, "Lv. %d", i);
-        g_hud.AddRadioButton(3, level, i==g_level, 10, 210+i*20, callbackLevel, i, '0'+(i%10));
+        g_hud.AddRadioButton(3, level, i==g_level, 10, 230+i*20, callbackLevel, i, '0'+(i%10));
     }
 
     int pulldown_handle = g_hud.AddPullDown("Shape (N)", -300, 10, 300, callbackModel, 'n');
@@ -1088,7 +1094,8 @@ idle() {
     g_scene.Render(g_width, g_height, fov,
                    g_image,
                    g_eye, g_lookat, g_up, g_step, index,
-                   g_intersectKernel, g_uvMargin, g_cropUV, g_bezierClip, g_displaceScale);
+                   g_intersectKernel, g_uvMargin, g_cropUV, g_bezierClip,
+                   g_displaceScale, g_displaceFreq);
 
     --g_stepIndex;
 
