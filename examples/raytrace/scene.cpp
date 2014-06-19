@@ -674,13 +674,14 @@ Scene::Render(int width, int height, double fov,
               const float eye[3],
               const float lookat[3], const float up[3],
               int step, int stepIndex, int intersectKernel,
-              float uvMargin, bool cropUV, bool bezierClip, float displaceScale)
+              float uvMargin, bool cropUV, bool bezierClip,
+              float displaceScale, float displaceFreq)
 {
     _accel.SetIntersectKernel(intersectKernel);
     _accel.SetUVMargin(uvMargin);
     _accel.SetCropUV(cropUV);
     _accel.SetBezierClip(bezierClip);
-    _accel.SetDisplaceScale(displaceScale);
+    _accel.SetDisplacement(displaceScale, displaceFreq);
 
     Camera camera;
 
