@@ -170,10 +170,12 @@ protected:
         }else{
             nlevel = (int)ceil(log2(N));
         }
-        return nlevel*4<=level;
+        return nlevel*2<=level;
     }
-    static Real lerp(Real a, Real b, Real t) {
-        return a+(b-a)*t;
+    static Real lerp(Real a, Real b, Real u) {
+        Real t = Real(1) - (Real(1)-u);
+        Real s = Real(1) - t;
+        return s*a+t*b;
     }
 
     static void coarseSort(int order[2], PatchType tmp[2])
@@ -212,7 +214,7 @@ protected:
     template<typename T>
     static T slope(T const a[], T const b[]) {
         T d0 = b[0] - a[0];
-        T d1 = b[1] - a[2];
+        T d1 = b[1] - a[1];
         return fabs(d0 / d1);
     }
 
@@ -261,19 +263,21 @@ protected:
                     }
                 }
             }
-            if (k < 0) return 0;
-            current = 0;
-            for (int i = 0; i < k; ++i) {
-                if (p[i][1] * p[k][1] < 0) {
-                    Scalar s = slope(&p[i][0], &p[k][0]);
-                    if (current < s) {
-                        current = s;
-                        l = i;
+            if (k >= 0){
+                current = 0;
+                for (int i = 0; i < k; ++i) {
+                    if (p[i][1] * p[k][1] < 0) {
+                        Scalar s = slope(&p[i][0], &p[k][0]);
+                        if (current < s) {
+                            current = s;
+                            l = i;
+                        }
                     }
                 }
+                if (l >= 0){
+                    ts[n++] = dist(&p[l][0], &p[k][0]);
+                }
             }
-            if (l < 0) return 0;
-            ts[n++] = dist(&p[l][0], &p[k][0]);
         }
         {
             int k = -1;
@@ -288,34 +292,37 @@ protected:
                     }
                 }
             }
-            if (k < 0) return 0;
-            current = 0;
-            for (int i = k+1; i < VECTOR::LENGTH; ++i) {
-                if (p[i][1] * p[k][1] < 0) {
-                    Scalar s = slope(&p[i][0], &p[k][0]);
-                    if (current < s) {
-                        current = s;
-                        l = i;
+            if (k >= 0){
+                current = 0;
+                for (int i = k+1; i < VECTOR::LENGTH; ++i) {
+                    if (p[i][1] * p[k][1] < 0) {
+                        Scalar s = slope(&p[i][0], &p[k][0]);
+                        if (current < s) {
+                            current = s;
+                            l = i;
+                        }
                     }
                 }
+                if (l >= 0) {
+                    ts[n++] = dist(&p[k][0], &p[l][0]);
+                }
             }
-            if (l < 0) return 0;
-            ts[n++] = dist(&p[k][0], &p[l][0]);
         }
         return n;
     }
 
     static bool xCheck(Real rng[2], const VECTOR& curve)
     {
-        Real t[2] = {0, 0};
+        Real t[4] = {0};
         int nn = scanConvex(t, curve);
         if (nn) {
-            if (nn != 2) return false;
-
             Real t0 = t[0];
-            Real t1 = t[1];
+            Real t1 = t[0];
 
-            if (t0 > t1) std::swap(t0, t1);
+            for(int i=1;i<nn;i++){
+                t0 = std::min(t0, t[i]);
+                t1 = std::max(t1, t[i]);
+            }
 
             rng[0] = t0;
             rng[1] = t1;
@@ -338,12 +345,8 @@ protected:
                 curve[i][1] = (patch.Get(i,j))[1];
             }
             if (xCheck(rng, curve)) {
-                if (rng[1] - rng[0] < delta) {
-                    t0 = std::min(t0, rng[0]);
-                    t1 = std::max(t1, rng[1]);
-                } else {
-                    return false;
-                }
+                t0 = std::min(t0, rng[0]);
+                t1 = std::max(t1, rng[1]);
             } else {
                 return false;
             }
@@ -367,12 +370,8 @@ protected:
                 curve[j][1] = (patch.Get(i,j))[1];
             }
             if (xCheck(rng, curve)) {
-                if (rng[1] - rng[0] < delta) {
-                    t0 = std::min(t0,rng[0]);
-                    t1 = std::max(t1,rng[1]);
-                } else {
-                    return false;
-                }
+                t0 = std::min(t0,rng[0]);
+                t1 = std::max(t1,rng[1]);
             }else{
                 return false;
             }
@@ -400,8 +399,8 @@ protected:
             return testBezierClipL(info, patch, u0, u1, v0, v1, zmin, zmax, level);
         } else {
             Real tw = 1;
-            Real tt0 = 1;
-            Real tt1 = 0;
+            Real tt0 = 0;
+            Real tt1 = 1;
 
             if (_useBezierClip & bClip) {
                 Real rng[2];
@@ -459,8 +458,8 @@ protected:
             return testBezierClipL(info, patch, u0, u1, v0, v1, zmin, zmax, level);
         } else {
             Real tw = 1;
-            Real tt0 = 1;
-            Real tt1 = 0;
+            Real tt0 = 0;
+            Real tt1 = 1;
 
             if (_useBezierClip & bClip) {
                 Real rng[2];
@@ -590,8 +589,8 @@ protected:
             return testBezierClipL(info, mpatch, u0, u1, v0, v1, zmin, zmax, level);
         } else {
             Real tw = 1;
-            Real tt0 = 1;
-            Real tt1 = 0;
+            Real tt0 = 0;
+            Real tt1 = 1;
 
             if (_useBezierClip & bClip) {
                 Real rng[2];
@@ -645,8 +644,8 @@ protected:
             return testBezierClipL(info, mpatch, u0, u1, v0, v1, zmin, zmax, level);
         } else {
             Real tw = 1;
-            Real tt0 = 1;
-            Real tt1 = 0;
+            Real tt0 = 0;
+            Real tt1 = 1;
 
             if (_useBezierClip & bClip) {
                 Real rng[2];
