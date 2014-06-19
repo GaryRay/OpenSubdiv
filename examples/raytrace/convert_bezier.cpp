@@ -136,7 +136,7 @@ int convertRegular(std::vector<float> &bezierVertices,
         BP[14] = (4*(P[9] + P[11]) + 2*(P[5] + P[7])) + 4*(4*P[10] + 2*P[6]);
         BP[15] =(((P[5] + P[15]) + (P[7] + P[13])) + (4*(P[6]+P[14]) + 4*(P[9]+P[11]))) + 16*P[10];
         for (int j = 0; j < 16; ++j) {
-            BP[j] = BP[j]*(1.0/36.0);
+            BP[j] = BP[j]*(1.0f/36.0f);
         }
         for (int j = 0; j < 16; ++j) {
             min[0] = std::min(min[0], BP[j][0]);

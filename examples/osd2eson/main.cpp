@@ -164,9 +164,9 @@ int checkMesh( char const * name, xyzmesh * hmesh, int levels, Scheme scheme=kCa
                 max[j] = std::max(max[j], v.GetPos()[j]);
             }
         }
-        float center[3] = { (max[0]+min[0])*0.5,
-                            (max[1]+min[1])*0.5,
-                            (max[2]+min[2])*0.5 };
+        float center[3] = { (max[0]+min[0])*0.5f,
+                            (max[1]+min[1])*0.5f,
+                            (max[2]+min[2])*0.5f };
         float radius = std::max(std::max(max[0]-min[0], max[1]-min[1]), max[2]-min[2]);
         for (int i = 0; i < (int)m->GetVertices().size(); ++i) {
             xyzVV v = m->GetVertices()[i];

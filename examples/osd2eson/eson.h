@@ -178,6 +178,8 @@ class Value
           assert(0);
           break;
       }
+
+      return -1;
     }
 
 
