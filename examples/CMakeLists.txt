@@ -93,6 +93,7 @@ endif()
 
 if(MAYA_FOUND AND (NOT NO_MAYA))
     add_subdirectory(osdPolySmooth)
+    add_subdirectory(mayaEsonIO)
 
     # manuelk: the following plugins are disabled until further notice
 
