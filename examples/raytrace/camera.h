@@ -26,6 +26,4 @@ public:
     double fov_;
 };
 
-#endif // __LIINA_CAMERA_H__
-
-// vim:set sw=2 ts=2 expandtab:
+#endif // __MALLIE_CAMERA_H__

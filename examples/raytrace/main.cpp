@@ -463,6 +463,41 @@ setCamera() {
 }
 
 static void
+dumpCamera()
+{
+  const char *filename = "camera.dat";
+
+  FILE* fp = fopen(filename, "w");
+  if (!fp) {
+    fprintf(stderr, "Failed tp open file: %s\n", filename);
+    return;
+  }
+
+  fprintf(fp, "%f %f %f\n", g_pan[0], g_pan[1], g_dolly);
+  fprintf(fp, "%f %f\n", g_rotate[0], g_rotate[1]);
+
+  fclose(fp);
+
+  printf("camera data dumped.\n"); fflush(stdout);
+}
+
+static void
+loadCamera()
+{
+  const char *filename = "camera.dat";
+  FILE* fp = fopen(filename, "r");
+  if (!fp) {
+    fprintf(stderr, "Failed tp open file: %s\n", filename);
+    return;
+  }
+
+  fscanf(fp, "%f %f %f\n", &g_pan[0], &g_pan[1], &g_dolly);
+  fscanf(fp, "%f %f\n", &g_rotate[0], &g_rotate[1]);
+  fclose(fp);
+  printf("camera data loaded.\n"); fflush(stdout);
+}
+
+static void
 updateGeom() {
 
     int nverts = (int)g_orgPositions.size() / 3;
@@ -842,6 +877,7 @@ int windowClose() {
 static void
 #if GLFW_VERSION_MAJOR>=3
 keyboard(GLFWwindow *, unsigned int codepoint){ //to use glfwSetCharCallback
+    printf("key = %d", codepoint);
     char key = (char)(codepoint & 0x7f);//unicode to ascii
     //if (event == GLFW_RELEASE) return;
 #else
@@ -859,6 +895,8 @@ keyboard(int key, int event) {                  //to use glfwSetKeyCallback
         case '+':
         case '=': g_preTessLevel++; updateGeom(); break;
         case '-': g_preTessLevel = std::max(1, g_preTessLevel-1); updateGeom(); break;
+        case 'G': dumpCamera(); break;
+        case 'g': loadCamera(); setCamera(); break;
         case GLFW_KEY_ESCAPE: g_hud.SetVisible(!g_hud.IsVisible()); break;
     }
 }
