@@ -24,7 +24,7 @@ set(SOURCE_FILES
 	main.cpp
 	mayaEsonReader.cpp
 	mayaEsonWriter.cpp
-    mayaEsonIO.cpp
+	mayaEsonIO.cpp
     ../raytrace/convert_bezier.cpp
     ../osd2eson/eson.cc
 
@@ -34,6 +34,8 @@ set(HEADER_FILES
 	mayaEsonReader.h
 	mayaEsonWriter.h
     mayaEsonIO.h
+    mayaMeshToHbrMesh.h
+	simpleVertexXYZ.h
     ../osd2eson/eson.h
 )
 

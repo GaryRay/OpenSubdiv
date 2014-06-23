@@ -3,8 +3,8 @@
 
 //Local
 
-#if !defined( MAYA_ESON_WRITER_INCLUDED__ )
-#define MAYA_ESON_WRITER_INCLUDED__
+#if !defined( MAYA_ESON_READER_INCLUDED__ )
+#define MAYA_ESON_READER_INCLUDED__
 
 // ====================================
 // MayaEsonReader class
