@@ -135,5 +135,102 @@ static bool testBilinearPatch(T *t, T *u, T *v,
     return false;
 }
 
+template <typename T, typename V>
+inline T dot_(V const &a, V const &b) {
+    return a[0]*b[0] + a[1]*b[1] + a[2]*b[2];
+}
+
+template<typename T, typename V>
+static bool testTriangle(T *tt, T *uu, T *vv, 
+    V const & p0, V const & p1, V const & p2, V const & org, V const & dir, T tmin, T tmax) {
+    //typedef typename V::ElementType Scalar;
+    T t,u,v; 
+    //-e1 = p0-p1
+    V e1(p0-p1);//vA
+    //-e2 = p0-p2
+    V e2(p0-p2);//vB 
+    //dir = GHI 
+    V bDir(cross(e2,dir));
+    
+    T iM = dot_<T,V>(e1,bDir);
+
+    if(0 < iM){
+        //p0-org
+        V vOrg(p0 - org);
+
+        u = dot_<T,V>(vOrg,bDir);
+        if(u < 0 || iM < u)return false;
+
+        V vE(cross(e1,vOrg));
+        
+        v = dot_<T,V>(dir,vE);
+        if(v < 0 || iM  < u+v)return false;
+
+        t = -dot_<T,V>(e2,vE);
+    }else if(iM < 0){
+        //p0-org
+        V vOrg(p0 - org);//JKL
+
+        u = dot_<T,V>(vOrg,bDir);
+        if(u > 0 || iM > u)return false;
+        
+        V vE(cross(e1,vOrg));
+        
+        v = dot_<T,V>(dir,vE);
+        if(v > 0 || iM  > u+v)return false;
+
+        t = -dot_<T,V>(e2,vE);
+    }else{
+        return false;
+    }
+
+    iM = T(1)/iM;
+    t *= iM;
+    if(t<tmin || tmax <t)return false;
+    u *= iM;
+    v *= iM;
+
+    *tt = t;
+    *uu = u;
+    *vv = v;
+    
+    return true;
+}
+
+
+template<typename T, typename V>
+static bool testQuadPlane(T *t, T *u, T *v, 
+    V const p[4], V const & org, V const & dir, T tmin, T tmax) {
+    //typedef typename V::ElementType Scalar;
+
+    V const & p00 = p[0];
+    V const & p10 = p[1];
+    V const & p01 = p[2];
+    V const & p11 = p[3];
+
+    T tt, uu, vv;
+    bool bRet = false;
+    if(testTriangle(&tt, &uu, &vv, p00, p01, p10, org, dir, tmin, tmax))
+    {
+        T ww = T(1)-(uu+vv);
+        *u = ww*T(0)+uu*T(0)+vv*T(1);//00 - 01 - 10
+        *v = ww*T(0)+uu*T(1)+vv*T(0);//00 - 01 - 10
+        *t = tt;
+        tmax = tt;
+        bRet = true;
+    }
+    if(testTriangle(&tt, &uu, &vv, p10, p01, p11, org, dir, tmin, tmax))
+    {
+        T ww = T(1)-(uu+vv);
+        *u = ww*T(1)+uu*T(0)+vv*T(1);//10 - 01 - 11
+        *v = ww*T(0)+uu*T(1)+vv*T(1);//10 - 01 - 11
+        *t = tt;
+        tmax = tt;
+        bRet = true;
+    }
+
+    return bRet;
+}
+
 
 #endif  // OSDUTIL_BILINEAR_INTERSECT_H

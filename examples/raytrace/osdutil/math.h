@@ -111,16 +111,21 @@ struct vec3t {
 };
 
 template <typename REAL>
-inline static vec3t<REAL> operator*(REAL f, const vec3t<REAL> &v) {
+inline vec3t<REAL> operator*(REAL f, const vec3t<REAL> &v) {
     return v*f;
 }
 template <typename REAL>
-inline static vec3t<REAL> operator*(int f, const vec3t<REAL> &v) {
+inline vec3t<REAL> operator*(int f, const vec3t<REAL> &v) {
     return v*(REAL)f;
 }
 
 template <typename REAL>
-inline static vec3t<REAL> cross(vec3t<REAL> const &a, vec3t<REAL> const &b) {
+inline REAL dot(vec3t<REAL> const &a, vec3t<REAL> const &b) {
+    return a[0]*b[0] + a[1]*b[1] + a[2]*b[2];
+}
+
+template <typename REAL>
+inline vec3t<REAL> cross(vec3t<REAL> const &a, vec3t<REAL> const &b) {
     vec3t<REAL> c;
     c[0] = a[1] * b[2] - a[2] * b[1];
     c[1] = a[2] * b[0] - a[0] * b[2];

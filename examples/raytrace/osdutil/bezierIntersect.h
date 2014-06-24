@@ -56,7 +56,9 @@ public:
                                    bool useBezierClip = true) NO_INLINE :
 
         _patch(patch), _maxLevel(maxLevel), _uvMargin(uvMargin),
-        _cropUV(cropUV), _useBezierClip(useBezierClip) {
+        _cropUV(cropUV), _useBezierClip(useBezierClip),
+        _useTriangle(false)
+         {
 
         _uRange[0] = _vRange[0] = 0;
         _uRange[1] = _vRange[1] = 1;
@@ -545,27 +547,50 @@ protected:
                 P[1] = patch.Get(i+1,j  );
                 P[2] = patch.Get(i  ,j+1);
                 P[3] = patch.Get(i+1,j+1);
-                if (testBilinearPatch(&t, &u, &v, P, zmin, zmax, _uvMargin)){
+                if(!_useTriangle){
+                    if (testBilinearPatch(&t, &u, &v, P, zmin, zmax, _uvMargin)){
 
-                    u = lerp(i*du,(i+1)*du,u);
-                    v = lerp(j*dv,(j+1)*dv,v);
+                        u = lerp(i*du,(i+1)*du,u);
+                        v = lerp(j*dv,(j+1)*dv,v);
 
-                    uu = u;
-                    vv = v;
+                        uu = u;
+                        vv = v;
 
-                    zmax = t;
+                        zmax = t;
 
-                    u = lerp(u0,u1,u);
-                    v = lerp(v0,v1,v);
+                        u = lerp(u0,u1,u);
+                        v = lerp(v0,v1,v);
 
-                    info->u = u;
-                    info->v = v;
-                    info->t = t;
-                    info->level = level;
-                    bRet = true;
+                        info->u = u;
+                        info->v = v;
+                        info->t = t;
+                        info->level = level;
+                        bRet = true;
+                    }
+                }else{
+                    if (testQuadPlane(&t, &u, &v, P, ValueType(0,0,0), ValueType(0,0,1), zmin, zmax)){
+                        u = lerp(i*du,(i+1)*du,u);
+                        v = lerp(j*dv,(j+1)*dv,v);
+
+                        uu = u;
+                        vv = v;
+
+                        zmax = t;
+
+                        u = lerp(u0,u1,u);
+                        v = lerp(v0,v1,v);
+
+                        info->u = u;
+                        info->v = v;
+                        info->t = t;
+                        info->level = level;
+                        bRet = true;
+                    }
                 }
             }
         }
+#endif
+        
 
         if(bRet) {
             ValueType p = patch.Evaluate(uu,vv);
@@ -573,7 +598,7 @@ protected:
         }
 
         return bRet;
-#endif
+
     }
 
     bool testBezierClipRangeU(UVT* info, PatchType const & patch,
@@ -725,6 +750,7 @@ protected:
     float _uvMargin;
     bool _cropUV;
     bool _useBezierClip;
+    bool _useTriangle;
 };
 
 }   // end OsdUtil
