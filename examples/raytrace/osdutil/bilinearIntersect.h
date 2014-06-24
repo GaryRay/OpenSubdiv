@@ -2,6 +2,7 @@
 #define OSDUTIL_BILINEAR_INTERSECT_H
 
 #include <limits>
+#include "../common.h"
 
 template<class T>
 static bool solveBilinearPatch(T* t, T* u, T* v, T tmin, T tmax, T tt, T uu, T vv) {
@@ -41,7 +42,6 @@ static int solve2(T root[2], T const coeff[3]) {
             if (x1 > x2) std::swap(x1, x2);
             root[0] = x1;
             root[1] = x2;
-            //            printf ("(%f, %f), ", x1, x2);
             return 2;
         }
     }
@@ -67,6 +67,12 @@ template<typename T, typename V>
 static bool testBilinearPatch(T *t, T *u, T *v,
                               V const p[4], T tmin, T tmax, float uvMargin) {
     typedef typename V::ElementType Scalar;
+
+    trace("Test bilinear (%f, %f, %f) (%f, %f, %f), (%f, %f, %f), (%f, %f, %f)\n",
+          p[0][0], p[0][1], p[0][2],
+          p[1][0], p[1][1], p[1][2],
+          p[2][0], p[2][1], p[2][2],
+          p[3][0], p[3][1], p[3][2]);
 
     V const & p00 = p[0];
     V const & p10 = p[1];
@@ -102,15 +108,19 @@ static bool testBilinearPatch(T *t, T *u, T *v,
 
     if (nRet) {
         bool bRet = false;
+        trace("Solve bilinear:");
         for (int i = 0; i < nRet; ++i) {
             Scalar vv = root[i];
+            trace(" vv = %f, ", vv);
             if (0 - uvMargin <= vv && vv <= 1 + uvMargin) {//TODO
                 vv = std::max(Scalar(0), std::min(vv,Scalar(1)));
                 Scalar uu = computeU(A1, A2, B1, B2, C1, C2, D1, D2, vv);
+                trace(" uu = %f, ", uu);
                 if (0 - uvMargin  <= uu && uu <= 1 + uvMargin) {//TODO
                     uu = std::max(Scalar(0), std::min(uu,Scalar(1)));
                     Scalar tt = computeT(a[nPlane], b[nPlane], c[nPlane], d[nPlane],
                                          Scalar(1), uu, vv);
+                    trace("uv=(%f, %f)", uu, vv);
                     if (solveBilinearPatch(t, u, v, tmin, tmax, tt, uu, vv)){
                         tmax = *t;
                         bRet = true;
@@ -118,8 +128,10 @@ static bool testBilinearPatch(T *t, T *u, T *v,
                 }
             }
         }
+        trace("\n");
         return bRet;
     }
+    trace("\n");
     return false;
 }
 
