@@ -154,7 +154,7 @@ static float const *getAdaptivePatchColor(OpenSubdiv::FarPatchTables::Descriptor
     }
 }
 
-Scene::Scene() : _vbo(0), _watertight(false)
+Scene::Scene() : _watertight(false), _vbo(0)
 {
 #ifdef OPENSUBDIV_HAS_TBB
     static tbb::task_scheduler_init init;
@@ -292,10 +292,7 @@ Scene::BezierConvert(float *inVertices, int numVertices,
         std::map<Edge, Bezier > edgeBeziers;
 
         for (int i = 0; i < numTotalPatches; ++i) {
-            int hbrFace = patchParam[i].hbrFaceIndex;
-            OsdHbrFace *face = hbrMesh->GetFace(hbrFace);
-            VERBOSE("\n============ patch %d (HBR : %d)==============\n", i, face->GetID());
-            int cornerQuad[] = { 0, 3, 12, 15 };
+            VERBOSE("\n============ patch %d (HBR : %d)==============\n", i, hbrMesh->GetFace(pathcParam[i].hbrFaceIndex)->GetID());
             int parentQuad[] = { 0, 2, 1, 3 };
 
             int edgeVerts[][4] = { {0, 1, 2, 3}, {0, 4, 8, 12}, {3, 7, 11, 15}, {12, 13, 14, 15} };
@@ -303,7 +300,6 @@ Scene::BezierConvert(float *inVertices, int numVertices,
 
             int edgeParents[][2] = { {0, 2}, {0, 1}, {2, 3}, {1, 3} };
             for (int j = 0; j < 4; ++j) {
-                float *v = &_mesh.bezierVertices[(i*16 + cornerQuad[j])*3];
                 int parent = cpIndices[i*4+parentQuad[j]];
                 if (parent < 0) continue;
                 // parent mapping
@@ -311,6 +307,8 @@ Scene::BezierConvert(float *inVertices, int numVertices,
                 parent = farToHbr[parent];
                 //VERBOSE("%d/%d  %d: %f %f %f\n", i, cornerQuad[j], parent, v[0], v[1], v[2]);
 #if 0
+                int cornerQuad[] = { 0, 3, 12, 15 };
+                float *v = &_mesh.bezierVertices[(i*16 + cornerQuad[j])*3];
                 VERBOSE("%d\n", parent);
                 if (filled[parent] == 0) {
                     filled[parent] = 1;
