@@ -173,6 +173,18 @@ static const char *s_FS_BVH =
     "  outColor = fColor;\n"
     "}\n";
 
+float g_debugScale = 0.01f;
+static const char *s_VS_Debug =
+    "#version 410\n"
+    "in vec2 position;\n"
+    "out vec2 uv;\n"
+    "uniform float debugScale=0.01;\n"
+    "void main() {\n"
+    "  vec2 pos = position.xy * 0.25 + vec2(0.75, -0.75);\n"
+    "  uv = (-position.yx*debugScale+vec2(1))*0.5;\n"
+    "  gl_Position = vec4(pos.x, pos.y, 0, 1);\n"
+    "}\n";
+
 typedef OpenSubdiv::HbrMesh<OpenSubdiv::OsdVertex>     OsdHbrMesh;
 typedef OpenSubdiv::HbrVertex<OpenSubdiv::OsdVertex>   OsdHbrVertex;
 typedef OpenSubdiv::HbrFace<OpenSubdiv::OsdVertex>     OsdHbrFace;
@@ -185,7 +197,7 @@ enum HudCheckBox { kHUD_CB_DISPLAY_BVH,
                    kHUD_CB_BEZIER_CLIP,
                    kHUD_CB_PRE_TESSELLATE,
                    kHUD_CB_ANIMATE,
-                   kHUD_CB_OSD_INTERSECT };
+                   kHUD_CB_DEBUG };
 
 struct SimpleShape {
     std::string  name;
@@ -257,6 +269,7 @@ int g_intersectKernel = 1;
 int g_watertight = 1;
 int g_cropUV = 1;
 int g_bezierClip = 1;
+int g_debug = 0;
 float g_uvMargin = 0.01f;
 float g_displaceScale = 0.0f;
 float g_displaceFreq = 100.0f;
@@ -276,6 +289,7 @@ GLuint g_vbo = 0;
 GLuint g_programSimpleFill = 0;
 GLuint g_programBlockFill = 0;
 GLuint g_programBVH = 0;
+GLuint g_programDebug = 0;
 
 float g_eye[] = { 0, 0, 5, 1};
 float g_lookat[] = {0, 0, 0, 1};
@@ -645,6 +659,15 @@ createOsdMesh( const std::string &shape, int level ){
     updateGeom();
 }
 
+float g_selectedColor[3];
+static void
+debugTrace(int x, int y) {
+    float *p = &g_image[(y*g_width + x)*4];
+    g_selectedColor[0] = p[0];
+    g_selectedColor[1] = p[1];
+    g_selectedColor[2] = p[2];
+}
+
 //------------------------------------------------------------------------------
 static void
 fitFrame() {
@@ -653,7 +676,6 @@ fitFrame() {
     g_dolly = g_size;
 
     setCamera();
-    startRender();
 }
 
 //------------------------------------------------------------------------------
@@ -711,14 +733,22 @@ display() {
                  g_width, g_height,
                  0, GL_RGBA, GL_FLOAT, &g_image[0]);
 
-    glUseProgram(g_blockFill ? g_programBlockFill : g_programSimpleFill);
+    GLuint program = g_blockFill ? g_programBlockFill : g_programSimpleFill;
+    glUseProgram(program);
 
     glBindVertexArray(g_vao);
     glBindBuffer(GL_ARRAY_BUFFER, g_vbo);
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE,
                           sizeof(GLfloat)*2, (void*)0);
+
+    //int loc = glGetUniformLocation(program, "scale");
     glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+
+    if (g_debug) {
+        glUseProgram(g_programDebug);
+        glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+    }
 
     glUseProgram(0);
 
@@ -757,6 +787,15 @@ display() {
         }
         g_hud.DrawString(10, -20,  "FPS               : %3.1f", fps);
 
+
+        if (g_debug) {
+            g_hud.DrawString(-300, -300,
+                             g_selectedColor[0], g_selectedColor[1], g_selectedColor[2],
+                             "COLOR : %f %f %f", 
+                             g_selectedColor[0], g_selectedColor[1], g_selectedColor[2]);
+            g_hud.DrawString(g_width/2-10, g_height/2-5, "[ ]");
+        }
+
         g_hud.Flush();
     }
 
@@ -777,15 +816,17 @@ motion(int x, int y) {
     if (g_hud.MouseCapture()) {
         // check gui (for slider)
         g_hud.MouseMotion(x, y);
+    } else if (g_debug) {
+        //
     } else if (g_mbutton[0] && !g_mbutton[1] && !g_mbutton[2]) {
         // orbit
-        g_rotate[0] += x - g_prev_x;
-        g_rotate[1] += y - g_prev_y;
+        g_rotate[0] += (x - g_prev_x);
+        g_rotate[1] += (y - g_prev_y);
         setCamera();
     } else if (!g_mbutton[0] && !g_mbutton[1] && g_mbutton[2]) {
         // pan
-        g_pan[0] -= g_dolly*(x - g_prev_x)/g_width;
-        g_pan[1] += g_dolly*(y - g_prev_y)/g_height;
+        g_pan[0] -= 0.5*g_dolly*(x - g_prev_x)/g_width;
+        g_pan[1] += 0.5*g_dolly*(y - g_prev_y)/g_height;
         setCamera();
     } else if ((g_mbutton[0] && !g_mbutton[1] && g_mbutton[2]) or
                (!g_mbutton[0] && g_mbutton[1] && !g_mbutton[2])) {
@@ -807,8 +848,10 @@ mouse(GLFWwindow *, int button, int state, int mods) {
 mouse(int button, int state) {
 #endif
 
-    if (state == GLFW_RELEASE)
+    if (state == GLFW_RELEASE) {
         g_hud.MouseRelease();
+        g_mbutton[0] = g_mbutton[1] = g_mbutton[2] = 0;
+    }
 
     if (button == 0 && state == GLFW_PRESS && g_hud.MouseClick(g_prev_x, g_prev_y)) {
         display();
@@ -816,11 +859,27 @@ mouse(int button, int state) {
     }
 
     if (mods & GLFW_MOD_SHIFT) {
+        // for mac
         button = 2;
     }
     if (button < 3) {
         g_mbutton[button] = (state == GLFW_PRESS);
     }
+
+    if (g_debug && button == 0) {
+        float x = g_prev_x/float(g_width);
+        float y = g_prev_y/float(g_height);
+        x = (((x - 0.75)/0.25)*2 - 1);
+        y = (((y - 0.75)/0.25)*2 - 1);
+        if (x >= -1 and y >=-1 and x <= 1 and y <= 1) {
+            x = g_width/2 - x*g_width*g_debugScale*0.5;
+            y = g_height/2 + y*g_height*g_debugScale*0.5;
+
+            debugTrace((int)y, (int)x);
+            display();
+        }
+    }
+
 }
 
 //------------------------------------------------------------------------------
@@ -874,20 +933,17 @@ int windowClose() {
 
 //------------------------------------------------------------------------------
 
-static void
-#if GLFW_VERSION_MAJOR>=3
-keyboard(GLFWwindow *, unsigned int codepoint){ //to use glfwSetCharCallback
-    printf("key = %d", codepoint);
-    char key = (char)(codepoint & 0x7f);//unicode to ascii
-    //if (event == GLFW_RELEASE) return;
-#else
-#define GLFW_KEY_ESCAPE GLFW_KEY_ESC
-keyboard(int key, int event) {                  //to use glfwSetKeyCallback
-    if (event == GLFW_RELEASE) return;
+#if GLFW_VERSION_MAJOR<3
+#error "please use glfw3."
 #endif
-    
+
+static void
+keyboardChar(GLFWwindow *, unsigned int codepoint)
+{
+    char key = (char)(codepoint & 0x7f);//unicode to ascii
+
     if (g_hud.KeyDown(tolower(key))) return;
-    
+
     switch (key) {
         case ' ': startRender(); break;
         case 'q': g_running = 0; break;
@@ -897,7 +953,25 @@ keyboard(int key, int event) {                  //to use glfwSetKeyCallback
         case '-': g_preTessLevel = std::max(1, g_preTessLevel-1); updateGeom(); break;
         case 'G': dumpCamera(); break;
         case 'g': loadCamera(); setCamera(); break;
-        case GLFW_KEY_ESCAPE: g_hud.SetVisible(!g_hud.IsVisible()); break;
+    }
+}
+static void
+keyboard(GLFWwindow *, int key, int /* scancode */, int event, int /* mods */)
+{
+    if (event == GLFW_RELEASE) return;
+
+    const float panStep = g_dolly*0.0001;
+    switch (key) {
+    case GLFW_KEY_UP:
+        g_pan[1] -= panStep; setCamera(); break;
+    case GLFW_KEY_DOWN:
+        g_pan[1] += panStep; setCamera(); break;
+    case GLFW_KEY_LEFT:
+        g_pan[0] += panStep; setCamera(); break;
+    case GLFW_KEY_RIGHT:
+        g_pan[0] -= panStep; setCamera(); break;
+
+    case GLFW_KEY_ESCAPE: g_hud.SetVisible(!g_hud.IsVisible()); display(); break;
     }
 }
 
@@ -990,6 +1064,10 @@ callbackCheckBox(bool checked, int button)
         g_bezierClip = checked;
         updateGeom();
         break;
+    case kHUD_CB_DEBUG:
+        g_debug = checked;
+        updateGeom();
+        break;
     }
     display();
 }
@@ -1021,13 +1099,15 @@ initHUD()
                       10, 120, callbackCheckBox, kHUD_CB_PRE_TESSELLATE, 't');
     g_hud.AddCheckBox("Animate vertices (M)", g_animate != 0,
                       10, 140, callbackCheckBox, kHUD_CB_ANIMATE, 'm');
+    g_hud.AddCheckBox("Debug (D)", g_debug != 0,
+                      10, 160, callbackCheckBox, kHUD_CB_DEBUG, 'd');
 
     g_hud.AddSlider("UV Margin", 0, 0.01, g_uvMargin,
-                    10, 160, 20, false, callbackSlider, 0);
+                    10, 180, 20, false, callbackSlider, 0);
     g_hud.AddSlider("Disp scale", 0, 0.1, g_displaceScale,
-                    10, 190, 20, false, callbackSlider, 1);
+                    10, 210, 20, false, callbackSlider, 1);
     g_hud.AddSlider("Disp freq", 0, 200, g_displaceFreq,
-                    10, 220, 20, false, callbackSlider, 2);
+                    10, 240, 20, false, callbackSlider, 2);
 
     int kernel_pulldown = g_hud.AddPullDown("Intersect (I)", 400, 10, 200, callbackIntersect, 'i');
     g_hud.AddPullDownButton(kernel_pulldown, "Original", 0, g_intersectKernel == 0);
@@ -1052,7 +1132,7 @@ initHUD()
     for (int i = 1; i < 11; ++i) {
         char level[16];
         sprintf(level, "Lv. %d", i);
-        g_hud.AddRadioButton(3, level, i==g_level, 10, 230+i*20, callbackLevel, i, '0'+(i%10));
+        g_hud.AddRadioButton(3, level, i==g_level, 10, 250+i*20, callbackLevel, i, '0'+(i%10));
     }
 
     int pulldown_handle = g_hud.AddPullDown("Shape (N)", -300, 10, 300, callbackModel, 'n');
@@ -1095,13 +1175,21 @@ initGL()
 
     glGenBuffers(1, &g_vbo);
     glBindBuffer(GL_ARRAY_BUFFER, g_vbo);
-    static float pos[] = { -1, -1, 1, -1, -1,  1, 1,  1 };
+    static float pos[] = { -1, -1,
+                            1, -1,
+                           -1, 1,
+                            1, 1,
+                            0.5, -1,
+                            1, -1,
+                            0.5, -0.5,
+                            1, -0.5 };
     glBufferData(GL_ARRAY_BUFFER, sizeof(pos), pos, GL_STATIC_DRAW);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
 
     g_programBlockFill = compileProgram(s_VS, NULL, s_FS);
     g_programSimpleFill = compileProgram(s_VS, NULL, s0_FS);
     g_programBVH = compileProgram(s_VS_BVH, s_GS_BVH, s_FS_BVH);
+    g_programDebug = compileProgram(s_VS_Debug, NULL, s_FS);
 }
 
 //------------------------------------------------------------------------------
@@ -1227,7 +1315,8 @@ int main(int argc, char ** argv)
     glfwGetFramebufferSize(g_window, &g_frameBufferWidth, &g_frameBufferHeight);
     glfwSetFramebufferSizeCallback(g_window, reshape);
 
-    glfwSetCharCallback(g_window, keyboard);//glfwSetKeyCallback(g_window, keyboard);
+    glfwSetCharCallback(g_window, keyboardChar);
+    glfwSetKeyCallback(g_window, keyboard);
     glfwSetCursorPosCallback(g_window, motion);
     glfwSetMouseButtonCallback(g_window, mouse);
     glfwSetWindowCloseCallback(g_window, windowClose);
