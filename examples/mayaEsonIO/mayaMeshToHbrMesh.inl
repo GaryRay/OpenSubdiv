@@ -35,6 +35,7 @@
 
 #include<maya/MFnMesh.h>
 #include<maya/MItMeshPolygon.h>
+#include<maya/MItMeshEdge.h>
 
 //OSD
 #include <osd/vertex.h>
@@ -344,47 +345,67 @@ float MayaMeshToHbrMesh<T>::applyCreaseEdges(
 	HMesh * hbrMesh)
 {
 
-	MStatus returnStatus;
-	MUintArray tEdgeIds;
-	MDoubleArray tCreaseData;
-	float maxCreaseValue = 0.0f;
-
-	if (inMeshFn.getCreaseEdges(tEdgeIds, tCreaseData)) {
-
-		assert( tEdgeIds.length() == tCreaseData.length() );
-
-		// Has crease edges
-		int2 edgeVerts;
-		for (unsigned int j=0; j < tEdgeIds.length(); j++) {
-
-			// Get vert ids from maya edge
-			int edgeId = tEdgeIds[j];
-			returnStatus = inMeshFn.getEdgeVertices(edgeId, edgeVerts);
+	// - - - - - - - - - - - - - - - - - -
+	struct setCreaseFromMayaEdgeId{
+		inline void operator()( int edgeId,
+								MFnMesh const & inMeshFn,
+								HMesh * hbrMesh,
+								float* maxCreaseValue,
+								float sharpVal
+								)
+		{
+			int2 edgeVerts;
+			
+			MStatus returnStatus = inMeshFn.getEdgeVertices( edgeId, edgeVerts );
 
 			// Assumption: The OSD vert ids are identical to those of the Maya mesh
-			HVertex const * v = hbrMesh->GetVertex( edgeVerts[0] ),
-			* w = hbrMesh->GetVertex( edgeVerts[1] );
+			HVertex const *v = hbrMesh->GetVertex( edgeVerts[0] );
+			HVertex const *w = hbrMesh->GetVertex( edgeVerts[1] );
 
-			HHalfedge * e = 0;
+			HHalfedge *e = 0;
 			if( v and w ) {
 
 				if( (e = v->GetEdge(w)) == 0) {
 					e = w->GetEdge(v);
 				}
 
-				if(e) {
-					assert( tCreaseData[j] >= 0.0 );
-					e->SetSharpness( (float)tCreaseData[j] );
-
-					maxCreaseValue = std::max(float(tCreaseData[j]), maxCreaseValue);
+				if( e ){
+					e->SetSharpness( sharpVal );
+					*maxCreaseValue = std::max<float>( sharpVal, *maxCreaseValue );
 				} else {
 					fprintf(stderr,
 							"warning: cannot find edge for crease tag (%d,%d)\n",
 							edgeVerts[0], edgeVerts[1] );
 				}
 			}
+			
+		};
+	};
+	// - - - - - - - - - - - - - - - - - -
+
+	MStatus returnStatus;
+	MUintArray tEdgeIds;
+	MDoubleArray tCreaseData;
+	float maxCreaseValue = 0.0f;
+
+	if (inMeshFn.getCreaseEdges(tEdgeIds, tCreaseData)) {
+		assert( tEdgeIds.length() == tCreaseData.length() );
+		// Has crease edges
+		for (unsigned int j=0; j < tEdgeIds.length(); j++) {
+			setCreaseFromMayaEdgeId()( tEdgeIds[j], inMeshFn, hbrMesh, &maxCreaseValue, (float)( tCreaseData[j] ) );
 		}
 	}
+
+	MItMeshEdge itMeshEdge( inMeshFn.object() );
+	for( ;!itMeshEdge.isDone(); itMeshEdge.next() ){
+		if( !itMeshEdge.onBoundary() ){
+			continue;
+		}
+		int index = itMeshEdge.index();
+		setCreaseFromMayaEdgeId()( index, inMeshFn, hbrMesh, &maxCreaseValue, 3.0f );
+	}
+
+	
 	return maxCreaseValue;
 }
 

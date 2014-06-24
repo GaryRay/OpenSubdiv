@@ -58,6 +58,7 @@
 #include "eson.h"
 #include "../raytrace/convert_bezier.h"
 #include "mayaMeshToHbrMesh.h"
+#include "hbrMeshToEson.h"
 #include "mayaEsonWriter.h"
 #include "simpleVertexXYZ.h"
 
@@ -211,7 +212,10 @@ void MayaEsonWriter::doWrite( const MFileObject& file ){
 			float maxCreaseSharpness = 0.0;
 
 			MayaMeshToHbrMesh<VertexType >	hbrMeshGenerator;
-			HMesh* hbrMesh = hbrMeshGenerator( fnMesh, itMeshPoly, fvarIndices, fvarWidths, &maxCreaseSharpness );
+			std::shared_ptr<HMesh> hbrMesh = std::shared_ptr<HMesh>( hbrMeshGenerator( fnMesh, itMeshPoly, fvarIndices, fvarWidths, &maxCreaseSharpness ) );
+			if( !hbrMesh ){
+				continue;
+			}
 
 			//set SubDiv params
 			HMesh::InterpolateBoundaryMethod vertInterpBoundaryMethod = HMesh::k_InterpolateBoundaryNone;
@@ -224,128 +228,13 @@ void MayaEsonWriter::doWrite( const MFileObject& file ){
 			}
 			hbrMesh->Finish();
 
-			int levels = 3;
-			bool isAdaptive = true;
-			FMeshFactory meshFactory( hbrMesh, levels, isAdaptive );
-			FMesh* farMesh = meshFactory.Create();
-			static OpenSubdiv::FarComputeController computeController;
-			computeController.Refine( farMesh );
-
-
-			// centering/normalize vertices.
-			std::vector<float> vertices;
-			{
-				#if 0
-				float min[3] = {FLT_MAX, FLT_MAX, FLT_MAX};
-				float max[3] = {-FLT_MAX, -FLT_MAX, -FLT_MAX};
-				for (int i = 0; i < (int)farMesh->GetVertices().size(); ++i) {
-					auto const &v = farMesh->GetVertices()[i];
-					for (int j = 0; j < 3; ++j) {
-						min[j] = std::min(min[j], v.GetPos()[j]);
-						max[j] = std::max(max[j], v.GetPos()[j]);
-					}
-				}
-				float center[3] = { (max[0]+min[0])*0.5f,
-					(max[1]+min[1])*0.5f,
-					(max[2]+min[2])*0.5f };
-				float radius = std::max(std::max(max[0]-min[0], max[1]-min[1]), max[2]-min[2]);
-				for (int i = 0; i < (int)farMesh->GetVertices().size(); ++i) {
-					auto v = farMesh->GetVertices()[i];
-					float x = v.GetPos()[0];
-					float y = v.GetPos()[1];
-					float z = v.GetPos()[2];
-					vertices.push_back((x-center[0])/radius);
-					vertices.push_back((y-center[1])/radius);
-					vertices.push_back((z-center[2])/radius);
-				}
-				#else
-				for (int i = 0; i < (int)farMesh->GetVertices().size(); ++i) {
-					auto v = farMesh->GetVertices()[i];
-					vertices.push_back( v.GetPos()[0] );
-					vertices.push_back( v.GetPos()[1] );
-					vertices.push_back( v.GetPos()[2] );
-				}
-				#endif
-			}
-
-			FarPatchTables const *patchTables = farMesh->GetPatchTables();
-			FarPatchTables::PatchArrayVector const &patchArrays = patchTables->GetPatchArrayVector();
-			FarPatchTables::PatchParamTable const &patchParam = patchTables->GetPatchParamTable();
-
-			int numPatches = 0;
-			std::vector<float> bezierVertices;
-			std::vector<float> bezierBounds;
-			std::vector<int> cpIndices; // 16 * numPatches
-			// iterate patch types.
-			for (FarPatchTables::PatchArrayVector::const_iterator it = patchArrays.begin();
-				 it != patchArrays.end(); ++it) {
-
-				switch(it->GetDescriptor().GetType()) {
-				 case FarPatchTables::REGULAR:
-					numPatches += convertRegular(bezierVertices, bezierBounds,
-												 cpIndices, &vertices[0], patchTables, *it);
-					break;
-				 case FarPatchTables::BOUNDARY:
-					numPatches += convertBoundary(bezierVertices, bezierBounds,
-												  cpIndices, &vertices[0], patchTables, *it);
-					break;
-				 case FarPatchTables::CORNER:
-					numPatches += convertCorner(bezierVertices, bezierBounds,
-												cpIndices, &vertices[0], patchTables, *it);
-					break;
-				 case FarPatchTables::GREGORY:
-					numPatches += convertGregory(bezierVertices, bezierBounds,
-												 cpIndices, &vertices[0], patchTables, *it);
-					break;
-				 case FarPatchTables::GREGORY_BOUNDARY:
-					numPatches += convertBoundaryGregory(bezierVertices, bezierBounds,
-														 cpIndices, &vertices[0], patchTables, *it);
-					break;
-				 default:
-					break;
-				}
-
-			}
-
-			eson::Object mesh;
-			int nverts = farMesh->GetNumVertices();
-			mesh["num_vertices"] =
-				eson::Value((int64_t)nverts);
-			mesh["vertices"] =
-				eson::Value((uint8_t*)&vertices[0], sizeof(float)*nverts*3);
-			if( numPatches > 0 ){
-				mesh["num_bezier_patches"] = eson::Value((int64_t)numPatches);
-			}
-			if( patchParam.size() > 0 ){
-				mesh["patch_param"] = eson::Value((uint8_t*)&patchParam[0], sizeof(OpenSubdiv::FarPatchParam)*patchParam.size());
-			}
-
-			if( bezierVertices.size() > 0 ){
-				mesh["bezier_vertices"]  =eson::Value((uint8_t*)&bezierVertices[0], sizeof(float)*bezierVertices.size());
-			}
-
-			if( bezierBounds.size() > 0 ){
-				mesh["bezier_bounds"] = eson::Value((uint8_t*)&bezierBounds[0], sizeof(float)*bezierBounds.size());
-			}
-
-			assert(numPatches*16*3 == (int)bezierVertices.size());
-
-			eson::Value v = eson::Value(mesh);
-			int64_t size = v.Size();
-
-			std::vector<uint8_t> buf(size);
-			uint8_t* ptr = &buf[0];
-
-			ptr = v.Serialize(ptr);
-			assert((ptr-&buf[0]) == size);
-
+			//Eson
 			std::string filename = file.rawFullName().asChar();
-			FILE* fp = fopen(filename.c_str(), "wb");
-			fwrite(&buf[0], 1, size, fp);
-			fclose(fp);
-
-			delete hbrMesh;
-			delete farMesh;
+			try{
+				HbrMeshToEson<VertexType>()( hbrMesh.get(), filename );
+			}catch(...){
+				continue;
+			}
 
 		}
 	}
