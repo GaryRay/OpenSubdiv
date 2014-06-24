@@ -1,17 +1,12 @@
 #define NEED_HBR_FACE_INDEX
 #include "scene.h"
 #include "convert_bezier.h"
-#include "camera.h"
 
 #include <ctime>
 #include <cstring>
 #include <string>
 #include <cfloat>
 #include <algorithm>
-
-#ifdef _OPENMP
-#include <omp.h>
-#endif
 
 #ifdef OPENSUBDIV_HAS_TBB
 #include <tbb/parallel_for.h>
@@ -613,7 +608,6 @@ Scene::VBOBuild()
     glBindBuffer(GL_ARRAY_BUFFER, 0);
 }
 
-#ifdef OPENSUBDIV_HAS_TBB
 class Kernel {
 public:
     Kernel(int width, int stepIndex, int step, BVHAccel *accel, Mesh *mesh,
@@ -622,8 +616,13 @@ public:
         _mesh(mesh), _camera(camera), _image(image), _scene(scene) {
     }
 
+#ifdef OPENSUBDIV_HAS_TBB
     void operator() (tbb::blocked_range<int> const &r) const {
         for (int rr = r.begin(); rr < r.end(); ++rr) {
+#else
+    void operator() (int begin, int end) const {
+        for (int rr = begin; rr < end; ++rr) {
+#endif
             int y = rr*_step + _stepIndex/_step;
             for (int x = _stepIndex%_step; x < _width; x += _step) {
 
@@ -664,72 +663,72 @@ private:
     float *_image;
     Scene *_scene;
 };
-#endif
 
 void
-Scene::Render(int width, int height, double fov,
-              std::vector<float> &image, // RGB
-              const float eye[3],
-              const float lookat[3], const float up[3],
-              int step, int stepIndex, int intersectKernel,
-              float uvMargin, bool cropUV, bool bezierClip,
-              float displaceScale, float displaceFreq)
+Scene::Setup(int width, int height, double fov,
+             std::vector<float> &image, // RGBA
+             const float eye[3],
+             const float lookat[3], const float up[3],
+             int step, int intersectKernel,
+             float uvMargin, bool cropUV, bool bezierClip,
+             float displaceScale, float displaceFreq)
 {
+    _width = width;
+    _height = height;
+    _image = &image[0];
+    _step = step;
     _accel.SetIntersectKernel(intersectKernel);
     _accel.SetUVMargin(uvMargin);
     _accel.SetCropUV(cropUV);
     _accel.SetBezierClip(bezierClip);
     _accel.SetDisplacement(displaceScale, displaceFreq);
 
-    Camera camera;
-
     double deye[3] = { eye[0], eye[1], eye[2] };
     double dlook[3] = { lookat[0], lookat[1], lookat[2] };
     double dup[3] = { up[0], up[1], up[2] };
 
-    camera.BuildCameraFrame(deye, dlook, dup, fov, width, height);
+    _camera.BuildCameraFrame(deye, dlook, dup, fov, width, height);
     assert((int)image.size() >= 3 * width * height);
 
-#ifdef OPENSUBDIV_HAS_TBB
-    tbb::blocked_range<int> range(0, height/step, 1);
+}
 
-    Kernel kernel(width, stepIndex, step, &_accel, &_mesh, &camera, &image[0], this);
+void
+Scene::Render(int stepIndex)
+{
+
+#ifdef OPENSUBDIV_HAS_TBB
+    tbb::blocked_range<int> range(0, _height/_step, 1);
+
+    Kernel kernel(_width, stepIndex, _step, &_accel, &_mesh, &_camera, _image, this);
     tbb::parallel_for(range, kernel);
 #else
-
-#ifdef _OPENMP
-#pragma omp parallel for schedule(dynamic, 1)
+    Kernel kernel(_width, stepIndex, _step, &_accel, &_mesh, &_camera, _image, this);
+    kernel(0, _height/_step);
 #endif
-    for (int y = stepIndex/step; y < height; y += step) {
 
-        for (int x = stepIndex%step; x < width; x += step) {
-
-            float u = 0.5;
-            float v = 0.5;
-
-            Ray ray = camera.GenerateRay(x + u + step / 2.0f, y + v + step / 2.0f);
-
-            Intersection isect;
-            bool hit = _accel.Traverse(isect, &_mesh, ray);
-
-            float rgba[4] = { 0, 0, 0, 0};
-            if (hit) {
-                Shade(rgba, isect, ray);
-            } else {
-                // Maya like gradation. Maybe helpful to check crack visually.
-                rgba[0] = 0.1f; 
-                rgba[1] = 0.1f;
-                rgba[2] = 0.4f * ((height - y - 1)/(double)height);
-                rgba[3] = 1.0f;
-            }
-            image[4 * (y * width + x) + 0] = rgba[0];
-            image[4 * (y * width + x) + 1] = rgba[1];
-            image[4 * (y * width + x) + 2] = rgba[2];
-            image[4 * (y * width + x) + 3] = rgba[3];
-        }
-    }
-#endif
 }
+
+void
+Scene::DebugTrace(int x, int y)
+{
+    printf("------------------------------------------\n");
+    printf("Debug Trace at pixel %d, %d\n", x, y);
+
+    float u = 0.5;
+    float v = 0.5;
+
+    Ray ray = _camera.GenerateRay(x + u + _step/2, y + v + _step/2);
+
+    Intersection isect;
+    bool hit = _accel.Traverse(isect, &_mesh, ray);
+
+    float rgba[4] = { 0, 0, 0, 0};
+    if (hit) {
+        Shade(rgba, isect, ray);
+    }
+    printf("%f %f %f %f\n", rgba[0], rgba[1], rgba[2], rgba[3]);
+}
+
 
 inline float randomreal(void) {
   static unsigned int x = 123456789, y = 362436069, z = 521288629,

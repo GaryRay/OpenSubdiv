@@ -2,6 +2,7 @@
 #define SCENE_H
 
 #include "bvh_accel.h"
+#include "camera.h"
 #include <far/meshFactory.h>
 #include <far/patchTables.h>
 #include <osd/opengl.h>
@@ -29,11 +30,16 @@ public:
     void Build();
     void VBOBuild();
 
-    void Render(int width, int height, double fov,
-                std::vector<float> &image, // RGB
-                const float eye[3], const float lookat[3], const float up[3],
-                int step, int stepIndex, int intersectKernel, float uvMargin,
-                bool cropUV, bool bezierClip, float displaceScale, float displaceFreq);
+    void Setup(int width, int height, double fov,
+               std::vector<float> &image, // RGB
+               const float eye[3], const float lookat[3], const float up[3],
+               int step, int intersectKernel, float uvMargin, bool cropUV, bool bezierClip,
+               float displaceScale, float displaceFreq);
+
+    void Render(int stepIndex);
+
+    void DebugTrace(int x, int y);
+
 
     int GetNumPatches() const { return _mesh.numBezierPatches; }
     int GetNumTriangles() const { return _mesh.numTriangles; }
@@ -65,12 +71,17 @@ public:
 
 
 private:
+    Camera _camera;
     Mesh _mesh;
     BVHAccel _accel;
     ShadeMode _mode;
     bool _watertight;
 
     GLuint _vbo;
+    int _width;
+    int _height;
+    float *_image;
+    int _step;
 };
 
 #endif  // SCENE_H

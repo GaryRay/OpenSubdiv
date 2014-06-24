@@ -71,6 +71,7 @@ OpenSubdiv::OsdCpuComputeContext *g_cpuComputeContext = NULL;
 #include "../common/gl_common.h"
 
 #include "scene.h"
+#include "common.h"
 
 #include <cfloat>
 #include <vector>
@@ -666,6 +667,10 @@ debugTrace(int x, int y) {
     g_selectedColor[0] = p[0];
     g_selectedColor[1] = p[1];
     g_selectedColor[2] = p[2];
+
+    g_traceEnabled = true;
+    g_scene.DebugTrace(x, y);
+    g_traceEnabled = false;
 }
 
 //------------------------------------------------------------------------------
@@ -866,7 +871,7 @@ mouse(int button, int state) {
         g_mbutton[button] = (state == GLFW_PRESS);
     }
 
-    if (g_debug && button == 0) {
+    if (g_debug && button == 0 && state == GLFW_PRESS) {
         float x = g_prev_x/float(g_width);
         float y = g_prev_y/float(g_height);
         x = (((x - 0.75)/0.25)*2 - 1);
@@ -1205,6 +1210,12 @@ idle() {
     }
 
     double fov = 45.0f;
+    g_scene.Setup(g_width, g_height, fov,
+                  g_image,
+                  g_eye, g_lookat, g_up, g_step,
+                  g_intersectKernel, g_uvMargin, g_cropUV, g_bezierClip,
+                  g_displaceScale, g_displaceFreq);
+
     g_renderTime = -1.0f;
 
     int index = g_step*g_step - g_stepIndex;
@@ -1216,12 +1227,7 @@ idle() {
           + ((index>>4)&1) * (g_step*g_step>>3)
           + ((index>>5)&1) * (g_step>>3);
 
-
-    g_scene.Render(g_width, g_height, fov,
-                   g_image,
-                   g_eye, g_lookat, g_up, g_step, index,
-                   g_intersectKernel, g_uvMargin, g_cropUV, g_bezierClip,
-                   g_displaceScale, g_displaceFreq);
+    g_scene.Render(index);
 
     --g_stepIndex;
 

@@ -23,27 +23,7 @@
 #include "osdutil/math_sse.h"
 #include <memory>
 
-#define ENABLE_TRACE_PRINT (0)
-#define ENABLE_DEBUG_PRINT (0)
-
-#define trace(f, ...)                                                          \
-  {                                                                            \
-    if (ENABLE_TRACE_PRINT)                                                    \
-      printf(f, __VA_ARGS__);                                                  \
-  }
-
-#if ENABLE_DEBUG_PRINT
-#define debug(f, ...)                                                          \
-  { printf(f, __VA_ARGS__); }
-#else
-#define debug(f, ...)
-#endif
-
-#ifdef __GNUC__
-#define NO_INLINE __attribute__((noinline))
-#else
-#define NO_INLINE
-#endif
+bool g_traceEnabled = false;
 
 //
 // SAH functions
@@ -1115,6 +1095,8 @@ bool TestLeafNode(Intersection &isect, // [inout]
       const OpenSubdiv::FarPatchParam &param = mesh->patchParams[faceIdx];
       unsigned int bits = param.bitField.field;
       int level = (bits & 0xf);
+
+      trace("TestLeafNode(%d/%d) patch = %d\n", i, numTriangles, faceIdx);
 
       if (displaceScale == 0) {
           if (PatchIsect(isect, bv, tr, level, intersectKernel, uvMargin, cropUV, bezierClip)) {

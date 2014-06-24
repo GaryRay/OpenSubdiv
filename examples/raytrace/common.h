@@ -1,9 +1,43 @@
 #ifndef __COMMON_H__
 #define __COMMON_H__
 
+#ifdef NDEBUG
+#define ENABLE_TRACE_PRINT (0)
+#define ENABLE_DEBUG_PRINT (0)
+#else
+#define ENABLE_TRACE_PRINT (1)
+#define ENABLE_DEBUG_PRINT (0)
+#endif
+
+
+extern bool g_traceEnabled;
+
+#if ENABLE_TRACE_PRINT
+#define trace(f, ...)                           \
+    {                                           \
+        if (g_traceEnabled)                     \
+            printf(f, __VA_ARGS__);             \
+    }
+#else
+#define trace(f, ...)
+#endif
+
+#if ENABLE_DEBUG_PRINT
+#define debug(f, ...)                           \
+    { printf(f, __VA_ARGS__); }
+#else
+#define debug(f, ...)
+#endif
+
+#ifdef __GNUC__
+#define NO_INLINE __attribute__((noinline))
+#else
+#define NO_INLINE
+#endif
+
 #include <cmath>
 
-//ypedef double real;
+//typedef double real;
 typedef float real;
 
 struct real3 {

@@ -16,12 +16,6 @@
 #define USE_COARSESORT 1
 #define USE_UVCROP 1
 
-#ifdef __GNUC__
-#define NO_INLINE __attribute__((noinline))
-#else
-#define NO_INLINE
-#endif
-
 namespace OsdUtil {
 
 template <typename REAL>
@@ -112,6 +106,8 @@ protected:
                 //                info->tangent  = Conv(U);
                 //                info->binormal = Conv(V);
             }
+            trace("hit t = %f, uv = (%f, %f)\n", t, u, v);
+
             return true;
         }
         return false;
@@ -388,6 +384,9 @@ protected:
         PatchType tpatch(patch);
         rotateU(tpatch);
 
+        trace("testBezierClipU (%f, %f) - (%f, %f) z:%f, %f  level=%d\n",
+              u0, u1, v0, v1, zmin, zmax, level);
+
         ValueType min, max;
         tpatch.GetMinMax(min, max, eps*1e-3);
         if (0 < min[0] || max[0] < 0) return false;//x
@@ -447,6 +446,9 @@ protected:
         PatchType tpatch(patch);
         rotateV(tpatch);
 
+        trace("testBezierClipV (%f, %f) - (%f, %f) z:%f, %f  level=%d\n",
+              u0, u1, v0, v1, zmin, zmax, level);
+
         ValueType min, max;
         tpatch.GetMinMax(min, max, eps*1e-3);
         if (0 < min[0] || max[0] < 0) return false;//x
@@ -505,6 +507,10 @@ protected:
                          Real u0, Real u1, Real v0, Real v1,
                          Real zmin, Real zmax, int level) const NO_INLINE {
         Real t = Real(0), u = Real(0), v = Real(0);
+
+        trace("testBezierClipL (%f, %f) - (%f, %f) z:%f, %f  level=%d\n",
+              u0, u1, v0, v1, zmin, zmax, level);
+
 #if DIRECT_BILINEAR
         ValueType P[4];
         P[0] = patch.Get(0, 0);
@@ -578,6 +584,9 @@ protected:
         PatchType tpatch(mpatch);
         rotateU(tpatch);
 
+        trace("testBezierClipRangeU (%f, %f) - (%f, %f) z:%f, %f  level=%d\n",
+              u0, u1, v0, v1, zmin, zmax, level);
+
         ValueType min, max;
         tpatch.GetMinMax(min, max, eps*1e-3);
         if (0 < min[0] || max[0] < 0) return false;//x
@@ -632,6 +641,9 @@ protected:
         PatchType mpatch(patch, u0, u1, v0, v1);
         PatchType tpatch(mpatch);
         rotateV(tpatch);
+
+        trace("testBezierClipRangeV (%f, %f) - (%f, %f) z:%f, %f  level=%d\n",
+              u0, u1, v0, v1, zmin, zmax, level);
 
         ValueType min, max;
         tpatch.GetMinMax(min, max, eps*1e-3);
