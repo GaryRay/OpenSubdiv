@@ -170,7 +170,7 @@ protected:
         }else{
             nlevel = (int)ceil(log2(N));
         }
-        return nlevel*2<=level;
+        return nlevel*2*2<=level;
     }
     static Real lerp(Real a, Real b, Real u) {
         Real t = Real(1) - (Real(1)-u);
