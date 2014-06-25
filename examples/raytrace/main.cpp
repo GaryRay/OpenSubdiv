@@ -174,15 +174,15 @@ static const char *s_FS_BVH =
     "  outColor = fColor;\n"
     "}\n";
 
-float g_debugScale = 0.01f;
 static const char *s_VS_Debug =
     "#version 410\n"
     "in vec2 position;\n"
     "out vec2 uv;\n"
     "uniform float debugScale=0.01;\n"
+    "uniform vec2 debugScope;\n"
     "void main() {\n"
     "  vec2 pos = position.xy * 0.25 + vec2(0.75, -0.75);\n"
-    "  uv = (-position.yx*debugScale+vec2(1))*0.5;\n"
+    "  uv = (-position.yx*debugScale + debugScope +vec2(1))*0.5;\n"
     "  gl_Position = vec4(pos.x, pos.y, 0, 1);\n"
     "}\n";
 
@@ -271,6 +271,8 @@ int g_watertight = 1;
 int g_cropUV = 1;
 int g_bezierClip = 1;
 int g_debug = 0;
+float g_debugScale = 0.01f;
+int g_debugScope[2] = { g_width/2, g_height/2 };
 float g_uvMargin = 0.01f;
 float g_displaceScale = 0.0f;
 float g_displaceFreq = 100.0f;
@@ -747,11 +749,14 @@ display() {
     glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE,
                           sizeof(GLfloat)*2, (void*)0);
 
-    //int loc = glGetUniformLocation(program, "scale");
     glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 
     if (g_debug) {
         glUseProgram(g_programDebug);
+        float sy = (g_width/2 - g_debugScope[0]) / float(g_width/2);
+        float sx = (g_debugScope[1] - g_height/2) / float(g_height/2);
+        glUniform1f(glGetUniformLocation(g_programDebug, "debugScale"), g_debugScale);
+        glUniform2f(glGetUniformLocation(g_programDebug, "debugScope"), sx, sy);
         glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
     }
 
@@ -798,7 +803,7 @@ display() {
                              g_selectedColor[0], g_selectedColor[1], g_selectedColor[2],
                              "COLOR : %f %f %f", 
                              g_selectedColor[0], g_selectedColor[1], g_selectedColor[2]);
-            g_hud.DrawString(g_width/2-10, g_height/2-5, "[ ]");
+            g_hud.DrawString(g_debugScope[0]-10, g_debugScope[1]-5, "[ ]");
         }
 
         g_hud.Flush();
@@ -877,12 +882,15 @@ mouse(int button, int state) {
         x = (((x - 0.75)/0.25)*2 - 1);
         y = (((y - 0.75)/0.25)*2 - 1);
         if (x >= -1 and y >=-1 and x <= 1 and y <= 1) {
-            x = g_width/2 - x*g_width*g_debugScale*0.5;
-            y = g_height/2 + y*g_height*g_debugScale*0.5;
+            x = (g_width - g_debugScope[0]) - (x*g_width/2)*g_debugScale;
+            y = g_debugScope[1] + (y*g_height/2)*g_debugScale;
 
             debugTrace((int)y, (int)x);
-            display();
+        } else {
+            g_debugScope[0] = g_prev_x;
+            g_debugScope[1] = g_prev_y;
         }
+        display();
     }
 
 }
