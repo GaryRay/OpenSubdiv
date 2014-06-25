@@ -12,7 +12,7 @@ void	HbrMeshToEson<T>::operator()( HMesh*	hbrMesh, std::string outputPath ){
 	using namespace OpenSubdiv;
 
 	//tempo
-	int levels = 3;
+	int levels = 2;
 	bool isAdaptive = true;
 
 	//

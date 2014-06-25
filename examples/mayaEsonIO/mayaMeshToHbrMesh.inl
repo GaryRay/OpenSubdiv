@@ -396,6 +396,7 @@ float MayaMeshToHbrMesh<T>::applyCreaseEdges(
 		}
 	}
 
+	#if 1
 	MItMeshEdge itMeshEdge( inMeshFn.object() );
 	for( ;!itMeshEdge.isDone(); itMeshEdge.next() ){
 		if( !itMeshEdge.onBoundary() ){
@@ -404,6 +405,7 @@ float MayaMeshToHbrMesh<T>::applyCreaseEdges(
 		int index = itMeshEdge.index();
 		setCreaseFromMayaEdgeId()( index, inMeshFn, hbrMesh, &maxCreaseValue, 3.0f );
 	}
+	#endif
 
 	
 	return maxCreaseValue;

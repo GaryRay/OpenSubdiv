@@ -218,11 +218,17 @@ void MayaEsonWriter::doWrite( const MFileObject& file ){
 			}
 
 			//set SubDiv params
-			HMesh::InterpolateBoundaryMethod vertInterpBoundaryMethod = HMesh::k_InterpolateBoundaryNone;
-			HMesh::InterpolateBoundaryMethod fvarInterpBoundaryMethod = HMesh::k_InterpolateBoundaryNone;
+			HMesh::InterpolateBoundaryMethod vertInterpBoundaryMethod = HMesh::k_InterpolateBoundaryEdgeAndCorner;
+			HMesh::InterpolateBoundaryMethod fvarInterpBoundaryMethod = HMesh::k_InterpolateBoundaryEdgeAndCorner;
 			HCatmark::CreaseSubdivision creaseMethod = HCatmark::k_CreaseChaikin;
 			HCatmark::TriangleSubdivision triangleSubdivision = HCatmark::k_New;
 			HCatmark *catmarkSubdivision = dynamic_cast<HCatmark *>(hbrMesh->GetSubdivision());
+			bool fvarPropCorners = false;
+
+			hbrMesh->SetInterpolateBoundaryMethod( vertInterpBoundaryMethod );
+			hbrMesh->SetFVarInterpolateBoundaryMethod( fvarInterpBoundaryMethod );
+			hbrMesh->SetFVarPropagateCorners(fvarPropCorners);
+			hbrMesh->GetSubdivision()->SetCreaseSubdivisionMethod(creaseMethod);
 			if (catmarkSubdivision) {
 				catmarkSubdivision->SetTriangleSubdivisionMethod(triangleSubdivision);
 			}
