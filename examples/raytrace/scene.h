@@ -48,7 +48,7 @@ public:
 
     void Shade(float rgba[4], const Intersection &isect, const Ray &ray);
 
-    enum ShadeMode { SHADED, PTEX_COORD, PATCH_TYPE, CLIP_LEVEL, AO, TRANSPARENT };
+    enum ShadeMode { SHADED, PTEX_COORD, PATCH_TYPE, CLIP_LEVEL, QUADS, AO, TRANSPARENT };
 
     void SetShadeMode(ShadeMode mode) {
         _mode = mode;

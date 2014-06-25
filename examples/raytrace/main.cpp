@@ -1138,6 +1138,8 @@ initHUD()
                             g_displayStyle==Scene::PATCH_TYPE);
     g_hud.AddPullDownButton(shading_pulldown, "Clip level", Scene::CLIP_LEVEL,
                             g_displayStyle==Scene::CLIP_LEVEL);
+    g_hud.AddPullDownButton(shading_pulldown, "Quads", Scene::QUADS,
+                            g_displayStyle==Scene::QUADS);
     g_hud.AddPullDownButton(shading_pulldown, "Ambient Occlusion", Scene::AO,
                             g_displayStyle==Scene::AO);
     g_hud.AddPullDownButton(shading_pulldown, "Transparent", Scene::TRANSPARENT,

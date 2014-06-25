@@ -13,6 +13,7 @@ typedef struct {
     unsigned int patchID;
     unsigned int level;
     unsigned int clipLevel;
+    unsigned int quadHash;
 
     unsigned int f0;
     unsigned int f1;

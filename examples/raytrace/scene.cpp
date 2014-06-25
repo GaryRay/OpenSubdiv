@@ -817,6 +817,10 @@ Scene::Shade(float rgba[4], const Intersection &isect, const Ray &ray)
         color[0] = colors[l][0];
         color[1] = colors[l][1];
         color[2] = colors[l][2];
+    } else if (_mode == QUADS) {
+        color[0] = d*((((isect.quadHash>>0)&0xff)/255.0)*0.5 + 0.5);
+        color[1] = d*((((isect.quadHash>>8)&0xff)/255.0)*0.5 + 0.5);
+        color[2] = d*((((isect.quadHash>>16)&0xff)/255.0)*0.5 + 0.5);
     } else if (_mode == AO) {
         Intersection si;
         Ray sray;

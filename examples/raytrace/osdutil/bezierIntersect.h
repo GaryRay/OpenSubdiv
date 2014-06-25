@@ -29,6 +29,61 @@ struct Epsilon<double> {
     static const double UVEPS = 1.0/32.0;
 };
 
+#define Get16Bits(d) ((((uint32_t)(((const uint8_t *)(d))[1])) << 8)\
+                       +(uint32_t)(((const uint8_t *)(d))[0]) )
+
+inline uint32_t fastHash(const char *data, int len, uint32_t hash) {
+    uint32_t tmp;
+    int rem;
+
+    rem = len & 3;
+    len >>= 2;
+
+    /* Main loop */
+    for (;len > 0; len--) {
+        hash  += Get16Bits (data);
+        tmp    = (Get16Bits (data+2) << 11) ^ hash;
+        hash   = (hash << 16) ^ tmp;
+        data  += 2*sizeof (uint16_t);
+        hash  += hash >> 11;
+    }
+
+    /* Handle end cases */
+    switch (rem) {
+    case 3: hash += Get16Bits (data);
+        hash ^= hash << 16;
+        hash ^= data[sizeof (uint16_t)] << 18;
+        hash += hash >> 11;
+        break;
+    case 2: hash += Get16Bits (data);
+        hash ^= hash << 11;
+        hash += hash >> 17;
+        break;
+    case 1: hash += *data;
+        hash ^= hash << 10;
+        hash += hash >> 1;
+    }
+
+    /* Force "avalanching" of final 127 bits */
+    hash ^= hash << 3;
+    hash += hash >> 5;
+    hash ^= hash << 4;
+    hash += hash >> 17;
+    hash ^= hash << 25;
+    hash += hash >> 6;
+
+    return hash;
+}
+
+template<typename T>
+uint32_t computeHash(T a, T b, T c, T d)
+{
+    uint32_t hash = 0;
+    T v[4] = {a, b, c, d};
+    hash = fastHash((const char*)v, sizeof(v), hash);
+    return hash;
+}
+
 template<class VALUE_TYPE, class REAL, int N=4>
 class OsdUtilBezierPatchIntersection {
 public:
@@ -47,6 +102,7 @@ public:
     struct UVT {
         Real u, v, t;
         int level;
+        int quadHash;
     };
 
     OsdUtilBezierPatchIntersection(PatchType const &patch,
@@ -98,6 +154,7 @@ protected:
             info->u = u;
             info->v = v;
             info->clipLevel = uvt.level;
+            info->quadHash = uvt.quadHash;
             {
                 ValueType du = _patch.EvaluateDu(u,v);
                 ValueType dv = _patch.EvaluateDv(u,v);
@@ -565,6 +622,7 @@ protected:
                         info->v = v;
                         info->t = t;
                         info->level = level;
+                        info->quadHash = computeHash(u0, u1, v0, v1);
                         bRet = true;
                     }
                 }else{
