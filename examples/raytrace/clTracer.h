@@ -6,13 +6,14 @@
 
 struct CLRay {
     CLRay() { };
-    CLRay(Ray const &ray) {
+    CLRay(Ray const &ray, int id) {
         for (int i = 0; i < 3; ++i) {
             org[i] = ray.org[i];
             dir[i] = ray.dir[i];
             invDir[i] = ray.invDir[i];
             dirSign[i] = ray.dirSign[i];
         }
+        dirSign[3] = id;
     }
     float org[4];
     float dir[4];
@@ -27,7 +28,8 @@ public:
     void SetBVH(BVHAccel const &accel);
     void SetBezierVertices(const float *bezierVerts, int size);
 
-    void Traverse(int width, int height, const CLRay *rays, float *image);
+    void Traverse(int width, int height, const CLRay *rays,
+                  int stepIndex, int step, float *image);
 
 private:
     void compile();

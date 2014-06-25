@@ -606,9 +606,11 @@ Scene::Build()
     printf("    # of branch nodes: %d\n", stats.numBranchNodes);
     printf("  Max tree depth   : %d\n", stats.maxTreeDepth);
 
+#ifdef OPENSUBDIV_HAS_OPENCL
     _clTracer->SetBVH(_accel);
     _clTracer->SetBezierVertices(&_mesh.bezierVertices[0],
                                  _mesh.bezierVertices.size()*sizeof(float));
+#endif
 }
 
 void
@@ -711,17 +713,20 @@ Scene::Render(int stepIndex)
 {
     if (_accel.IsGpuKernel()) {
 
+#ifdef OPENSUBDIV_HAS_OPENCL
         float u = 0.5f, v = 0.5f;
-        CLRay *rays = new CLRay[_width*_height];
-        for (int y = 0; y < _height; ++y) {
-            for (int x = 0; x < _width; ++x) {
+        CLRay *rays = new CLRay[_width*_height/_step];
+        CLRay *r = rays;
+        for (int y = stepIndex/_step; y < _height; y += _step) {
+            for (int x = stepIndex%_step; x < _width; x += _step) {
                 Ray ray = _camera.GenerateRay(x + u + _step / 2.0f,
                                               y + v + _step / 2.0f);
-                rays[y*_width+x] = CLRay(ray);
+                *r++ = CLRay(ray, y*_width+x);
             }
         }
-        _clTracer->Traverse(_width, _height, rays, _image);
+        _clTracer->Traverse(_width, _height, rays, stepIndex, _step, _image);
         delete[] rays;
+#endif
 
     } else {
 #ifdef OPENSUBDIV_HAS_TBB

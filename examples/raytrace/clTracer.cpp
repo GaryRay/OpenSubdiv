@@ -156,7 +156,8 @@ CLTracer::SetBezierVertices(const float *bezierVerts, int size)
 }
 
 void
-CLTracer::Traverse(int width, int height, const CLRay *rays, float *image)
+CLTracer::Traverse(int width, int height, const CLRay *rays,
+                   int stepIndex, int step, float *image)
 {
     cl_int ciErrNum;
 
@@ -164,7 +165,7 @@ CLTracer::Traverse(int width, int height, const CLRay *rays, float *image)
     _rays = clCreateBuffer(
         _clContext,
         CL_MEM_READ_WRITE|CL_MEM_COPY_HOST_PTR,
-        width*height*sizeof(CLRay),
+        width*height/step/step*sizeof(CLRay),
         const_cast<CLRay*>(rays), &ciErrNum);
     CL_CHECK_ERROR(ciErrNum, "clCreateBuffer\n");
 
@@ -179,9 +180,11 @@ CLTracer::Traverse(int width, int height, const CLRay *rays, float *image)
     clSetKernelArg(_kernel, 1, sizeof(cl_mem), &_bvhNodes);
     clSetKernelArg(_kernel, 2, sizeof(cl_mem), &_bvhIndices);
     clSetKernelArg(_kernel, 3, sizeof(cl_mem), &_bezierVerts);
-    clSetKernelArg(_kernel, 4, sizeof(cl_mem), &dst);
+    clSetKernelArg(_kernel, 4, sizeof(int), &stepIndex);
+    clSetKernelArg(_kernel, 5, sizeof(int), &step);
+    clSetKernelArg(_kernel, 6, sizeof(cl_mem), &dst);
 
-    size_t globalWorkSize[1] = { (size_t)width*height };
+    size_t globalWorkSize[1] = { (size_t)width*height/step/step };
     ciErrNum = clEnqueueNDRangeKernel(_clQueue,
                                       _kernel, 1, NULL, globalWorkSize,
                                       NULL, 0, NULL, NULL);

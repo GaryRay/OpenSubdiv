@@ -27,6 +27,24 @@ struct Ray {
     int dirSign[4];
 };
 
+struct BezierPatch {
+    float4 cp[16];
+};
+
+struct BezierPatchIntersection {
+    struct BezierPatch patch;
+    float4 min;
+    float4 max;
+    float eps;
+};
+
+struct RangeAABB {
+    float tmin, tmax;
+};
+
+
+// --------------------------------------------------------------------
+// prototypes
 bool IntersectRayAABB(float *tminOut, float *tmaxOut,
                       float maxT, float *bmin, float *bmax,
                       float *rayOrg, float *rayInvDir, int *rayDirSign);
@@ -41,6 +59,86 @@ bool PatchIsect(struct Intersection *isect,
 bool TriangleIsect(float *tInOut, float *uOut, float *vOut,
                    float4 p0, float4 p1, float4 p2,
                    float4 rayOrg, float4 rayDir);
+
+void BpConstruct(struct BezierPatch *patch, __global const float *verts);
+void BpGetMinMax(const struct BezierPatch *patch, float4 *min, float4 *max, float eps);
+void BpiConstruct(struct BezierPatchIntersection *isect,
+                  const struct BezierPatch *patch);
+bool BpiTest(struct BezierPatchIntersection *isect,
+             struct Intersection *info,
+             const struct Ray *r,
+             float tmin, float tmax);
+bool IntersectAABB(struct RangeAABB *rng, float4 min, float4 max,
+                   const struct Ray *r, float tmin, float tmax);
+// --------------------------------------------------------------------
+void BpConstruct(struct BezierPatch *patch, __global const float *verts)
+{
+#pragma unroll
+    for (int i = 0; i < 16; ++i) {
+        patch->cp[i] = (float4)(verts[i*3+0], verts[i*3+1], verts[i*3+2], 0);
+    }
+}
+void BpGetMinMax(const struct BezierPatch *patch, float4 *min, float4 *max, float eps)
+{
+    *min = patch->cp[0];
+    *max = patch->cp[1];
+#pragma unroll
+    for (int i = 1; i < 16; ++i) {
+        *min = fmin(*min, patch->cp[i]);
+        *max = fmax(*max, patch->cp[i]);
+    }
+    *min -= (float4)(eps, eps, eps, 0);
+    *max += (float4)(eps, eps, eps, 0);
+}
+
+void BpiConstruct(struct BezierPatchIntersection *isect,
+                  const struct BezierPatch *patch)
+{
+    BpGetMinMax(patch, &isect->min, &isect->max, 0.01f);
+    isect->eps = 1.0e-4f;
+}
+
+bool IntersectAABB(struct RangeAABB *rng, float4 min, float4 max,
+                   const struct Ray *r, float tmin, float tmax)
+{
+    float4 box[2];
+    box[0] = min;
+    box[1] = max;
+    int4 sign = (int4)(r->dirSign[0], r->dirSign[1], r->dirSign[2], 0);
+
+    float4 org = (float4)(r->org[0], r->org[1], r->org[2], 0);
+    float4 idir = (float4)(r->invDir[0], r->invDir[1], r->invDir[2], 0);
+
+    tmin = fmax(tmin, (box[  sign.x].x-org.x)*idir.x);
+    tmin = fmax(tmin, (box[  sign.y].y-org.y)*idir.y);
+    tmin = fmax(tmin, (box[  sign.z].z-org.z)*idir.z);
+    tmax = fmin(tmax, (box[1-sign.x].x-org.x)*idir.x);
+    tmax = fmin(tmax, (box[1-sign.y].y-org.y)*idir.y);
+    tmax = fmin(tmax, (box[1-sign.z].z-org.z)*idir.z);
+
+    rng->tmin = tmin;
+    rng->tmax = tmax;
+
+    return rng->tmin <= rng->tmax;
+}
+
+bool BpiTest(struct BezierPatchIntersection *isect,
+             struct Intersection *info,
+             const struct Ray *r,
+             float tmin, float tmax)
+{
+    struct RangeAABB rng;
+    if (IntersectAABB(&rng, isect->min, isect->max, r, tmin, tmax)) {
+        tmin = fmax(tmin, rng.tmin);
+        tmax = fmin(tmax, rng.tmax);
+        info->t = 0;
+
+        // TODO.
+        return true;
+    }
+    return false;
+}
+
 
 // --------------------------------------------------------------------
 
@@ -128,6 +226,7 @@ bool PatchIsect(struct Intersection *isect,
                 __global const float *bezierVerts,
                 const struct Ray *ray)
 {
+#if 0
     float4 p0 = (float4)(bezierVerts[0*3], bezierVerts[0*3+1], bezierVerts[0*3+2], 0);
     float4 p1 = (float4)(bezierVerts[3*3], bezierVerts[3*3+1], bezierVerts[3*3+2], 0);
     float4 p2 = (float4)(bezierVerts[12*3], bezierVerts[12*3+1], bezierVerts[12*3+2], 0);
@@ -144,6 +243,13 @@ bool PatchIsect(struct Intersection *isect,
         return true;
     }
     return false;
+#else
+    struct BezierPatchIntersection bpi;
+    struct BezierPatch bp;
+    BpConstruct(&bp, bezierVerts);
+    BpiConstruct(&bpi, &bp);
+    return BpiTest(&bpi, isect, ray, 0, isect->t);
+#endif
 }
 
 bool TestLeafNode(struct Intersection *isect, // [inout]
@@ -152,13 +258,11 @@ bool TestLeafNode(struct Intersection *isect, // [inout]
                   __global const float *bezierVerts,
                   const struct Ray *ray)
 {
-    unsigned int numTriangles = node->data[0];
+    unsigned int numPatches = node->data[0];
     unsigned int offset = node->data[1];
 
-    float t = isect->t;
-
     bool hit = false;
-    for (unsigned int i = 0; i < numTriangles; i++) {
+    for (unsigned int i = 0; i < numPatches; i++) {
         int faceIdx = indices[i + offset];
 
         if (PatchIsect(isect, &bezierVerts[faceIdx*16*3], ray)) {
@@ -175,6 +279,8 @@ __kernel void traverse(__global struct Ray *rays,
                        __global const struct BVHNode *nodes,
                        __global const unsigned int *indices,
                        __global const float *bezierVerts,
+                       int stepIndex,
+                       int step,
                        __global float *image) {
 
     int gid = get_global_id(0);
@@ -188,8 +294,8 @@ __kernel void traverse(__global struct Ray *rays,
     // // Init isect info as no hit
     struct Intersection isect;
     isect.t = hitT;
-    isect.u = 0.0;
-    isect.v = 0.0;
+    isect.u = 0.0f;
+    isect.v = 0.0f;
     isect.faceID = -1;
 
     int dirSign[3];
@@ -197,10 +303,19 @@ __kernel void traverse(__global struct Ray *rays,
     dirSign[1] = ray.dir[1] < 0.0f ? 1 : 0;
     dirSign[2] = ray.dir[2] < 0.0f ? 1 : 0;
 
+    ray.dirSign[0] = dirSign[0];
+    ray.dirSign[1] = dirSign[1];
+    ray.dirSign[2] = dirSign[2];
+
     float rayInvDir[3];
     rayInvDir[0] = 1.0f / ray.dir[0];
     rayInvDir[1] = 1.0f / ray.dir[1];
     rayInvDir[2] = 1.0f / ray.dir[2];
+
+    ray.invDir[0] = rayInvDir[0];
+    ray.invDir[1] = rayInvDir[1];
+    ray.invDir[2] = rayInvDir[2];
+
 
     float minT, maxT;
     int count = 0;
@@ -232,16 +347,19 @@ __kernel void traverse(__global struct Ray *rays,
             }
         }
     }
+
+    int id = ray.dirSign[3];
+
     if (hitT < FLT_MAX) {
-        image[gid*4+0] = count;
-        image[gid*4+1] = count * 0.5;
-        image[gid*4+2] = count * 0.2;
-        image[gid*4+3] = 1;
+        image[id*4+0] = count;
+        image[id*4+1] = count * 0.5f;
+        image[id*4+2] = count * 0.2f;
+        image[id*4+3] = 1;
     } else {
-        image[gid*4+0] = 0;
-        image[gid*4+1] = 0;
-        image[gid*4+2] = 0;
-        image[gid*4+3] = 1;
+        image[id*4+0] = 0;
+        image[id*4+1] = 0;
+        image[id*4+2] = 0;
+        image[id*4+3] = 1;
     }
 }
 
