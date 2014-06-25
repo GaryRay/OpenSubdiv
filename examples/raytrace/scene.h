@@ -8,6 +8,8 @@
 #include <osd/opengl.h>
 #include <osd/vertex.h>
 
+class CLTracer;
+
 typedef OpenSubdiv::HbrMesh<OpenSubdiv::OsdVertex>     OsdHbrMesh;
 typedef OpenSubdiv::HbrVertex<OpenSubdiv::OsdVertex>   OsdHbrVertex;
 typedef OpenSubdiv::HbrFace<OpenSubdiv::OsdVertex>     OsdHbrFace;
@@ -82,6 +84,7 @@ private:
     int _height;
     float *_image;
     int _step;
+    CLTracer *_clTracer;
 };
 
 #endif  // SCENE_H

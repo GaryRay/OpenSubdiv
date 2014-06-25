@@ -19,6 +19,10 @@
 #include "osdutil/bezierIntersect.h"
 #include "osdutil/math.h"
 
+#ifdef OPENSUBDIV_HAS_OPENCL
+#include "clTracer.h"
+#endif
+
 #define VERBOSE(x, ...)
 //#define VERBOSE(x, ...) printf(x, __VA_ARGS__)
 
@@ -154,11 +158,17 @@ Scene::Scene() : _watertight(false), _vbo(0)
 #ifdef OPENSUBDIV_HAS_TBB
     static tbb::task_scheduler_init init;
 #endif
+#ifdef OPENSUBDIV_HAS_OPENCL
+    _clTracer = new CLTracer();
+#endif
 }
 
 Scene::~Scene()
 {
     if (_vbo) glDeleteBuffers(1, &_vbo);
+#ifdef OPENSUBDIV_HAS_OPENCL
+    delete _clTracer;
+#endif
 }
 
 void
@@ -595,6 +605,10 @@ Scene::Build()
     printf("    # of leaf   nodes: %d\n", stats.numLeafNodes);
     printf("    # of branch nodes: %d\n", stats.numBranchNodes);
     printf("  Max tree depth   : %d\n", stats.maxTreeDepth);
+
+    _clTracer->SetBVH(_accel);
+    _clTracer->SetBezierVertices(&_mesh.bezierVertices[0],
+                                 _mesh.bezierVertices.size()*sizeof(float));
 }
 
 void
@@ -695,7 +709,21 @@ Scene::Setup(int width, int height, double fov,
 void
 Scene::Render(int stepIndex)
 {
+    if (_accel.IsGpuKernel()) {
 
+        float u = 0.5f, v = 0.5f;
+        CLRay *rays = new CLRay[_width*_height];
+        for (int y = 0; y < _height; ++y) {
+            for (int x = 0; x < _width; ++x) {
+                Ray ray = _camera.GenerateRay(x + u + _step / 2.0f,
+                                              y + v + _step / 2.0f);
+                rays[y*_width+x] = CLRay(ray);
+            }
+        }
+        _clTracer->Traverse(_width, _height, rays, _image);
+        delete[] rays;
+
+    } else {
 #ifdef OPENSUBDIV_HAS_TBB
     tbb::blocked_range<int> range(0, _height/_step, 1);
 
@@ -705,7 +733,7 @@ Scene::Render(int stepIndex)
     Kernel kernel(_width, stepIndex, _step, &_accel, &_mesh, &_camera, _image, this);
     kernel(0, _height/_step);
 #endif
-
+    }
 }
 
 void

@@ -1127,6 +1127,7 @@ initHUD()
     g_hud.AddPullDownButton(kernel_pulldown, "Osd float", 1, g_intersectKernel == 1);
     g_hud.AddPullDownButton(kernel_pulldown, "Osd sse", 2, g_intersectKernel == 2);
     g_hud.AddPullDownButton(kernel_pulldown, "Osd double", 3, g_intersectKernel == 3);
+    g_hud.AddPullDownButton(kernel_pulldown, "OpenCL", 4, g_intersectKernel == 4);
 
     int shading_pulldown = g_hud.AddPullDown("Shading (W)", 200, 10, 250, callbackDisplayStyle, 'w');
     g_hud.AddPullDownButton(shading_pulldown, "Shaded", Scene::SHADED,
@@ -1238,6 +1239,7 @@ idle() {
     g_scene.Render(index);
 
     --g_stepIndex;
+    if (g_intersectKernel == 4) g_stepIndex = 0; // gpu
 
     if (g_stepIndex == 0) {
         g_renderTimer.Stop();

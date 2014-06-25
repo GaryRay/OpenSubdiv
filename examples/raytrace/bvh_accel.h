@@ -73,12 +73,13 @@ public:
   ///< Traverse into BVH along ray and find closest hit point if found
   bool Traverse(Intersection &isect, const Mesh *mesh, Ray &ray);
 
-  enum { ORIGINAL, NEW_FLOAT, NEW_SSE, NEW_DOUBLE } IntersectKernel;
+  enum { ORIGINAL, NEW_FLOAT, NEW_SSE, NEW_DOUBLE, OPENCL } IntersectKernel;
   void SetIntersectKernel(int k) {_intersectKernel = k; }
   void SetUVMargin(float margin) { _uvMargin = margin; }
   void SetCropUV(bool flag) {_cropUV = flag;}
   void SetBezierClip(bool flag) {_bezierClip = flag;}
   void SetDisplacement(float scale, float freq) { _displaceScale = scale; _displaceFreq = freq; }
+    bool IsGpuKernel() const { return _intersectKernel == OPENCL; }
 
   const std::vector<BVHNode> &GetNodes() const { return nodes_; }
   const std::vector<unsigned int> &GetIndices() const { return indices_; }

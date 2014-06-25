@@ -49,6 +49,12 @@ endif()
 
 if( OPENCL_FOUND )
     include_directories("${OPENCL_INCLUDE_DIRS}")
+    list(APPEND CL_SOURCE_FILES
+        clTracer.cpp
+    )
+    list(APPEND KERNEL_FILES
+        clKernel.cl
+    )
 endif()
 
 if( TBB_FOUND )
@@ -62,6 +68,9 @@ endif()
 #-------------------------------------------------------------------------------
 
 _stringify("${SHADER_FILES}" INC_FILES)
+_stringify("${KERNEL_FILES}" INC_FILES)
+
+source_group("Kernels" FILES ${KERNEL_FILES})
 
 include_directories("${CMAKE_CURRENT_BINARY_DIR}")
 
@@ -75,6 +84,7 @@ _add_glfw_executable(raytrace
     camera.cpp
     scene.cpp
     raydiff.cpp
+    "${CL_SOURCE_FILES}"
     "${SHADER_FILES}"
     "${INC_FILES}"
     $<TARGET_OBJECTS:examples_common_obj>

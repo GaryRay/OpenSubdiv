@@ -719,9 +719,6 @@ inline bool TriangleIsect(real &tInOut, real &uOut, real &vOut, const real3 &v0,
   return true;
 }
 
-bool PatchIsect(Intersection &isect, const real *bezierVerts, const Ray &ray,
-                bool newIsect, float uvMargin) NO_INLINE;
-
 bool PatchIsect(Intersection &isect,
                 const real *bezierVerts,
                 const Ray &ray,
