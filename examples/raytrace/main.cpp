@@ -1089,7 +1089,6 @@ callbackCheckBox(bool checked, int button)
         break;
     case kHUD_CB_DEBUG:
         g_debug = checked;
-        updateGeom();
         break;
     }
     display();
