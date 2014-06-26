@@ -14,8 +14,9 @@
 class MayaEsonWriter{
 public:
 	struct Behavior{
-		inline Behavior(): exportSelOnly( false ){};
+		inline Behavior(): exportSelOnly( false ), useOSDEson( true ){};
 		bool		exportSelOnly;
+		bool		useOSDEson;
 		MString		outputBasePath;
 	};
 	

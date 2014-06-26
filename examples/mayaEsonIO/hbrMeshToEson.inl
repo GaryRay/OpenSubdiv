@@ -7,16 +7,11 @@
 
 // - - - - - - - - - - - - - - - - - -
 template< typename T >
-void	HbrMeshToEson<T>::operator()( HMesh*	hbrMesh, std::string outputPath ){
+void	HbrMeshToEson<T>::operator()( HMesh*	hbrMesh, std::string outputPath, int smoothLevel, bool useAdaptive ){
 
 	using namespace OpenSubdiv;
 
-	//tempo
-	int levels = 2;
-	bool isAdaptive = true;
-
-	//
-	FMeshFactory meshFactory( hbrMesh, levels, isAdaptive );
+	FMeshFactory meshFactory( hbrMesh, smoothLevel, useAdaptive );
 	std::shared_ptr<FMesh> farMesh = std::shared_ptr<FMesh>( meshFactory.Create() );
 	static OpenSubdiv::FarComputeController computeController;
 	computeController.Refine( farMesh.get() );

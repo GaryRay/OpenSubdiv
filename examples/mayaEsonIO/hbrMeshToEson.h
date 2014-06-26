@@ -41,7 +41,9 @@ public:
 	
 public:
 	void	operator()( HMesh*	hMesh,
-						std::string outputPath );
+						std::string outputPath,
+						int smoothLevel,
+						bool useAdaptive = true );
 
 protected:
 	virtual float	getVertexPosAsFloat( const VertexType& v, int index );

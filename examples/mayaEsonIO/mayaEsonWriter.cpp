@@ -83,6 +83,30 @@ typedef OpenSubdiv::FarSubdivisionTables        FSubdivision;
 typedef OpenSubdiv::FarPatchTables              FPatches;
 
 
+
+namespace MayaAuxUtl{
+	
+	// ====================================
+	// GetAttr
+	// ====================================
+	template< typename T >
+	T GetAttr(	MFnMesh& fnMesh,
+				MString attrName )
+	{
+		T ret;
+		MStatus status;
+		MString cmd = MString( "getAttr " ) + fnMesh.fullPathName() + "." + attrName;
+		status = MGlobal::executeCommand( cmd, ret, false, false );
+
+		if( status != MS::kSuccess ){
+			throw std::exception("getAttr failed");
+		}
+		
+		return ret;
+	}
+
+}//namespace MayaAuxUtl
+
 // ====================================
 // MayaEsonWriter
 // ====================================
@@ -124,66 +148,27 @@ MayaEsonWriter::Behavior MayaEsonWriter::generateBehaviorFromOptionString( const
 // - - - - - - - - - - - - - - - - - -
 void MayaEsonWriter::doWrite( const MFileObject& file ){
 
-    using namespace OpenSubdiv;
+	using namespace OpenSubdiv;
 	MStatus status;
 
-	//- - - - - - - - - - - - - - - - - -
-	//DagAuxUtl
-	//@todo:extract to toplevel class
-	//- - - - - - - - - - - - - - - - - -
-	struct DagAuxUtl{
-		inline static MObject getLastNode( const MDagPath& dg ){
-			if( dg.childCount() > 0 ){
-				return dg.child( dg.childCount() );
-			}else{
-				return dg.node();
-			}
-		};
-		
-		//- - - - - - - - - - - - - - - - - -
-		//
-		inline static MStatus getLastDagPath(		MDagPath*			retDagPath,
-													MObject*			retObj,
-													const MObject&		argObj ){
-			MStatus		status;
-
-			if( !retDagPath || !retObj ){
-				return MS::kFailure;
-			}
-
-			//get Last DagPath
-			MFnDagNode	fnTempMeshDagNode( argObj, &status );
-
-			MDagPath	tmpDagPath;
-			fnTempMeshDagNode.getPath( tmpDagPath );
-
-			*retObj = getLastNode( tmpDagPath );
-			MFnDagNode fnMeshDagNode( *retObj );
-			fnMeshDagNode.getPath( *retDagPath );
-
-			return MS::kSuccess;
-		};
-	};//DagAuxUtl
-	
 	//Traverse nodes
 	MSelectionList	activeSelList;
 	MGlobal::getActiveSelectionList( activeSelList );
-	
-	for( MItDependencyNodes	depIt( MFn::kMesh ); !depIt.isDone(); depIt.next() ){
-		MObject		itObj( depIt.item() );
+
+	int exportCnt = 0;
+
+	for( MItDag	dagIt( MItDag::kDepthFirst, MFn::kMesh, &status ); !dagIt.isDone(); dagIt.next() ){
+
+		#if 1
+		if( exportCnt > 0 ){
+			break;
+		}
+		#endif
 
 		//need DagPath
 		MDagPath dagPath;
-		MObject nodeObj;
-		
-		#if 0
-		MFnDagNode	fnTempMeshDagNode( itObj, &status );
-		fnTempMeshDagNode.getPath( dagPath );
-		#else
-		if( DagAuxUtl::getLastDagPath( &dagPath, &nodeObj, itObj ) != MS::kSuccess ){
-			continue;
-		}
-		#endif
+		status = dagIt.getPath( dagPath );
+		MObject nodeObj = dagPath.node();
 
 		//selective export
 		if( behavior.exportSelOnly && !activeSelList.hasItem( dagPath ) ){
@@ -195,54 +180,124 @@ void MayaEsonWriter::doWrite( const MFileObject& file ){
 		if( status != MS::kSuccess ){
 			continue;
 		}
-		#if 0
-		MItMeshPolygon itMeshPoly( itObj, &status );
-		#else
 		MItMeshPolygon itMeshPoly( nodeObj, &status );
-		#endif
 
 		if( status != MS::kSuccess ){
 			continue;
 		}
 
-		//build osdMesh and write
-		{
+		//check current mesh is Subdivisition surface or not.
+		int dispSmoothMeshVal = 0;
+		int smoothLevel = 2;
+		try{
+			dispSmoothMeshVal = MayaAuxUtl::GetAttr<int>( fnMesh, "displaySmoothMesh" );
+			smoothLevel = MayaAuxUtl::GetAttr<int>( fnMesh, "smoothLevel" );
+		}catch(...){
+			continue;
+		}
+
+		if( dispSmoothMeshVal == 0 || smoothLevel == 0 ){
+			//@Todo: 'polygon mesh' eson format export here
+
+		}else if( behavior.useOSDEson ){
+			//build osdMesh and write
 			std::vector<int> fvarIndices;
 			std::vector<int> fvarWidths;
 			float maxCreaseSharpness = 0.0;
 
+			//Generate
 			MayaMeshToHbrMesh<VertexType >	hbrMeshGenerator;
-			std::shared_ptr<HMesh> hbrMesh = std::shared_ptr<HMesh>( hbrMeshGenerator( fnMesh, itMeshPoly, fvarIndices, fvarWidths, &maxCreaseSharpness ) );
+			std::shared_ptr<HMesh> hbrMesh = std::shared_ptr<HMesh>( hbrMeshGenerator(
+				fnMesh, itMeshPoly, fvarIndices, fvarWidths, &maxCreaseSharpness ) );
 			if( !hbrMesh ){
 				continue;
 			}
 
-			//set SubDiv params
+			//SubDiv params var.
 			HMesh::InterpolateBoundaryMethod vertInterpBoundaryMethod = HMesh::k_InterpolateBoundaryEdgeAndCorner;
 			HMesh::InterpolateBoundaryMethod fvarInterpBoundaryMethod = HMesh::k_InterpolateBoundaryEdgeAndCorner;
-			HCatmark::CreaseSubdivision creaseMethod = HCatmark::k_CreaseChaikin;
-			HCatmark::TriangleSubdivision triangleSubdivision = HCatmark::k_New;
-			HCatmark *catmarkSubdivision = dynamic_cast<HCatmark *>(hbrMesh->GetSubdivision());
+			HCatmark::CreaseSubdivision creaseMethod = HCatmark::k_CreaseNormal;
+			HCatmark::TriangleSubdivision triangleSubdivision = HCatmark::k_Normal;
+			HCatmark *catmarkSubdivision = dynamic_cast<HCatmark *>( hbrMesh->GetSubdivision() );
 			bool fvarPropCorners = false;
 
+			//Maya Attribute
+			int smoothDrawType = 0;
+			try{
+				smoothDrawType = MayaAuxUtl::GetAttr<int>( fnMesh, "smoothDrawType" );
+			}catch(...){
+				//Maya2014 or below version will here and it it ok. smoothDrawType still 0.
+			}
+			
+			if( smoothDrawType <= 1 ){
+				//Maya Catmarll-Clark
+				//What is type smoothDrawType == 1? I don't know... but process here.
+				
+				
+
+			}else if( smoothDrawType == 2 ){
+				//Maya2015 or above OSD Catmarll-Clark
+				try{
+					if( MayaAuxUtl::GetAttr<int>( fnMesh, "osdVertBoundary" ) == 1 ){
+						vertInterpBoundaryMethod = HMesh::k_InterpolateBoundaryEdgeOnly;
+					}
+
+					switch( MayaAuxUtl::GetAttr<int>( fnMesh, "osdFvarBoundary" ) ){
+						case 0:{
+							fvarInterpBoundaryMethod = vertInterpBoundaryMethod = HMesh::k_InterpolateBoundaryNone;
+							break;
+						}
+						case 1:{
+							fvarInterpBoundaryMethod = vertInterpBoundaryMethod = HMesh::k_InterpolateBoundaryEdgeAndCorner;
+							break;
+						}
+						case 2:{
+							fvarInterpBoundaryMethod = vertInterpBoundaryMethod = HMesh::k_InterpolateBoundaryEdgeOnly;
+							break;
+						}
+						case 3:{
+							fvarInterpBoundaryMethod = vertInterpBoundaryMethod = HMesh::k_InterpolateBoundaryAlwaysSharp;
+							break;
+						}
+						default:
+						break;
+					}
+					
+					if( MayaAuxUtl::GetAttr<int>( fnMesh, "osdSmoothTriangles" ) == 1 ){
+						triangleSubdivision = HCatmark::k_New;
+					}
+					
+					if( MayaAuxUtl::GetAttr<int>( fnMesh, "osdCreaseMethod" ) == 1 ){
+						creaseMethod = HCatmark::k_CreaseNormal;
+					}
+
+				}catch(...){
+				}
+			}
+			
+			//set SubDiv params
 			hbrMesh->SetInterpolateBoundaryMethod( vertInterpBoundaryMethod );
 			hbrMesh->SetFVarInterpolateBoundaryMethod( fvarInterpBoundaryMethod );
-			hbrMesh->SetFVarPropagateCorners(fvarPropCorners);
-			hbrMesh->GetSubdivision()->SetCreaseSubdivisionMethod(creaseMethod);
-			if (catmarkSubdivision) {
-				catmarkSubdivision->SetTriangleSubdivisionMethod(triangleSubdivision);
+			hbrMesh->SetFVarPropagateCorners( fvarPropCorners );
+			hbrMesh->GetSubdivision()->SetCreaseSubdivisionMethod( creaseMethod );
+			if( catmarkSubdivision ){
+				catmarkSubdivision->SetTriangleSubdivisionMethod( triangleSubdivision );
 			}
 			hbrMesh->Finish();
 
 			//Eson
 			std::string filename = file.rawFullName().asChar();
 			try{
-				HbrMeshToEson<VertexType>()( hbrMesh.get(), filename );
+				HbrMeshToEson<VertexType>()( hbrMesh.get(), filename, smoothLevel );
 			}catch(...){
 				continue;
 			}
-
+			++exportCnt;
+		}else{
+			//
 		}
+
+
 	}
 
 }
