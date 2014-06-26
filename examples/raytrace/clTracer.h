@@ -24,12 +24,13 @@ struct CLRay {
 class CLTracer {
 public:
     CLTracer();
+    ~CLTracer();
 
     void SetBVH(BVHAccel const &accel);
     void SetBezierVertices(const float *bezierVerts, int size);
+    void SetImageSize(int width, int height);
 
-    void Traverse(int width, int height, const CLRay *rays,
-                  int stepIndex, int step, float *image);
+    void Traverse(const CLRay *rays, int step, float *image);
 
 private:
     void compile();
@@ -40,9 +41,13 @@ private:
     cl_kernel _kernel;
 
     cl_mem _rays;
+    cl_mem _image;
     cl_mem _bvhNodes;
     cl_mem _bvhIndices;
     cl_mem _bezierVerts;
+
+    int _width;
+    int _height;
 };
 
 #endif  // CL_TRACER_H

@@ -435,6 +435,14 @@ startRender() {
     g_stepIndex = g_step*g_step;
 
     g_renderTimer.Start();
+
+    double fov = 45.0f;
+    g_scene.Setup(g_width, g_height, fov,
+                  g_image,
+                  g_eye, g_lookat, g_up, g_step,
+                  g_intersectKernel, g_uvMargin, g_cropUV, g_bezierClip,
+                  g_displaceScale, g_displaceFreq);
+
 }
 
 static void
@@ -1029,6 +1037,8 @@ callbackIntersect(int b)
 {
     g_intersectKernel = b;
 
+    g_step = (g_intersectKernel == 4) ? 2 : 8;
+
     startRender();
 }
 
@@ -1219,13 +1229,6 @@ idle() {
         }
         return;
     }
-
-    double fov = 45.0f;
-    g_scene.Setup(g_width, g_height, fov,
-                  g_image,
-                  g_eye, g_lookat, g_up, g_step,
-                  g_intersectKernel, g_uvMargin, g_cropUV, g_bezierClip,
-                  g_displaceScale, g_displaceFreq);
 
     g_renderTime = -1.0f;
 

@@ -706,6 +706,11 @@ Scene::Setup(int width, int height, double fov,
     _camera.BuildCameraFrame(deye, dlook, dup, fov, width, height);
     assert((int)image.size() >= 3 * width * height);
 
+#ifdef OPENSUBDIV_HAS_OPENCL
+    if (_accel.IsGpuKernel()) {
+        _clTracer->SetImageSize(_width, _height);
+    }
+#endif
 }
 
 void
@@ -724,7 +729,7 @@ Scene::Render(int stepIndex)
                 *r++ = CLRay(ray, y*_width+x);
             }
         }
-        _clTracer->Traverse(_width, _height, rays, stepIndex, _step, _image);
+        _clTracer->Traverse(rays, _step, _image);
         delete[] rays;
 #endif
 

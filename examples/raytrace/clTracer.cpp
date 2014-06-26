@@ -77,9 +77,18 @@ static bool initCL(cl_context *clContext, cl_command_queue *clQueue)
 }
 
 CLTracer::CLTracer() :
-    _rays(0), _bvhNodes(0), _bvhIndices(0), _bezierVerts(0)
+    _rays(0), _image(0), _bvhNodes(0), _bvhIndices(0), _bezierVerts(0)
 {
     compile();
+}
+
+CLTracer::~CLTracer()
+{
+    if (_rays) clReleaseMemObject(_rays);
+    if (_image) clReleaseMemObject(_image);
+    if (_bezierVerts) clReleaseMemObject(_bezierVerts);
+    if (_bvhNodes) clReleaseMemObject(_bvhNodes);
+    if (_bvhIndices) clReleaseMemObject(_bvhIndices);
 }
 
 void
@@ -156,8 +165,25 @@ CLTracer::SetBezierVertices(const float *bezierVerts, int size)
 }
 
 void
-CLTracer::Traverse(int width, int height, const CLRay *rays,
-                   int stepIndex, int step, float *image)
+CLTracer::SetImageSize(int width, int height)
+{
+    if (_image) clReleaseMemObject(_image);
+
+    std::vector<float> image(width*height*4);
+
+    cl_int ciErrNum;
+    _image = clCreateBuffer(_clContext,
+                            CL_MEM_READ_WRITE|CL_MEM_COPY_HOST_PTR,
+                            width*height*4*sizeof(float),
+                            &image[0], &ciErrNum);
+
+    _width = width;
+    _height = height;
+    CL_CHECK_ERROR(ciErrNum, "clCreateBuffer\n");
+}
+
+void
+CLTracer::Traverse(const CLRay *rays, int step, float *image)
 {
     cl_int ciErrNum;
 
@@ -165,35 +191,24 @@ CLTracer::Traverse(int width, int height, const CLRay *rays,
     _rays = clCreateBuffer(
         _clContext,
         CL_MEM_READ_WRITE|CL_MEM_COPY_HOST_PTR,
-        width*height/step/step*sizeof(CLRay),
+        _width*_height/step/step*sizeof(CLRay),
         const_cast<CLRay*>(rays), &ciErrNum);
-    CL_CHECK_ERROR(ciErrNum, "clCreateBuffer\n");
-
-    cl_mem dst = clCreateBuffer(
-        _clContext,
-        CL_MEM_READ_WRITE|CL_MEM_COPY_HOST_PTR,
-        width*height*4*sizeof(float),
-        image, &ciErrNum);
     CL_CHECK_ERROR(ciErrNum, "clCreateBuffer\n");
 
     clSetKernelArg(_kernel, 0, sizeof(cl_mem), &_rays);
     clSetKernelArg(_kernel, 1, sizeof(cl_mem), &_bvhNodes);
     clSetKernelArg(_kernel, 2, sizeof(cl_mem), &_bvhIndices);
     clSetKernelArg(_kernel, 3, sizeof(cl_mem), &_bezierVerts);
-    clSetKernelArg(_kernel, 4, sizeof(int), &stepIndex);
-    clSetKernelArg(_kernel, 5, sizeof(int), &step);
-    clSetKernelArg(_kernel, 6, sizeof(cl_mem), &dst);
+    clSetKernelArg(_kernel, 4, sizeof(cl_mem), &_image);
 
-    size_t globalWorkSize[1] = { (size_t)width*height/step/step };
+    size_t globalWorkSize[1] = { (size_t)_width*_height/step/step };
     ciErrNum = clEnqueueNDRangeKernel(_clQueue,
                                       _kernel, 1, NULL, globalWorkSize,
                                       NULL, 0, NULL, NULL);
     CL_CHECK_ERROR(ciErrNum, "clEnqueueNDRangeKernel\n");
 
-    ciErrNum = clEnqueueReadBuffer(_clQueue, dst, true,
-                                   0, width*height*sizeof(float)*4, image,
+    ciErrNum = clEnqueueReadBuffer(_clQueue, _image, true,
+                                   0, _width*_height*sizeof(float)*4, image,
                                    0, NULL, NULL);
     CL_CHECK_ERROR(ciErrNum, "clEnqueueReadBuffer\n");
-
-    clReleaseMemObject(dst);
 }

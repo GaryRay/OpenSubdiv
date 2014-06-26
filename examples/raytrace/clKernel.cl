@@ -21,10 +21,10 @@ struct Intersection {
 };
 
 struct Ray {
-    float org[4];
-    float dir[4];
-    float invDir[4];
-    int dirSign[4];
+    float4 org;
+    float4 dir;
+    float4 invDir;
+    int dirSign[4]; // dirSign[3] is used for the destination index of the resulting image.
 };
 
 struct BezierPatch {
@@ -36,18 +36,28 @@ struct BezierPatchIntersection {
     float4 min;
     float4 max;
     float eps;
+    float uRange[2];
+    float vRange[2];
 };
 
 struct RangeAABB {
     float tmin, tmax;
 };
 
+struct UVT {
+    float u, v, t;
+    int level;
+};
+
+struct Matrix4 {
+    float4 v[4];
+};
 
 // --------------------------------------------------------------------
 // prototypes
 bool IntersectRayAABB(float *tminOut, float *tmaxOut,
                       float maxT, float *bmin, float *bmax,
-                      float *rayOrg, float *rayInvDir, int *rayDirSign);
+                      float4 rayOrg, float4 rayInvDir, int *rayDirSign);
 bool TestLeafNode(struct Intersection *isect, // [inout]
                   const struct BVHNode *node,
                   __global const unsigned int *indices,
@@ -62,6 +72,9 @@ bool TriangleIsect(float *tInOut, float *uOut, float *vOut,
 
 void BpConstruct(struct BezierPatch *patch, __global const float *verts);
 void BpGetMinMax(const struct BezierPatch *patch, float4 *min, float4 *max, float eps);
+void BpTransform(struct BezierPatch *patch, const struct Matrix4 *mat);
+void BpRotateU(struct BezierPatch *patch);
+
 void BpiConstruct(struct BezierPatchIntersection *isect,
                   const struct BezierPatch *patch);
 bool BpiTest(struct BezierPatchIntersection *isect,
@@ -70,7 +83,98 @@ bool BpiTest(struct BezierPatchIntersection *isect,
              float tmin, float tmax);
 bool IntersectAABB(struct RangeAABB *rng, float4 min, float4 max,
                    const struct Ray *r, float tmin, float tmax);
+bool BpiTestInternal(struct BezierPatchIntersection *isect,
+                     struct Intersection *info, const struct Ray *r,
+                     float tmin, float tmax);
+bool BpiTestBezierPatch(struct BezierPatchIntersection *this,
+                        struct UVT *uvt, struct BezierPatch *patch,
+                        float tmin, float tmax, float eps);
+bool BpiTestBezierClipU(struct BezierPatchIntersection *this,
+                        struct UVT *info, struct BezierPatch *patch,
+                        float u0, float u1, float v0, float v1,
+                        float zmin, float zmax, int level, int max_level, float eps);
+
+void MatrixMultiply(struct Matrix4 *dst, const struct Matrix4 *a, const struct Matrix4 *b);
+float4 MatrixApply(const struct Matrix4 *m, float4 v);
+void GetZAlign(struct Matrix4 *mat, const struct Ray *r);
 // --------------------------------------------------------------------
+
+void MatrixMultiply(struct Matrix4 *dst, const struct Matrix4 *lhs, const struct Matrix4 *rhs)
+{
+    dst->v[0] = (float4)(
+        lhs->v[0].x*rhs->v[0].x + lhs->v[0].y*rhs->v[1].x + lhs->v[0].z*rhs->v[2].x + lhs->v[0].w*rhs->v[3].x,
+        lhs->v[0].x*rhs->v[0].y + lhs->v[0].y*rhs->v[1].y + lhs->v[0].z*rhs->v[2].y + lhs->v[0].w*rhs->v[3].y,
+        lhs->v[0].x*rhs->v[0].z + lhs->v[0].y*rhs->v[1].z + lhs->v[0].z*rhs->v[2].z + lhs->v[0].w*rhs->v[3].z,
+        lhs->v[0].x*rhs->v[0].w + lhs->v[0].y*rhs->v[1].w + lhs->v[0].z*rhs->v[2].w + lhs->v[0].w*rhs->v[3].w );
+
+    dst->v[1] = (float4)(
+        lhs->v[1].x*rhs->v[0].x + lhs->v[1].y*rhs->v[1].x + lhs->v[1].z*rhs->v[2].x + lhs->v[1].w*rhs->v[3].x,
+        lhs->v[1].x*rhs->v[0].y + lhs->v[1].y*rhs->v[1].y + lhs->v[1].z*rhs->v[2].y + lhs->v[1].w*rhs->v[3].y,
+        lhs->v[1].x*rhs->v[0].z + lhs->v[1].y*rhs->v[1].z + lhs->v[1].z*rhs->v[2].z + lhs->v[1].w*rhs->v[3].z,
+        lhs->v[1].x*rhs->v[0].w + lhs->v[1].y*rhs->v[1].w + lhs->v[1].z*rhs->v[2].w + lhs->v[1].w*rhs->v[3].w );
+
+    dst->v[2] = (float4)(
+        lhs->v[2].x*rhs->v[0].x + lhs->v[2].y*rhs->v[1].x + lhs->v[2].z*rhs->v[2].x + lhs->v[2].w*rhs->v[3].x,
+        lhs->v[2].x*rhs->v[0].y + lhs->v[2].y*rhs->v[1].y + lhs->v[2].z*rhs->v[2].y + lhs->v[2].w*rhs->v[3].y,
+        lhs->v[2].x*rhs->v[0].z + lhs->v[2].y*rhs->v[1].z + lhs->v[2].z*rhs->v[2].z + lhs->v[2].w*rhs->v[3].z,
+        lhs->v[2].x*rhs->v[0].w + lhs->v[2].y*rhs->v[1].w + lhs->v[2].z*rhs->v[2].w + lhs->v[2].w*rhs->v[3].w );
+
+    dst->v[3] = (float4)(
+        lhs->v[3].x*rhs->v[0].x + lhs->v[3].y*rhs->v[1].x + lhs->v[3].z*rhs->v[2].x + lhs->v[3].w*rhs->v[3].x,
+        lhs->v[3].x*rhs->v[0].y + lhs->v[3].y*rhs->v[1].y + lhs->v[3].z*rhs->v[2].y + lhs->v[3].w*rhs->v[3].y,
+        lhs->v[3].x*rhs->v[0].z + lhs->v[3].y*rhs->v[1].z + lhs->v[3].z*rhs->v[2].z + lhs->v[3].w*rhs->v[3].z,
+        lhs->v[3].x*rhs->v[0].w + lhs->v[3].y*rhs->v[1].w + lhs->v[3].z*rhs->v[2].w + lhs->v[3].w*rhs->v[3].w );
+}
+
+float4 MatrixApply(const struct Matrix4 *m, float4 v)
+{
+    float4 r;
+    r.x = m->v[0].x * v.x + m->v[0].y * v.y + m->v[0].z * v.z + m->v[0].w;
+    r.y = m->v[1].x * v.x + m->v[1].y * v.y + m->v[1].z * v.z + m->v[1].w;
+    r.z = m->v[2].x * v.x + m->v[2].y * v.y + m->v[2].z * v.z + m->v[2].w;
+    r.w = m->v[3].x * v.x + m->v[3].y * v.y + m->v[3].z * v.z + m->v[3].w;
+    float ir = 1.0f/r.w;
+    r.x *= ir;
+    r.y *= ir;
+    r.z *= ir;
+    r.w = 0;
+    return r;
+}
+
+void GetZAlign(struct Matrix4 *mat, const struct Ray *r)
+{
+    float4 org = r->org;
+    float4 dir = r->dir;
+    float z[4] = {dir.x, dir.y, dir.z, 0};
+
+    int plane = 0;
+    if (fabs(z[1]) < fabs(z[plane])) plane = 1;
+    if (fabs(z[2]) < fabs(z[plane])) plane = 2;
+
+    float4 x = (float4)(0, 0, 0, 0);
+    if (plane == 0) x.x = 1;
+    if (plane == 1) x.y = 1;
+    if (plane == 2) x.z = 1;
+    float4 y = normalize(cross(dir,x));
+    x = cross(y,dir);
+
+    x.w = y.w = dir.w = 0;
+
+    struct Matrix4 rot;
+    rot.v[0] = x;
+    rot.v[1] = y;
+    rot.v[2] = dir;
+    rot.v[3] = (float4)(0, 0, 0, 1);
+
+    struct Matrix4 trs;
+    trs.v[0] = (float4)(1, 0, 0, -org.x);
+    trs.v[1] = (float4)(0, 1, 0, -org.y);
+    trs.v[2] = (float4)(0, 0, 1, -org.z);
+    trs.v[3] = (float4)(0, 0, 0, 1);
+
+    MatrixMultiply(mat, &rot, &trs);
+}
+
 void BpConstruct(struct BezierPatch *patch, __global const float *verts)
 {
 #pragma unroll
@@ -81,8 +185,7 @@ void BpConstruct(struct BezierPatch *patch, __global const float *verts)
 void BpGetMinMax(const struct BezierPatch *patch, float4 *min, float4 *max, float eps)
 {
     *min = patch->cp[0];
-    *max = patch->cp[1];
-#pragma unroll
+    *max = patch->cp[0];
     for (int i = 1; i < 16; ++i) {
         *min = fmin(*min, patch->cp[i]);
         *max = fmax(*max, patch->cp[i]);
@@ -91,10 +194,18 @@ void BpGetMinMax(const struct BezierPatch *patch, float4 *min, float4 *max, floa
     *max += (float4)(eps, eps, eps, 0);
 }
 
+void BpTransform(struct BezierPatch *patch, const struct Matrix4 *mat)
+{
+    for (int i = 0; i < 16; ++i) {
+        patch->cp[i] = MatrixApply(mat, patch->cp[i]);
+    }
+}
+
 void BpiConstruct(struct BezierPatchIntersection *isect,
                   const struct BezierPatch *patch)
 {
     BpGetMinMax(patch, &isect->min, &isect->max, 0.01f);
+    isect->patch = *patch;
     isect->eps = 1.0e-4f;
 }
 
@@ -106,8 +217,8 @@ bool IntersectAABB(struct RangeAABB *rng, float4 min, float4 max,
     box[1] = max;
     int4 sign = (int4)(r->dirSign[0], r->dirSign[1], r->dirSign[2], 0);
 
-    float4 org = (float4)(r->org[0], r->org[1], r->org[2], 0);
-    float4 idir = (float4)(r->invDir[0], r->invDir[1], r->invDir[2], 0);
+    float4 org = r->org;
+    float4 idir = r->invDir;
 
     tmin = fmax(tmin, (box[  sign.x].x-org.x)*idir.x);
     tmin = fmax(tmin, (box[  sign.y].y-org.y)*idir.y);
@@ -131,20 +242,109 @@ bool BpiTest(struct BezierPatchIntersection *isect,
     if (IntersectAABB(&rng, isect->min, isect->max, r, tmin, tmax)) {
         tmin = fmax(tmin, rng.tmin);
         tmax = fmin(tmax, rng.tmax);
-        info->t = 0;
 
-        // TODO.
+        return BpiTestInternal(isect, info, r, tmin, tmax);
+    }
+    return false;
+}
+
+bool BpiTestInternal(struct BezierPatchIntersection *isect,
+                     struct Intersection *info, const struct Ray *r,
+                     float tmin, float tmax)
+{
+    struct Matrix4 mat;
+    GetZAlign(&mat, r);
+
+    struct UVT uvt;
+    struct BezierPatch patch = isect->patch;
+    BpTransform(&patch, &mat);
+    if (BpiTestBezierPatch(isect, &uvt, &patch, tmin, tmax, isect->eps)) {
+        float t = uvt.t;
+        float u = uvt.u;
+        float v = uvt.v;
+
+        //        u = isect->uRange[0]*(1-u) + isect->uRange[1]*u;//global
+        //        v = isect->vRange[0]*(1-v) + isect->vRange[1]*v;//global
+        info->t = t;
+        info->u = u;
+        info->v = v;
+        //        info->clipLevel = uvt.level;
+#if 0
+        {
+            float4 du = _patch.EvaluateDu(u,v);
+            ValueType dv = _patch.EvaluateDv(u,v);
+            ValueType normal = cross(du,dv);
+            normal.normalize();
+            info->normal = real3(normal[0], normal[1], normal[2]);
+            info->geometricNormal = real3(normal[0], normal[1], normal[2]);
+            //                info->tangent  = Conv(U);
+            //                info->binormal = Conv(V);
+        }
+#endif
         return true;
     }
     return false;
 }
 
+void BpRotateU(struct BezierPatch *patch)
+{
+    float4 dx = patch->cp[12] - patch->cp[0] + patch->cp[15] - patch->cp[3];
+    // normalize2
+    float inv_len = 1.0f/sqrt(dx.x*dx.x + dx.y*dx.y);
+    dx.x *= inv_len;
+    dx.y *= inv_len;
+    dx.z = 0;
+    float4 dy = (float4)(-dx.y, dx.x, 0, 0);
+
+    struct Matrix4 mat;
+    mat.v[0] = dx;
+    mat.v[1] = dy;
+    mat.v[2] = (float4)(0, 0, 1, 0);
+    mat.v[3] = (float4)(0, 0, 0, 1);
+
+    BpTransform(patch, &mat);
+}
+
+bool BpiTestBezierClipU(struct BezierPatchIntersection *this,
+                        struct UVT *info, struct BezierPatch *patch,
+                        float u0, float u1, float v0, float v1,
+                        float zmin, float zmax, int level, int max_level, float eps)
+{
+    struct BezierPatch tpatch = *patch;
+    BpRotateU(&tpatch);
+
+    float4 min, max;
+    BpGetMinMax(&tpatch, &min, &max, eps*1e-3f);
+
+    if (0 < min[0] || max[0] < 0) return false;//x
+    if (0 < min[1] || max[1] < 0) return false;//y
+    if (max[2] < zmin || zmax < min[2]) return false;//z
+
+    // TODO
+    info->t = 0;
+    return true;
+}
+
+bool BpiTestBezierPatch(struct BezierPatchIntersection *this,
+                        struct UVT *info, struct BezierPatch *patch,
+                        float zmin, float zmax, float eps)
+{
+    float4 min, max;
+    BpGetMinMax(patch, &min, &max, eps*1e-3f);
+
+    if (0 < min.x || max.x < 0) return false;//x
+    if (0 < min.y || max.y < 0) return false;//y
+    if (max.z < zmin || zmax < min.z) return false;//z
+    int maxLevel = 10;
+
+    return BpiTestBezierClipU(this, info, patch, 0, 1, 0, 1, zmin, zmax, 0, maxLevel, eps);
+}
 
 // --------------------------------------------------------------------
 
 bool IntersectRayAABB(float *tminOut, float *tmaxOut,
                       float maxT, float *bmin, float *bmax,
-                      float *rayOrg, float *rayInvDir, int *rayDirSign)
+                      float4 rayOrg, float4 rayInvDir, int *rayDirSign)
 {
     float tmin, tmax;
 
@@ -156,19 +356,19 @@ bool IntersectRayAABB(float *tminOut, float *tmaxOut,
     const float max_z = rayDirSign[2] * bmin[2] + (1-rayDirSign[2]) * bmax[2];
 
     // X
-    const float tmin_x = (min_x - rayOrg[0]) * rayInvDir[0];
-    const float tmax_x = (max_x - rayOrg[0]) * rayInvDir[0];
+    const float tmin_x = (min_x - rayOrg.x) * rayInvDir.x;
+    const float tmax_x = (max_x - rayOrg.x) * rayInvDir.x;
 
     // Y
-    const float tmin_y = (min_y - rayOrg[1]) * rayInvDir[1];
-    const float tmax_y = (max_y - rayOrg[1]) * rayInvDir[1];
+    const float tmin_y = (min_y - rayOrg.y) * rayInvDir.y;
+    const float tmax_y = (max_y - rayOrg.y) * rayInvDir.y;
 
     tmin = (tmin_x > tmin_y) ? tmin_x : tmin_y;
     tmax = (tmax_x < tmax_y) ? tmax_x : tmax_y;
 
     // Z
-    const float tmin_z = (min_z - rayOrg[2]) * rayInvDir[2];
-    const float tmax_z = (max_z - rayOrg[2]) * rayInvDir[2];
+    const float tmin_z = (min_z - rayOrg.z) * rayInvDir.z;
+    const float tmax_z = (max_z - rayOrg.z) * rayInvDir.z;
 
     tmin = (tmin > tmin_z) ? tmin : tmin_z;
     tmax = (tmax < tmax_z) ? tmax : tmax_z;
@@ -232,8 +432,8 @@ bool PatchIsect(struct Intersection *isect,
     float4 p2 = (float4)(bezierVerts[12*3], bezierVerts[12*3+1], bezierVerts[12*3+2], 0);
     float4 p3 = (float4)(bezierVerts[15*3], bezierVerts[15*3+1], bezierVerts[15*3+2], 0);
 
-    float4 rayOrg = (float4)(ray->org[0], ray->org[1], ray->org[2], 0);
-    float4 rayDir = (float4)(ray->dir[0], ray->dir[1], ray->dir[2], 0);
+    float4 rayOrg = ray->org;
+    float4 rayDir = ray->dir;
 
     float u, v;
     if (TriangleIsect(&isect->t, &u, &v,
@@ -279,8 +479,6 @@ __kernel void traverse(__global struct Ray *rays,
                        __global const struct BVHNode *nodes,
                        __global const unsigned int *indices,
                        __global const float *bezierVerts,
-                       int stepIndex,
-                       int step,
                        __global float *image) {
 
     int gid = get_global_id(0);
@@ -299,22 +497,16 @@ __kernel void traverse(__global struct Ray *rays,
     isect.faceID = -1;
 
     int dirSign[3];
-    dirSign[0] = ray.dir[0] < 0.0f ? 1 : 0;
-    dirSign[1] = ray.dir[1] < 0.0f ? 1 : 0;
-    dirSign[2] = ray.dir[2] < 0.0f ? 1 : 0;
-
+    dirSign[0] = ray.dir.x < 0.0f ? 1 : 0;
+    dirSign[1] = ray.dir.y < 0.0f ? 1 : 0;
+    dirSign[2] = ray.dir.z < 0.0f ? 1 : 0;
     ray.dirSign[0] = dirSign[0];
     ray.dirSign[1] = dirSign[1];
     ray.dirSign[2] = dirSign[2];
 
-    float rayInvDir[3];
-    rayInvDir[0] = 1.0f / ray.dir[0];
-    rayInvDir[1] = 1.0f / ray.dir[1];
-    rayInvDir[2] = 1.0f / ray.dir[2];
-
-    ray.invDir[0] = rayInvDir[0];
-    ray.invDir[1] = rayInvDir[1];
-    ray.invDir[2] = rayInvDir[2];
+    ray.invDir.x = 1.0f / ray.dir.x;
+    ray.invDir.y = 1.0f / ray.dir.y;
+    ray.invDir.z = 1.0f / ray.dir.z;
 
 
     float minT, maxT;
@@ -328,7 +520,7 @@ __kernel void traverse(__global struct Ray *rays,
 
         bool hit = IntersectRayAABB(&minT, &maxT, hitT,
                                     node.bmin, node.bmax, ray.org,
-                                    rayInvDir, dirSign);
+                                    ray.invDir, dirSign);
 
         if (node.flag == 0) { // branch node
             if (hit) {
@@ -351,9 +543,9 @@ __kernel void traverse(__global struct Ray *rays,
     int id = ray.dirSign[3];
 
     if (hitT < FLT_MAX) {
-        image[id*4+0] = count;
-        image[id*4+1] = count * 0.5f;
-        image[id*4+2] = count * 0.2f;
+        image[id*4+0] = isect.u;
+        image[id*4+1] = isect.v;
+        image[id*4+2] = 1;
         image[id*4+3] = 1;
     } else {
         image[id*4+0] = 0;
