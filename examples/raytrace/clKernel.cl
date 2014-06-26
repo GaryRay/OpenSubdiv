@@ -443,7 +443,7 @@ bool BpiTestBezierPatch(struct BezierPatchIntersection *this,
         float u0, u1, v0, v1;
     };
 
-#define MAX_STACK_DEPTH 100
+#define MAX_STACK_DEPTH 30
     struct Entry patchStack[MAX_STACK_DEPTH];
     int stackIndex = 0;
     patchStack[stackIndex].patch = *patch;
@@ -452,7 +452,7 @@ bool BpiTestBezierPatch(struct BezierPatchIntersection *this,
     patchStack[stackIndex].v0 = 0;
     patchStack[stackIndex].v1 = 1;
 
-    int maxLoop = 100;
+    int maxLoop = 1000;
     for (int i = 0; i < maxLoop && stackIndex >= 0; ++i) {
 
         // pop a patch
@@ -469,7 +469,8 @@ bool BpiTestBezierPatch(struct BezierPatchIntersection *this,
         bool clipU = lenU > lenV;
 
         // if it's small enough, test bilinear.
-        if (lenU < 0.01f && lenV < 0.01f) {
+        const float threshold = 0.1f;
+        if ((u1-u0) < threshold || (v1-v0) < threshold) {
             if(BpiTestBezierClipL(this, info, &currentPatch,
                                   u0, u1, v0, v1, zmin, zmax, i)) {
                 // info is updated.
