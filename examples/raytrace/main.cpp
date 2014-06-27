@@ -1095,18 +1095,18 @@ callbackCheckBox(bool checked, int button)
         break;
     case kHUD_CB_CROP_UV:
         g_cropUV = checked;
-        updateGeom();
+        startRender();
         break;
     case kHUD_CB_BEZIER_CLIP:
         g_bezierClip = checked;
-        updateGeom();
+        startRender();
         break;
     case kHUD_CB_DEBUG:
         g_debug = checked;
         break;
     case kHUD_CB_TRIANGLE:
         g_useTriangle = checked;
-        updateGeom();
+        startRender();
         break;
     }
     display();
