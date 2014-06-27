@@ -244,19 +244,19 @@ void MayaEsonWriter::doWrite( const MFileObject& file ){
 
 					switch( MayaAuxUtl::GetAttr<int>( fnMesh, "osdFvarBoundary" ) ){
 						case 0:{
-							fvarInterpBoundaryMethod = vertInterpBoundaryMethod = HMesh::k_InterpolateBoundaryNone;
+							fvarInterpBoundaryMethod = HMesh::k_InterpolateBoundaryNone;
 							break;
 						}
 						case 1:{
-							fvarInterpBoundaryMethod = vertInterpBoundaryMethod = HMesh::k_InterpolateBoundaryEdgeAndCorner;
+							fvarInterpBoundaryMethod = HMesh::k_InterpolateBoundaryEdgeAndCorner;
 							break;
 						}
 						case 2:{
-							fvarInterpBoundaryMethod = vertInterpBoundaryMethod = HMesh::k_InterpolateBoundaryEdgeOnly;
+							fvarInterpBoundaryMethod = HMesh::k_InterpolateBoundaryEdgeOnly;
 							break;
 						}
 						case 3:{
-							fvarInterpBoundaryMethod = vertInterpBoundaryMethod = HMesh::k_InterpolateBoundaryAlwaysSharp;
+							fvarInterpBoundaryMethod = HMesh::k_InterpolateBoundaryAlwaysSharp;
 							break;
 						}
 						default:
