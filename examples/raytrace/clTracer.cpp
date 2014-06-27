@@ -55,6 +55,11 @@ static bool initCL(cl_context *clContext, cl_command_queue *clQueue)
     cl_device_id *clDevices = new cl_device_id[numDevices];
     clGetDeviceIDs(cpPlatform, CL_DEVICE_TYPE_GPU, numDevices, clDevices, NULL);
 
+    for (cl_uint i = 0; i < numDevices; ++i) {
+        char name[1024];
+        clGetDeviceInfo(clDevices[i], CL_DEVICE_NAME, 1024, name, NULL);
+        printf("GPU Device = %d: %s\n", i, name);
+    }
     // cl_context_properties props[] = {
     //     CL_CONTEXT_PLATFORM, (cl_context_properties)cpPlatform,
     //     0
@@ -67,7 +72,7 @@ static bool initCL(cl_context *clContext, cl_command_queue *clQueue)
         return false;
     }
 
-    *clQueue = clCreateCommandQueue(*clContext, clDevices[0], 0, &ciErrNum);
+    *clQueue = clCreateCommandQueue(*clContext, clDevices[numDevices-1], 0, &ciErrNum);
     delete[] clDevices;
     if (ciErrNum != CL_SUCCESS) {
         printf("Error %d in clCreateCommandQueue\n", ciErrNum);
@@ -195,16 +200,20 @@ CLTracer::Traverse(const CLRay *rays, int step, float *image)
         const_cast<CLRay*>(rays), &ciErrNum);
     CL_CHECK_ERROR(ciErrNum, "clCreateBuffer\n");
 
+    size_t globalWorkSize[] = { (size_t)_width*_height/step/step, (size_t)1 };
+    size_t localWorkSize[] = { (size_t)4, (size_t)1 };
+    size_t workingSize = localWorkSize[0] * 5 * (16 * 4 + 4 + 4) * 4;
+
     clSetKernelArg(_kernel, 0, sizeof(cl_mem), &_rays);
     clSetKernelArg(_kernel, 1, sizeof(cl_mem), &_bvhNodes);
     clSetKernelArg(_kernel, 2, sizeof(cl_mem), &_bvhIndices);
     clSetKernelArg(_kernel, 3, sizeof(cl_mem), &_bezierVerts);
     clSetKernelArg(_kernel, 4, sizeof(cl_mem), &_image);
+    clSetKernelArg(_kernel, 5, workingSize, NULL);
 
-    size_t globalWorkSize[1] = { (size_t)_width*_height/step/step };
     ciErrNum = clEnqueueNDRangeKernel(_clQueue,
                                       _kernel, 1, NULL, globalWorkSize,
-                                      NULL, 0, NULL, NULL);
+                                      localWorkSize, 0, NULL, NULL);
     CL_CHECK_ERROR(ciErrNum, "clEnqueueNDRangeKernel\n");
 
     ciErrNum = clEnqueueReadBuffer(_clQueue, _image, true,
