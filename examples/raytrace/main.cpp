@@ -1037,7 +1037,7 @@ callbackIntersect(int b)
 {
     g_intersectKernel = b;
 
-    g_step = (g_intersectKernel == 4) ? 2 : 8;
+    g_step = (g_intersectKernel == 4) ? 4 : 8;
 
     startRender();
 }

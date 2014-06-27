@@ -33,15 +33,6 @@ struct BezierPatch {
     float4 cp[16];
 };
 
-struct BezierPatchIntersection {
-    struct BezierPatch patch;
-    float4 min;
-    float4 max;
-    float eps;
-    float uRange[2];
-    float vRange[2];
-};
-
 struct RangeAABB {
     float tmin, tmax;
 };
@@ -54,6 +45,8 @@ struct UVT {
 struct Matrix4 {
     float4 v[4];
 };
+
+#define EPS  (1e-3f)
 
 // --------------------------------------------------------------------
 // prototypes
@@ -76,31 +69,27 @@ void BpConstruct(struct BezierPatch *patch, __global const float *verts);
 void BpGetMinMax(const struct BezierPatch *patch, float4 *min, float4 *max, float eps);
 void BpTransform(struct BezierPatch *patch, const struct Matrix4 *mat);
 void BpRotate(struct BezierPatch *patch, float4 dx);
-void BpRotateU(struct BezierPatch *patch);
-void BpRotateU(struct BezierPatch *patch);
 float4 BpEvaluateDu(struct BezierPatch *patch, float u, float v);
 float4 BpEvaluateDv(struct BezierPatch *patch, float u, float v);
+void BezierSplit(float4 a[], float4 b[], const float4 c[], float t, int stride);
 
-void BpiConstruct(struct BezierPatchIntersection *isect,
-                  const struct BezierPatch *patch);
-bool BpiTest(struct BezierPatchIntersection *isect,
+
+bool BpiTest(const struct BezierPatch *patch,
              struct Intersection *info,
              const struct Ray *r,
              float tmin, float tmax);
-void BezierSplit(float4 a[], float4 b[], const float4 c[], float t, int stride);
-
 bool IntersectAABB(struct RangeAABB *rng, float4 min, float4 max,
                    const struct Ray *r, float tmin, float tmax);
-bool BpiTestInternal(struct BezierPatchIntersection *isect,
+bool BpiTestInternal(const struct BezierPatch *patch,
                      struct Intersection *info, const struct Ray *r,
                      float tmin, float tmax);
-bool BpiTestBezierPatch(struct BezierPatchIntersection *this,
-                        struct UVT *uvt, struct BezierPatch *patch,
+bool BpiTestBezierPatch(const struct BezierPatch *patch,
+                        struct UVT *uvt,
                         float tmin, float tmax, float eps);
-bool BpiTestBezierClipL(struct BezierPatchIntersection *this,
-                        struct UVT* info, struct BezierPatch *patch,
+bool BpiTestBezierClipL(const struct BezierPatch *patch,
+                        struct UVT* info,
                         float u0, float u1, float v0, float v1,
-                        float zmin, float zmax, int level);
+                        float zmin, float zmax);
 
 void MatrixMultiply(struct Matrix4 *dst, const struct Matrix4 *a, const struct Matrix4 *b);
 float4 MatrixApply(const struct Matrix4 *m, float4 v);
@@ -163,7 +152,7 @@ void GetZAlign(struct Matrix4 *mat, const struct Ray *r)
     if (plane == 0) x.x = 1;
     if (plane == 1) x.y = 1;
     if (plane == 2) x.z = 1;
-    float4 y = normalize(cross(dir,x));
+    float4 y = fast_normalize(cross(dir,x));
     x = cross(y,dir);
 
     x.w = y.w = dir.w = 0;
@@ -185,7 +174,6 @@ void GetZAlign(struct Matrix4 *mat, const struct Ray *r)
 
 void BpConstruct(struct BezierPatch *patch, __global const float *verts)
 {
-#pragma unroll
     for (int i = 0; i < 16; ++i) {
         patch->cp[i] = (float4)(verts[i*3+0], verts[i*3+1], verts[i*3+2], 0);
     }
@@ -207,14 +195,6 @@ void BpTransform(struct BezierPatch *patch, const struct Matrix4 *mat)
     for (int i = 0; i < 16; ++i) {
         patch->cp[i] = MatrixApply(mat, patch->cp[i]);
     }
-}
-
-void BpiConstruct(struct BezierPatchIntersection *isect,
-                  const struct BezierPatch *patch)
-{
-    BpGetMinMax(patch, &isect->min, &isect->max, 0.01f);
-    isect->patch = *patch;
-    isect->eps = 1.0e-4f;
 }
 
 bool IntersectAABB(struct RangeAABB *rng, float4 min, float4 max,
@@ -241,22 +221,24 @@ bool IntersectAABB(struct RangeAABB *rng, float4 min, float4 max,
     return rng->tmin <= rng->tmax;
 }
 
-bool BpiTest(struct BezierPatchIntersection *isect,
+bool BpiTest(const struct BezierPatch *patch,
              struct Intersection *info,
              const struct Ray *r,
              float tmin, float tmax)
 {
     struct RangeAABB rng;
-    if (IntersectAABB(&rng, isect->min, isect->max, r, tmin, tmax)) {
+    float4 min, max;
+    BpGetMinMax(patch, &min, &max, 0.01f);
+    if (IntersectAABB(&rng, min, max, r, tmin, tmax)) {
         tmin = fmax(tmin, rng.tmin);
         tmax = fmin(tmax, rng.tmax);
 
-        return BpiTestInternal(isect, info, r, tmin, tmax);
+        return BpiTestInternal(patch, info, r, tmin, tmax);
     }
     return false;
 }
 
-bool BpiTestInternal(struct BezierPatchIntersection *isect,
+bool BpiTestInternal(const struct BezierPatch *patch,
                      struct Intersection *info, const struct Ray *r,
                      float tmin, float tmax)
 {
@@ -265,9 +247,11 @@ bool BpiTestInternal(struct BezierPatchIntersection *isect,
 
     struct UVT uvt;
     uvt.t = tmax;
-    struct BezierPatch patch = isect->patch;
-    BpTransform(&patch, &mat);
-    if (BpiTestBezierPatch(isect, &uvt, &patch, tmin, tmax, isect->eps)) {
+
+    struct BezierPatch alignedPatch = *patch;
+    BpTransform(&alignedPatch, &mat);
+
+    if (BpiTestBezierPatch(&alignedPatch, &uvt, tmin, tmax, EPS)) {
         float t = uvt.t;
         float u = uvt.u;
         float v = uvt.v;
@@ -277,9 +261,9 @@ bool BpiTestInternal(struct BezierPatchIntersection *isect,
         info->v = v;
         info->clipLevel = uvt.clipLevel;
         {
-            float4 du = BpEvaluateDu(&isect->patch, u, v);
-            float4 dv = BpEvaluateDv(&isect->patch, u, v);
-            info->normal = normalize(cross(du, dv));
+            float4 du = BpEvaluateDu(patch, u, v);
+            float4 dv = BpEvaluateDv(patch, u, v);
+            info->normal = fast_normalize(cross(du, dv));
         }
         return true;
     }
@@ -296,10 +280,11 @@ float4 evaluateD(float t, float4 *cp)
 }
 float4 evaluate(float t, float4 *cp)
 {
-    return cp[0] * (1-t) * (1-t) * (1-t)
-        + cp[1] * 3 * t * (1-t) * (1-t)
-        + cp[2] * 3 * t * t * (1-t)
-        + cp[3] * t * t * t;
+    float s = 1-t;
+    return cp[0] * s * s * s
+         + cp[1] * 3 * t * s * s
+         + cp[2] * 3 * t * t * s
+         + cp[3] * t * t * t;
 }
 
 float4 BpEvaluateDu(struct BezierPatch *patch, float u, float v)
@@ -322,11 +307,8 @@ float4 BpEvaluateDv(struct BezierPatch *patch, float u, float v)
 
 void BpRotate(struct BezierPatch *patch, float4 dx)
 {
-    // normalize2
-    float inv_len = 1.0f/sqrt(dx.x*dx.x + dx.y*dx.y);
-    dx.x *= inv_len;
-    dx.y *= inv_len;
     dx.z = 0;
+    dx = fast_normalize(dx);
     float4 dy = (float4)(-dx.y, dx.x, 0, 0);
 
     struct Matrix4 mat;
@@ -336,17 +318,6 @@ void BpRotate(struct BezierPatch *patch, float4 dx)
     mat.v[3] = (float4)(0, 0, 0, 1);
 
     BpTransform(patch, &mat);
-}
-
-void BpRotateU(struct BezierPatch *patch)
-{
-    float4 dx = patch->cp[12] - patch->cp[0] + patch->cp[15] - patch->cp[3];
-    BpRotate(patch, dx);
-}
-void BpRotateV(struct BezierPatch *patch)
-{
-    float4 dx = patch->cp[3] - patch->cp[0] + patch->cp[15] - patch->cp[12];
-    BpRotate(patch, dx);
 }
 
 void BezierSplit(float4 a[], float4 b[], const float4 c[], float t, int stride)
@@ -384,12 +355,40 @@ void BpSplitV(const struct BezierPatch *patch, struct BezierPatch patches[2], fl
     }
 }
 
-bool BpiTestBezierClipL(struct BezierPatchIntersection *this,
-                        struct UVT* info, struct BezierPatch *patch,
-                        float u0, float u1, float v0, float v1,
-                        float zmin, float zmax, int level)
+void BezierCrop(const float4 in[], float4 out[], float s, float t, int STRIDE)
 {
-    // TODO.
+    const float4 p0 = in[0*STRIDE];
+    const float4 p1 = in[1*STRIDE];
+    const float4 p2 = in[2*STRIDE];
+    const float4 p3 = in[3*STRIDE];
+    float T = 1-s;
+    float S = 1-t;
+    s = 1 - T;
+    t = 1 - S;
+    out[0*STRIDE] = (p0*(T*T)*T + p3*(s*s)*s) + (p1*(s*T)*(3*T)       + p2*(s*s)*(3*T));
+    out[1*STRIDE] = (p0*(T*T)*S + p3*(s*s)*t) + (p1*T*(2*(S*s) + T*t) + p2*s*(2*(t*T) + (s*S)));
+    out[2*STRIDE] = (p3*(t*t)*s + p0*(S*S)*T) + (p2*t*(2*(s*S) + t*T) + p1*S*(2*(T*t) + (S*s)));
+    out[3*STRIDE] = (p3*(t*t)*t + p0*(S*S)*S) + (p2*(S*t)*(3*t)       + p1*(S*S)*(3*t));
+}
+
+void BpCrop(const struct BezierPatch *inPatch, struct BezierPatch *outPatch,
+            float u0, float u1, float v0, float v1)
+{
+    struct BezierPatch tmp;
+    for (int i = 0; i < 4; ++i) {
+        BezierCrop(&inPatch->cp[i*4+0], &tmp.cp[i*4+0], u0, u1, 1);
+    }
+    for (int i = 0; i < 4; ++i) {
+        BezierCrop(&tmp.cp[i], &outPatch->cp[i], v0, v1, 4);
+    }
+}
+
+bool BpiTestBezierClipL(const struct BezierPatch *patch,
+                        struct UVT* info,
+                        float u0, float u1, float v0, float v1,
+                        float zmin, float zmax)
+{
+    // TODO (NO_DIRECT)
     // DIRECT_BILINEAR
     float4 p0, p1, p2, p3;
     float4 rayOrg = (float4)(0, 0, 0, 0);
@@ -407,7 +406,6 @@ bool BpiTestBezierClipL(struct BezierPatchIntersection *this,
         info->u = mix(u0,u1,u);
         info->v = mix(v0,v1,v);
         info->t = t;
-        info->clipLevel = level;
         bRet = true;
     }
     if (TriangleIsect(&t, &uu, &vv, p1, p2, p3, rayOrg, rayDir)) {
@@ -417,76 +415,55 @@ bool BpiTestBezierClipL(struct BezierPatchIntersection *this,
         info->u = mix(u0,u1,u);
         info->v = mix(v0,v1,v);
         info->t = t;
-        info->clipLevel = level;
         bRet = true;
     }
     return bRet;
 }
 
-bool BpiTestBezierPatch(struct BezierPatchIntersection *this,
-                        struct UVT *info, struct BezierPatch *patch,
+bool BpiTestBezierPatch(const struct BezierPatch *patch,
+                        struct UVT *info,
                         float zmin, float zmax, float eps)
 {
     float4 min, max;
     BpGetMinMax(patch, &min, &max, eps*1e-3f);
 
-    if (0 < min.x || max.x < 0) return false;//x
-    if (0 < min.y || max.y < 0) return false;//y
-    if (max.z < zmin || zmax < min.z) return false;//z
+    if (0 < min.x || max.x < 0 || 0 < min.y || max.y < 0 || max.z < zmin || zmax < min.z) {
+        return false;
+    }
 
     //return BpiTestBezierClipL(this, info, patch, 0, 1, 0, 1, zmin, zmax, 0);
 
     // non-recursive iteration
     bool bRet = false;
-    struct Entry {
-        struct BezierPatch patch;
-        float u0, u1, v0, v1;
-    };
 
-#define MAX_STACK_DEPTH 30
-    struct Entry patchStack[MAX_STACK_DEPTH];
+#define MAX_STACK_DEPTH 20
+    float4 rangeStack[MAX_STACK_DEPTH];
     int stackIndex = 0;
-    patchStack[stackIndex].patch = *patch;
-    patchStack[stackIndex].u0 = 0;
-    patchStack[stackIndex].u1 = 1;
-    patchStack[stackIndex].v0 = 0;
-    patchStack[stackIndex].v1 = 1;
+    rangeStack[0] = (float4)(0, 1, 0, 1);
 
     int maxLoop = 1000;
     for (int i = 0; i < maxLoop && stackIndex >= 0; ++i) {
 
-        // pop a patch
-        float u0 = patchStack[stackIndex].u0;
-        float u1 = patchStack[stackIndex].u1;
-        float v0 = patchStack[stackIndex].v0;
-        float v1 = patchStack[stackIndex].v1;
-        struct BezierPatch currentPatch = patchStack[stackIndex].patch;
+        // pop a patch range and crop
+        float u0 = rangeStack[stackIndex].x;
+        float u1 = rangeStack[stackIndex].y;
+        float v0 = rangeStack[stackIndex].z;
+        float v1 = rangeStack[stackIndex].w;
         --stackIndex;
 
-        struct BezierPatch tpatch = currentPatch;
-        float lenU = length(tpatch.cp[3] - tpatch.cp[0]);
-        float lenV = length(tpatch.cp[12] - tpatch.cp[0]);
-        bool clipU = lenU > lenV;
+        struct BezierPatch cropPatch;
+        BpCrop(patch, &cropPatch, u0, u1, v0, v1);
+        float4 LU = cropPatch.cp[3] - cropPatch.cp[0];
+        float4 LV = cropPatch.cp[12] - cropPatch.cp[0];
+        bool clipU = fast_length(LU) > fast_length(LV);
 
-        // if it's small enough, test bilinear.
-        const float threshold = 0.1f;
-        if ((u1-u0) < threshold || (v1-v0) < threshold) {
-            if(BpiTestBezierClipL(this, info, &currentPatch,
-                                  u0, u1, v0, v1, zmin, zmax, i)) {
-                // info is updated.
-                zmax = info->t;
-                bRet = true;
-            }
-            continue;
-        }
-
-        // rotate
-        if (clipU) {
-            BpRotateU(&tpatch);
-        } else {
-            BpRotateV(&tpatch);
-        }
         float4 min, max;
+        // rotate and min/max
+        struct BezierPatch tpatch = cropPatch;
+        float4 dx = clipU
+            ? patch->cp[12] - patch->cp[0] + patch->cp[15] - patch->cp[3]
+            : patch->cp[3] - patch->cp[0] + patch->cp[15] - patch->cp[12];
+        BpRotate(&tpatch, dx);
         BpGetMinMax(&tpatch, &min, &max, eps*1e-3f);
 
         // out
@@ -494,35 +471,28 @@ bool BpiTestBezierPatch(struct BezierPatchIntersection *this,
             continue;
         }
 
-        // push children
-        struct Entry children[2];
-        struct BezierPatch tmp[2];
+        // if it's small enough, test bilinear.
+        if ((max.x-min.x) < eps || (max.y - min.y) < eps) {
+            if(BpiTestBezierClipL(&cropPatch, info,
+                                  u0, u1, v0, v1, zmin, zmax)) {
+                // info is updated.
+                zmax = info->t;
+                info->clipLevel = i;
+                bRet = true;
+            }
+            // find another intersection
+            continue;
+        }
+
+        // push children ranges
         if (clipU) {
-            BpSplitU(&currentPatch, tmp, 0.5f);
             float um = (u0+u1)*0.5f;
-            float ut[4] = {u0,um,um,u1};
-
-            for (int j = 0; j < 2; ++j) {
-                ++stackIndex;
-                patchStack[stackIndex].patch = tmp[j];
-                patchStack[stackIndex].u0 = ut[2*j];
-                patchStack[stackIndex].u1 = ut[2*j+1];
-                patchStack[stackIndex].v0 = v0;
-                patchStack[stackIndex].v1 = v1;
-            }
+            rangeStack[++stackIndex] = (float4)(u0, um, v0, v1);
+            rangeStack[++stackIndex] = (float4)(um, u1, v0, v1);
         } else {
-            BpSplitV(&currentPatch, tmp, 0.5f);
             float vm = (v0+v1)*0.5f;
-            float vt[4] = {v0,vm,vm,v1};
-
-            for (int j = 0; j < 2; ++j) {
-                ++stackIndex;
-                patchStack[stackIndex].patch = tmp[j];
-                patchStack[stackIndex].u0 = u0;
-                patchStack[stackIndex].u1 = u1;
-                patchStack[stackIndex].v0 = vt[2*j];
-                patchStack[stackIndex].v1 = vt[2*j+1];
-            }
+            rangeStack[++stackIndex] = (float4)(u0, u1, v0, vm);
+            rangeStack[++stackIndex] = (float4)(u0, u1, vm, v1);
         }
         if (stackIndex >= MAX_STACK_DEPTH-1) break;
     }
@@ -629,16 +599,14 @@ bool PatchIsect(struct Intersection *isect,
                       p0, p1, p2, rayOrg, rayDir) ||
         TriangleIsect(&isect->t, &u, &v,
                       p1, p2, p3, rayOrg, rayDir)) {
-        isect->normal = (float4)(0, 0, -1, 0);
+        isect->normal = normalize(cross(p1-p0, p2-p1));
         return true;
     }
     return false;
 #else
-    struct BezierPatchIntersection bpi;
     struct BezierPatch bp;
     BpConstruct(&bp, bezierVerts);
-    BpiConstruct(&bpi, &bp);
-    return BpiTest(&bpi, isect, ray, 0, isect->t);
+    return BpiTest(&bp, isect, ray, 0, isect->t);
 #endif
 }
 
@@ -745,7 +713,4 @@ __kernel void traverse(__global struct Ray *rays,
         image[id*4+3] = 1.0f;
     }
 }
-
-
-
 
