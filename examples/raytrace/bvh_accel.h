@@ -55,7 +55,8 @@ class BVHAccel {
 public:
   BVHAccel(float uvMargin=0.1f) : _intersectKernel(ORIGINAL),
                                   _uvMargin(uvMargin), _cropUV(true),
-                                  _bezierClip(true), _displaceScale(0), _displaceFreq(100) {}
+                                  _bezierClip(true), _displaceScale(0), _displaceFreq(100) ,
+                                  _epsilon(1e-4), _maxLevel(10), _useTriangle(false){}
   ~BVHAccel() {};
 
   ///< Build BVH for input mesh.
@@ -81,6 +82,10 @@ public:
   void SetDisplacement(float scale, float freq) { _displaceScale = scale; _displaceFreq = freq; }
     bool IsGpuKernel() const { return _intersectKernel == OPENCL; }
 
+  void SetEpsilon(double eps){_epsilon=eps;}
+  void SetMaxLevel(int level){_maxLevel=level;}
+  void SetUseTriangle(bool flag){_useTriangle=flag;}
+
   const std::vector<BVHNode> &GetNodes() const { return nodes_; }
   const std::vector<unsigned int> &GetIndices() const { return indices_; }
 
@@ -100,6 +105,10 @@ private:
   bool _bezierClip;
   float _displaceScale;
   float _displaceFreq;
+
+  double _epsilon;
+  int    _maxLevel; 
+  bool _useTriangle;
 };
 
 #endif // __BVH_ACCEL_H__

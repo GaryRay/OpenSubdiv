@@ -37,6 +37,7 @@ public:
                const float eye[3], const float lookat[3], const float up[3],
                int step, int intersectKernel, float uvMargin, bool cropUV, bool bezierClip,
                float displaceScale, float displaceFreq);
+    void Setup2(int epsLevel, int maxLevel, bool useTriangle);
 
     void Render(int stepIndex);
 

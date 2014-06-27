@@ -198,7 +198,8 @@ enum HudCheckBox { kHUD_CB_DISPLAY_BVH,
                    kHUD_CB_BEZIER_CLIP,
                    kHUD_CB_PRE_TESSELLATE,
                    kHUD_CB_ANIMATE,
-                   kHUD_CB_DEBUG };
+                   kHUD_CB_DEBUG,
+                   kHUD_CB_TRIANGLE };
 
 struct SimpleShape {
     std::string  name;
@@ -276,6 +277,11 @@ int g_debugScope[2] = { g_width/2, g_height/2 };
 float g_uvMargin = 0.01f;
 float g_displaceScale = 0.0f;
 float g_displaceFreq = 100.0f;
+
+int g_epsLevel = 4;//4->16
+int g_maxLevel = 5;//10->32
+bool g_useTriangle = false;
+
 
 int g_animate = 0;
 int g_frame = 0;
@@ -442,6 +448,8 @@ startRender() {
                   g_eye, g_lookat, g_up, g_step,
                   g_intersectKernel, g_uvMargin, g_cropUV, g_bezierClip,
                   g_displaceScale, g_displaceFreq);
+
+    g_scene.Setup2(g_epsLevel, g_maxLevel, g_useTriangle);
 
 }
 
@@ -1045,7 +1053,13 @@ callbackIntersect(int b)
 static void
 callbackSlider(float value, int data)
 {
-    if (data == 0) {
+    if (data == -2) {
+        g_epsLevel = (int)ceil(value);
+        startRender();
+    } else if (data == -1) {
+        g_maxLevel = (int)ceil(value);
+        startRender();
+    } else if (data == 0) {
         g_uvMargin = value;
         startRender();
     } else if (data == 1) {
@@ -1090,6 +1104,10 @@ callbackCheckBox(bool checked, int button)
     case kHUD_CB_DEBUG:
         g_debug = checked;
         break;
+    case kHUD_CB_TRIANGLE:
+        g_useTriangle = checked;
+        updateGeom();
+        break;
     }
     display();
 }
@@ -1103,33 +1121,44 @@ initHUD()
 #endif
     g_hud.Init(g_width, g_height);
 
+    int y = 10;
     g_hud.AddCheckBox("Show BVH (B)", g_drawBVH != 0,
-                      10, 10, callbackCheckBox, kHUD_CB_DISPLAY_BVH, 'b');
+                      10, y, callbackCheckBox, kHUD_CB_DISPLAY_BVH, 'b');y+=20;
     g_hud.AddCheckBox("Block Fill (K)", g_blockFill != 0,
-                      10, 30, callbackCheckBox, kHUD_CB_BLOCK_FILL, 'k');
+                      10, y, callbackCheckBox, kHUD_CB_BLOCK_FILL, 'k');y+=20;
 
     g_hud.AddCheckBox("Watertight (C)", g_watertight != 0,
-                      10, 60, callbackCheckBox, kHUD_CB_WATERTIGHT, 'c');
+                      10, y, callbackCheckBox, kHUD_CB_WATERTIGHT, 'c');y+=20;
 
     g_hud.AddCheckBox("Crop UV (U)", g_cropUV != 0,
-                      10, 80, callbackCheckBox, kHUD_CB_CROP_UV, 'u');
+                      10, y, callbackCheckBox, kHUD_CB_CROP_UV, 'u');y+=20;
 
     g_hud.AddCheckBox("Bezier Clip (J)", g_bezierClip != 0,
-                      10, 100, callbackCheckBox, kHUD_CB_BEZIER_CLIP, 'j');
+                      10, y, callbackCheckBox, kHUD_CB_BEZIER_CLIP, 'j');y+=20;
 
     g_hud.AddCheckBox("Pre tessellate (T)", g_preTess != 0,
-                      10, 120, callbackCheckBox, kHUD_CB_PRE_TESSELLATE, 't');
+                      10, y, callbackCheckBox, kHUD_CB_PRE_TESSELLATE, 't');y+=20;
     g_hud.AddCheckBox("Animate vertices (M)", g_animate != 0,
-                      10, 140, callbackCheckBox, kHUD_CB_ANIMATE, 'm');
+                      10, y, callbackCheckBox, kHUD_CB_ANIMATE, 'm');y+=20;
     g_hud.AddCheckBox("Debug (D)", g_debug != 0,
-                      10, 160, callbackCheckBox, kHUD_CB_DEBUG, 'd');
+                      10, y, callbackCheckBox, kHUD_CB_DEBUG, 'd');y+=20;
+
+    g_hud.AddCheckBox("Intersect Triangle (E)", g_useTriangle != 0,
+                      10, y, callbackCheckBox, kHUD_CB_TRIANGLE, 'e');y+=20;
+
+
+    g_hud.AddSlider("Epsilon Level", 1, 16, g_epsLevel,
+                    10, y, 20, true, callbackSlider, -2);y+=30;
+    g_hud.AddSlider("Max Level", 2, 16, g_maxLevel,
+                    10, y, 20, true, callbackSlider, -1);y+=30;
 
     g_hud.AddSlider("UV Margin", 0, 0.01, g_uvMargin,
-                    10, 180, 20, false, callbackSlider, 0);
+                    10, y, 20, false, callbackSlider, 0);y+=30;
+
     g_hud.AddSlider("Disp scale", 0, 0.1, g_displaceScale,
-                    10, 210, 20, false, callbackSlider, 1);
+                    10, y, 20, false, callbackSlider, 1);y+=30;
     g_hud.AddSlider("Disp freq", 0, 200, g_displaceFreq,
-                    10, 240, 20, false, callbackSlider, 2);
+                    10, y, 20, false, callbackSlider, 2);y+=30;
 
     int kernel_pulldown = g_hud.AddPullDown("Intersect (I)", 400, 10, 200, callbackIntersect, 'i');
     g_hud.AddPullDownButton(kernel_pulldown, "Original", 0, g_intersectKernel == 0);

@@ -105,24 +105,41 @@ public:
         int quadHash;
     };
 
-    OsdUtilBezierPatchIntersection(PatchType const &patch,
-                                   float uvMargin=0.1f,
-                                   int maxLevel=DEFAULT_MAX_LEVEL,
-                                   bool cropUV = true,
-                                   bool useBezierClip = true) NO_INLINE :
-
-        _patch(patch), _maxLevel(maxLevel), _uvMargin(uvMargin),
-        _cropUV(cropUV), _useBezierClip(useBezierClip),
+    OsdUtilBezierPatchIntersection(PatchType const &patch) NO_INLINE :
+        _patch(patch),
+        _eps(EPS),
+        _maxLevel(DEFAULT_MAX_LEVEL),
+        _uvMargin(true),
+        _cropUV(true), _useBezierClip(true),
         _useTriangle(false)
-         {
+    {
 
         _uRange[0] = _vRange[0] = 0;
         _uRange[1] = _vRange[1] = 1;
 
-        patch.GetMinMax(_min, _max, 0.01);
-        _eps = EPS;
+        patch.GetMinMax(_min, _max, 1e-6);
     }
     ~OsdUtilBezierPatchIntersection() { }
+
+    void SetEpsilon(REAL eps){
+        _eps = std::max(std::numeric_limits<REAL>::epsilon()*REAL(1e+1), eps);
+    }
+    void SetMaxLevel(int maxLevel){
+        _maxLevel = maxLevel;
+    }
+    void SetUVMergin(REAL uvMargin){
+        _uvMargin = uvMargin;
+    }
+    void SetCropUV(bool cropUV){
+        _cropUV = cropUV;
+    }
+    void SetUseBezierClip(bool useBezierClip){
+        _useBezierClip = useBezierClip;
+    }
+    void SetUseTriangle(bool useTriangle){
+        _useTriangle = useTriangle;
+    }
+
 
     bool Test(Intersection* info, Ray const &r, Real tmin, Real tmax) const NO_INLINE {
 
@@ -647,8 +664,6 @@ protected:
                 }
             }
         }
-#endif
-        
 
         if(bRet) {
             ValueType p = patch.Evaluate(uu,vv);
@@ -656,7 +671,7 @@ protected:
         }
 
         return bRet;
-
+#endif
     }
 
     bool testBezierClipRangeU(UVT* info, PatchType const & patch,
