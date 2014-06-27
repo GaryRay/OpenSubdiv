@@ -658,6 +658,7 @@ protected:
                         info->v = v;
                         info->t = t;
                         info->level = level;
+                        info->quadHash = computeHash(u0, u1, v0, v1);
                         bRet = true;
                     }
                 }
