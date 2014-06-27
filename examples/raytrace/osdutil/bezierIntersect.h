@@ -216,11 +216,10 @@ protected:
     }
 
     static bool isEps(ValueType const & min, ValueType const & max, Real eps) {
-        return ((max[1]-min[1])<=eps);
-        //REAL xw = max[0]-min[0];
-        //REAL yw = max[1]-min[1];
-        //if(xw<=eps && yw<=eps)return true;
-        //else return false;
+        //return ((max[1]-min[1])<=eps);
+        REAL xw = max[0]-min[0];
+        REAL yw = max[1]-min[1];
+        return (xw<=eps && yw<=eps);
     }
 
     static bool isLevel(int level, int max_level) {
