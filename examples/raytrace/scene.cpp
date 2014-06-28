@@ -158,7 +158,7 @@ static float const *getAdaptivePatchColor(OpenSubdiv::FarPatchTables::Descriptor
 }
 
 std::string
-Scene::Config::Dump()
+Scene::Config::Dump() const
 {
     std::stringstream ss;
     ss << "Kernel = " << intersectKernel << ", "
@@ -794,6 +794,30 @@ Scene::DebugTrace(int x, int y)
     printf("%f %f %f %f\n", rgba[0], rgba[1], rgba[2], rgba[3]);
 }
 
+void
+Scene::recordMetric(int id, std::ostream &out, Config const &config)
+{
+    int iteration = 1;
+    Stopwatch s;
+    SetConfig(config);
+    s.Start();
+    for (int i = 0; i < iteration; ++i) {
+        Render();
+    }
+    s.Stop();
+    float renderTime = s.GetElapsed() * 1000.0f / iteration; //ms
+
+    std::cout << config.Dump() << "\n";
+    out << "["
+        << id << ", "
+        << config.intersectKernel << ", "
+        << config.cropUV << ", "
+        << config.bezierClip << ", "
+        << config.epsLevel << ", "
+        << config.maxLevel << ", "
+        << config.useTriangle << ", "
+        << renderTime << "], \n";
+}
 
 void
 Scene::MakeReport(const char *filename)
@@ -818,11 +842,12 @@ Scene::MakeReport(const char *filename)
 
     ofs << "<html><head>\n";
     ofs << "<title>Direct Subdiv Raytrace statistics " << dt << "</title>\n";
-    ofs << "<style> div { background-color:gold; } </style>\n";
+    ofs << "<script type='text/javascript' src='https://www.google.com/jsapi'></script>\n";
     ofs << "</head>\n";
     ofs << "<body>\n";
 
     ofs << "<h1>Direct Subdiv Raytrace Statistics</h1>\n";
+
     ofs << "<pre>\n";
     ofs << "Report date: " << dt << "\n";
     ofs << "Image width = " << _width << " * " << _height << "\n";
@@ -833,51 +858,65 @@ Scene::MakeReport(const char *filename)
 
     ofs << "BVH build = " << bvhBuild << " ms\n";
 
+    ofs << "<div id='chart' style='height:800px'></div>\n";
+    ofs << "<div id='table'></div>\n";
 
     // ---------- render timing ------------
 
-    Config config;
     int kernels[] = { BVHAccel::NEW_FLOAT, BVHAccel::NEW_SSE, BVHAccel::NEW_DOUBLE };
     bool cropUVs[] = { true, false };
     bool bezierClips[] = { true, false };
     bool useTriangles[] = { true, false };
 
     float uvMargins[] = { 0.0f, 0.01f, 0.1f };
-    int epsLevles[] = {4, 5, 6, 7}; //{ 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16 };
+    int epsLevels[] = {4, 5, 6, 7}; //{ 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16 };
     int maxLevels[] = {2, 4, 8, 16}; //{ 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16 };
 
-    int iteration = 5;
+    ofs << "<script>\n";
+    ofs << "var rawData=[\n";
+    ofs << "['id', 'kernel', 'cropUV', 'bezierClip', 'eps', 'maxLevel', 'useTriangle', 'renderTime'],\n";
 
-    for (int kernel = 0; kernel < sizeof(kernels)/sizeof(kernels[0]); ++kernel) {
-        for (int cropUV = 0; cropUV < 2; ++cropUV) {
-            for (int bezierClip = 0; bezierClip < 2; ++bezierClip) {
-                for (int useTriangle = 0; useTriangle < 2; ++useTriangle) {
-                    config.intersectKernel = kernels[kernel];
+    int id = 0;
+    for (int kernel = 0; kernel < 3; ++kernel) {
+        Config config;
+        config.intersectKernel = kernels[kernel];
+        recordMetric(id++, ofs, config);
+    }
+
+#if 1
+    for (int cropUV = 0; cropUV < 2; ++cropUV) {
+        for (int bezierClip = 0; bezierClip < 2; ++bezierClip) {
+            for (int eps = 0; eps < 4; ++eps) {
+                for (int maxLevel = 0; maxLevel < 4; ++maxLevel) {
+                    Config config;
                     config.cropUV = cropUVs[cropUV];
                     config.bezierClip = bezierClips[bezierClip];
-                    config.useTriangle = useTriangles[useTriangle];
-                    std::cout << config.Dump() << "\n";
-
-                    SetConfig(config);
-                    s.Start();
-                    for (int i = 0; i < iteration; ++i) {
-                        Render();
-                    }
-                    s.Stop();
-                    float renderTime = s.GetElapsed() * 1000.0f / iteration; //ms
-
-                    ofs << "<hr>\n";
-                    ofs << config.Dump() << "<br>\n";
-                    ofs << "Render time = " << renderTime << " ms<br>\n";
-                    ofs << "<div style='width:" << (int)renderTime << "px;'>&nbsp;</div>\n";
+                    config.maxLevel = maxLevels[maxLevel];
+                    config.epsLevel = epsLevels[eps];
+                    recordMetric(id++, ofs, config);
                 }
             }
         }
     }
+#endif
 
-
-    ofs << "</body></html>\n";
-    ofs.close();
+    ofs << "];\n";
+    ofs << "google.load('visualization', '1', {packages:['corechart']});\n"
+        << "google.load('visualization', '1', {packages:['table']});\n"
+        << "google.setOnLoadCallback(drawChart);\n"
+        << "function drawChart() {\n"
+        << "var data = google.visualization.arrayToDataTable(rawData);\n"
+        << "var table = new google.visualization.Table(document.getElementById('table'));\n"
+        << "table.draw(data, {showRowNumber: true});\n"
+        << "var options = { title: 'render timings',\n"
+        << "vAxis: {title: 'ID', format: '#', direction: -1, titleTextStyle: {color: 'red'} },\n"
+        << "hAxis: {minValue: 0 } };\n";
+    ofs << "var view = new google.visualization.DataView(data);\n"
+        << "view.setColumns([ 0, 7] );\n"
+        << "var chart = new google.visualization.BarChart(document.getElementById('chart'));\n"
+        << "chart.draw(view, options);\n"
+        << "}\n";
+    ofs << "</script></body></html>";
 }
 
 

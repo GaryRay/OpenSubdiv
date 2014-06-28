@@ -42,7 +42,7 @@ public:
         float displaceScale;
         float displaceFreq;
 
-        std::string Dump();
+        std::string Dump() const;
     };
 
     Scene();
@@ -101,6 +101,8 @@ public:
         return mem;
     }
 
+protected:
+    void recordMetric(int id, std::ostream &out, Config const &config);
 
 private:
     Camera _camera;
