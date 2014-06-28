@@ -18,6 +18,33 @@ typedef OpenSubdiv::HbrHalfedge<OpenSubdiv::OsdVertex> OsdHbrHalfedge;
 class Scene
 {
 public:
+    struct Config
+    {
+        Config() {
+            intersectKernel = BVHAccel::NEW_FLOAT;
+            uvMargin = 0.0f;
+            cropUV = true;
+            bezierClip = true;
+            epsLevel = 4;
+            maxLevel = 5;
+            useTriangle = false;
+            displaceScale = displaceFreq = 0.0f;
+            step = 1;
+        }
+        int intersectKernel;
+        float uvMargin;
+        bool cropUV;
+        bool bezierClip;
+        int epsLevel;
+        int maxLevel;
+        int step;
+        bool useTriangle;
+        float displaceScale;
+        float displaceFreq;
+
+        std::string Dump();
+    };
+
     Scene();
     ~Scene();
 
@@ -32,16 +59,18 @@ public:
     void Build();
     void VBOBuild();
 
-    void Setup(int width, int height, double fov,
-               std::vector<float> &image, // RGB
-               const float eye[3], const float lookat[3], const float up[3],
-               int step, int intersectKernel, float uvMargin, bool cropUV, bool bezierClip,
-               float displaceScale, float displaceFreq);
-    void Setup2(int epsLevel, int maxLevel, bool useTriangle);
+    void SetCamera(int width, int height, double fov,
+                   std::vector<float> &image, // RGB
+                   const float eye[3], const float lookat[3], const float up[3]);
 
-    void Render(int stepIndex);
+    void SetConfig(Config const &config);
+
+    void Render(int stepIndex, int step);
+    void Render() { Render(0, 1); }
 
     void DebugTrace(int x, int y);
+
+    void MakeReport(const char *filename);
 
 
     int GetNumPatches() const { return _mesh.numBezierPatches; }
@@ -84,7 +113,6 @@ private:
     int _width;
     int _height;
     float *_image;
-    int _step;
     CLTracer *_clTracer;
 };
 

@@ -1,12 +1,16 @@
-#define NEED_HBR_FACE_INDEX
-#include "scene.h"
-#include "convert_bezier.h"
-
 #include <ctime>
 #include <cstring>
 #include <string>
 #include <cfloat>
 #include <algorithm>
+#include <iostream>
+#include <fstream>
+#include <sstream>
+
+#define NEED_HBR_FACE_INDEX
+#include "scene.h"
+#include "convert_bezier.h"
+#include "../common/stopwatch.h"
 
 #ifdef OPENSUBDIV_HAS_TBB
 #include <tbb/parallel_for.h>
@@ -153,6 +157,21 @@ static float const *getAdaptivePatchColor(OpenSubdiv::FarPatchTables::Descriptor
     }
 }
 
+std::string
+Scene::Config::Dump()
+{
+    std::stringstream ss;
+    ss << "Kernel = " << intersectKernel << ", "
+       << "CropUV = " << cropUV << ", "
+       << "BezierClip = " << bezierClip << ", "
+       << "Eps level = " << epsLevel << ", "
+       << "Max level = " << maxLevel << ", "
+       << "Use Triangle = " << useTriangle;
+
+    return ss.str();
+}
+
+// ---------------------------------------------------------------------------
 Scene::Scene() : _watertight(false), _vbo(0)
 {
 #ifdef OPENSUBDIV_HAS_TBB
@@ -681,23 +700,13 @@ private:
 };
 
 void
-Scene::Setup(int width, int height, double fov,
-             std::vector<float> &image, // RGBA
-             const float eye[3],
-             const float lookat[3], const float up[3],
-             int step, int intersectKernel,
-             float uvMargin, bool cropUV, bool bezierClip,
-             float displaceScale, float displaceFreq)
+Scene::SetCamera(int width, int height, double fov,
+                 std::vector<float> &image, // RGBA
+                 const float eye[3], const float lookat[3], const float up[3])
 {
     _width = width;
     _height = height;
     _image = &image[0];
-    _step = step;
-    _accel.SetIntersectKernel(intersectKernel);
-    _accel.SetUVMargin(uvMargin);
-    _accel.SetCropUV(cropUV);
-    _accel.SetBezierClip(bezierClip);
-    _accel.SetDisplacement(displaceScale, displaceFreq);
 
     double deye[3] = { eye[0], eye[1], eye[2] };
     double dlook[3] = { lookat[0], lookat[1], lookat[2] };
@@ -705,6 +714,25 @@ Scene::Setup(int width, int height, double fov,
 
     _camera.BuildCameraFrame(deye, dlook, dup, fov, width, height);
     assert((int)image.size() >= 3 * width * height);
+}
+
+void
+Scene::SetConfig(Config const &config)
+{
+    _accel.SetIntersectKernel(config.intersectKernel);
+    _accel.SetUVMargin(config.uvMargin);
+    _accel.SetCropUV(config.cropUV);
+    _accel.SetBezierClip(config.bezierClip);
+    _accel.SetDisplacement(config.displaceScale, config.displaceFreq);
+
+    static const double EPS_FROM_LEVEL[] = {
+        1e-3,1e-3,1e-3,1e-3,1e-4,1e-5,1e-6,1e-7,1e-8,1e-9,
+        1e-10,1e-11,1e-12,1e-13,1e-14,1e-15,1e-16,1e-17,1e-18,1e-19
+    };
+
+    _accel.SetEpsilon (EPS_FROM_LEVEL[config.epsLevel]);
+    _accel.SetMaxLevel(config.maxLevel*2);
+    _accel.SetUseTriangle(config.useTriangle);
 
 #ifdef OPENSUBDIV_HAS_OPENCL
     if (_accel.IsGpuKernel()) {
@@ -713,48 +741,34 @@ Scene::Setup(int width, int height, double fov,
 #endif
 }
 
-void 
-Scene::Setup2(int epsLevel, int maxLevel, bool useTriangle)
-{
-    static const double EPS_FROM_LEVEL[] = {
-        1e-3,1e-3,1e-3,1e-3,1e-4,1e-5,1e-6,1e-7,1e-8,1e-9,
-        1e-10,1e-11,1e-12,1e-13,1e-14,1e-15,1e-16,1e-17,1e-18,1e-19
-    };
-
-    _accel.SetEpsilon (EPS_FROM_LEVEL[epsLevel]);
-    _accel.SetMaxLevel(maxLevel*2);
-    _accel.SetUseTriangle(useTriangle);
-}
-
 void
-Scene::Render(int stepIndex)
+Scene::Render(int stepIndex, int step)
 {
     if (_accel.IsGpuKernel()) {
 
 #ifdef OPENSUBDIV_HAS_OPENCL
         float u = 0.5f, v = 0.5f;
-        CLRay *rays = new CLRay[_width*_height/_step];
+        CLRay *rays = new CLRay[_width*_height/step];
         CLRay *r = rays;
-        for (int y = stepIndex/_step; y < _height; y += _step) {
-            for (int x = stepIndex%_step; x < _width; x += _step) {
-                Ray ray = _camera.GenerateRay(x + u + _step / 2.0f,
-                                              y + v + _step / 2.0f);
+        for (int y = stepIndex/step; y < _height; y += step) {
+            for (int x = stepIndex%step; x < _width; x += step) {
+                Ray ray = _camera.GenerateRay(x + u, y + v);
                 *r++ = CLRay(ray, y*_width+x);
             }
         }
-        _clTracer->Traverse(rays, _step, _image);
+        _clTracer->Traverse(rays, step, _image);
         delete[] rays;
 #endif
 
     } else {
 #ifdef OPENSUBDIV_HAS_TBB
-    tbb::blocked_range<int> range(0, _height/_step, 1);
+    tbb::blocked_range<int> range(0, _height/step, 1);
 
-    Kernel kernel(_width, stepIndex, _step, &_accel, &_mesh, &_camera, _image, this);
+    Kernel kernel(_width, stepIndex, step, &_accel, &_mesh, &_camera, _image, this);
     tbb::parallel_for(range, kernel);
 #else
-    Kernel kernel(_width, stepIndex, _step, &_accel, &_mesh, &_camera, _image, this);
-    kernel(0, _height/_step);
+    Kernel kernel(_width, stepIndex, step, &_accel, &_mesh, &_camera, _image, this);
+    kernel(0, _height/step);
 #endif
     }
 }
@@ -768,7 +782,7 @@ Scene::DebugTrace(int x, int y)
     float u = 0.5;
     float v = 0.5;
 
-    Ray ray = _camera.GenerateRay(x + u + _step/2, y + v + _step/2);
+    Ray ray = _camera.GenerateRay(x + u, y + v);
 
     Intersection isect;
     bool hit = _accel.Traverse(isect, &_mesh, ray);
@@ -778,6 +792,92 @@ Scene::DebugTrace(int x, int y)
         Shade(rgba, isect, ray);
     }
     printf("%f %f %f %f\n", rgba[0], rgba[1], rgba[2], rgba[3]);
+}
+
+
+void
+Scene::MakeReport(const char *filename)
+{
+    std::ofstream ofs;
+    ofs.open(filename);
+    if (!ofs.good()) {
+        printf("Can't open %s\n", filename);
+        return;
+    }
+
+    time_t now = time(0);
+    char *dt = ctime(&now);
+    Stopwatch s;
+
+    // ---------- bvh build timing -------------
+
+    s.Start();
+    Build();
+    s.Stop();
+    float bvhBuild = s.GetElapsed() * 1000.0f; // ms
+
+    ofs << "<html><head>\n";
+    ofs << "<title>Direct Subdiv Raytrace statistics " << dt << "</title>\n";
+    ofs << "<style> div { background-color:gold; } </style>\n";
+    ofs << "</head>\n";
+    ofs << "<body>\n";
+
+    ofs << "<h1>Direct Subdiv Raytrace Statistics</h1>\n";
+    ofs << "<pre>\n";
+    ofs << "Report date: " << dt << "\n";
+    ofs << "Image width = " << _width << " * " << _height << "\n";
+    ofs << "</pre>\n";
+
+    ofs << "# of bezier patches = " << _mesh.numBezierPatches << "\n";
+    // TODO more info
+
+    ofs << "BVH build = " << bvhBuild << " ms\n";
+
+
+    // ---------- render timing ------------
+
+    Config config;
+    int kernels[] = { BVHAccel::NEW_FLOAT, BVHAccel::NEW_SSE, BVHAccel::NEW_DOUBLE };
+    bool cropUVs[] = { true, false };
+    bool bezierClips[] = { true, false };
+    bool useTriangles[] = { true, false };
+
+    float uvMargins[] = { 0.0f, 0.01f, 0.1f };
+    int epsLevles[] = {4, 5, 6, 7}; //{ 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16 };
+    int maxLevels[] = {2, 4, 8, 16}; //{ 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16 };
+
+    int iteration = 5;
+
+    for (int kernel = 0; kernel < sizeof(kernels)/sizeof(kernels[0]); ++kernel) {
+        for (int cropUV = 0; cropUV < 2; ++cropUV) {
+            for (int bezierClip = 0; bezierClip < 2; ++bezierClip) {
+                for (int useTriangle = 0; useTriangle < 2; ++useTriangle) {
+                    config.intersectKernel = kernels[kernel];
+                    config.cropUV = cropUVs[cropUV];
+                    config.bezierClip = bezierClips[bezierClip];
+                    config.useTriangle = useTriangles[useTriangle];
+                    std::cout << config.Dump() << "\n";
+
+                    SetConfig(config);
+                    s.Start();
+                    for (int i = 0; i < iteration; ++i) {
+                        Render();
+                    }
+                    s.Stop();
+                    float renderTime = s.GetElapsed() * 1000.0f / iteration; //ms
+
+                    ofs << "<hr>\n";
+                    ofs << config.Dump() << "<br>\n";
+                    ofs << "Render time = " << renderTime << " ms<br>\n";
+                    ofs << "<div style='width:" << (int)renderTime << "px;'>&nbsp;</div>\n";
+                }
+            }
+        }
+    }
+
+
+    ofs << "</body></html>\n";
+    ofs.close();
 }
 
 

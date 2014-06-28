@@ -435,22 +435,43 @@ initializeShapes( ) {
 
 //------------------------------------------------------------------------------
 static void
-startRender() {
+setup() {
     g_image.clear();
     g_image.resize(g_width*g_height*4);
-    g_stepIndex = g_step*g_step;
-
-    g_renderTimer.Start();
 
     double fov = 45.0f;
-    g_scene.Setup(g_width, g_height, fov,
-                  g_image,
-                  g_eye, g_lookat, g_up, g_step,
-                  g_intersectKernel, g_uvMargin, g_cropUV, g_bezierClip,
-                  g_displaceScale, g_displaceFreq);
+    g_scene.SetCamera(g_width, g_height, fov, g_image, g_eye, g_lookat, g_up);
 
-    g_scene.Setup2(g_epsLevel, g_maxLevel, g_useTriangle);
+    Scene::Config config;
+    config.intersectKernel = g_intersectKernel;
+    config.uvMargin = g_uvMargin;
+    config.cropUV = g_cropUV;
+    config.bezierClip = g_bezierClip;
+    config.displaceScale = g_displaceScale;
+    config.displaceFreq = g_displaceFreq;
+    config.epsLevel = g_epsLevel;
+    config.maxLevel = g_maxLevel;
+    config.useTriangle = g_useTriangle;
+    config.step = g_step;
 
+    g_scene.SetConfig(config);
+}
+
+static void
+startRender() {
+    setup();
+    g_stepIndex = g_step*g_step;
+    g_renderTimer.Start();
+}
+
+static void
+makeReport() {
+    setup();
+
+    g_scene.MakeReport("./report.html");
+
+    g_stepIndex = g_step*g_step;
+    g_renderTimer.Start();
 }
 
 static void
@@ -982,6 +1003,7 @@ keyboardChar(GLFWwindow *, unsigned int codepoint)
         case '-': g_preTessLevel = std::max(1, g_preTessLevel-1); updateGeom(); break;
         case 'G': dumpCamera(); break;
         case 'g': loadCamera(); setCamera(); break;
+        case 'R': makeReport(); break;
     }
 }
 static void
@@ -1269,7 +1291,7 @@ idle() {
           + ((index>>4)&1) * (g_step*g_step>>3)
           + ((index>>5)&1) * (g_step>>3);
 
-    g_scene.Render(index);
+    g_scene.Render(index, g_step);
 
     --g_stepIndex;
 
