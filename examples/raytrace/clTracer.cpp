@@ -145,14 +145,14 @@ CLTracer::SetBVH(BVHAccel const &accel)
         CL_MEM_READ_ONLY|CL_MEM_COPY_HOST_PTR,
         node.size()*sizeof(BVHNode),
         const_cast<BVHNode*>(&node[0]), &ciErrNum);
-    CL_CHECK_ERROR(ciErrNum, "clCreateBuffer\n");
+    CL_CHECK_ERROR(ciErrNum, "clCreateBuffer bvhNodes\n");
 
     _bvhIndices = clCreateBuffer(
         _clContext,
         CL_MEM_READ_ONLY|CL_MEM_COPY_HOST_PTR,
         indices.size()*sizeof(unsigned int),
         const_cast<unsigned int*>(&indices[0]), &ciErrNum);
-    CL_CHECK_ERROR(ciErrNum, "clCreateBuffer\n");
+    CL_CHECK_ERROR(ciErrNum, "clCreateBuffer indices\n");
 }
 
 void
@@ -166,7 +166,7 @@ CLTracer::SetBezierVertices(const float *bezierVerts, int size)
         CL_MEM_READ_ONLY|CL_MEM_COPY_HOST_PTR,
         size,
         const_cast<float*>(bezierVerts), &ciErrNum);
-    CL_CHECK_ERROR(ciErrNum, "clCreateBuffer\n");
+    CL_CHECK_ERROR(ciErrNum, "clCreateBuffer bezierVerts\n");
 }
 
 void
@@ -184,7 +184,7 @@ CLTracer::SetImageSize(int width, int height)
 
     _width = width;
     _height = height;
-    CL_CHECK_ERROR(ciErrNum, "clCreateBuffer\n");
+    CL_CHECK_ERROR(ciErrNum, "clCreateBuffer images\n");
 }
 
 void
@@ -198,10 +198,10 @@ CLTracer::Traverse(const CLRay *rays, int step, float *image)
         CL_MEM_READ_WRITE|CL_MEM_COPY_HOST_PTR,
         _width*_height/step/step*sizeof(CLRay),
         const_cast<CLRay*>(rays), &ciErrNum);
-    CL_CHECK_ERROR(ciErrNum, "clCreateBuffer\n");
+    CL_CHECK_ERROR(ciErrNum, "clCreateBuffer rays\n");
 
     size_t globalWorkSize[] = { (size_t)_width*_height/step/step, (size_t)1 };
-    size_t localWorkSize[] = { (size_t)4, (size_t)1 };
+    size_t localWorkSize[] = { (size_t)2, (size_t)1 };
     size_t workingSize = localWorkSize[0] * 5 * (16 * 4 + 4 + 4) * 4;
 
     clSetKernelArg(_kernel, 0, sizeof(cl_mem), &_rays);
