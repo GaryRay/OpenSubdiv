@@ -844,6 +844,10 @@ bool PatchIsectDisp(Intersection &isect,
                     float uvMargin,
                     bool cropUV,
                     bool bezierClip,
+                    double eps,
+                    int maxLevel,
+                    bool useTriangle,
+                    bool useRayDiffEpsilon,
                     float displaceScale,
                     float displaceFreq) NO_INLINE;
 
@@ -855,6 +859,10 @@ bool PatchIsectDisp(Intersection &isect,
                     float uvMargin,
                     bool cropUV,
                     bool bezierClip,
+                    double eps,
+                    int maxLevel,
+                    bool useTriangle,
+                    bool useRayDiffEpsilon,
                     float displaceScale,
                     float displaceFreq)
 {
@@ -897,10 +905,27 @@ bool PatchIsectDisp(Intersection &isect,
     Intersect upperIsect(upperPatch);
     Intersect lowerIsect(lowerPatch);
 
-    upperIsect.SetUVMergin(uvMargin);
-    upperIsect.SetMaxLevel(10);
-    lowerIsect.SetUVMergin(uvMargin);
-    lowerIsect.SetMaxLevel(10);
+    {
+      double eps0 = eps;
+      double eps1 = eps;
+      if(useRayDiffEpsilon){
+        eps0 = upperIsect.ComputeEpsilon(ray, eps0);
+        eps1 = lowerIsect.ComputeEpsilon(ray, eps1);
+      }
+      upperIsect.SetEpsilon(eps0);
+      upperIsect.SetMaxLevel(maxLevel);
+      upperIsect.SetCropUV  (cropUV);
+      upperIsect.SetUVMergin(uvMargin);
+      upperIsect.SetUseBezierClip(bezierClip);
+      upperIsect.SetUseTriangle  (useTriangle);
+
+      lowerIsect.SetEpsilon(eps1);
+      lowerIsect.SetMaxLevel(maxLevel);
+      lowerIsect.SetCropUV  (cropUV);
+      lowerIsect.SetUVMergin(uvMargin);
+      lowerIsect.SetUseBezierClip(bezierClip);
+      lowerIsect.SetUseTriangle  (useTriangle);
+    }
     
 
     bool upperFlag = upperIsect.Test(&upperIs, ray, 0, t);
@@ -939,10 +964,25 @@ bool PatchIsectDisp(Intersection &isect,
         for (int i = 0; i < 2; ++i) {
             Intersect uIsect(uPatch[i]);
             Intersect vIsect(vPatch[i]);
+            double eps0 = eps;
+            double eps1 = eps;
+            if(useRayDiffEpsilon){
+              eps0 = uIsect.ComputeEpsilon(ray, eps0);
+              eps1 = vIsect.ComputeEpsilon(ray, eps1);
+            }
+            uIsect.SetEpsilon(eps0);
+            uIsect.SetMaxLevel(maxLevel);
+            uIsect.SetCropUV  (cropUV);
             uIsect.SetUVMergin(uvMargin);
-            uIsect.SetMaxLevel(10);
+            uIsect.SetUseBezierClip(bezierClip);
+            uIsect.SetUseTriangle  (useTriangle);
+
+            vIsect.SetEpsilon(eps1);
+            vIsect.SetMaxLevel(maxLevel);
+            vIsect.SetCropUV  (cropUV);
             vIsect.SetUVMergin(uvMargin);
-            vIsect.SetMaxLevel(10);
+            vIsect.SetUseBezierClip(bezierClip);
+            vIsect.SetUseTriangle  (useTriangle);
 
             uFlag[i] = uIsect.Test(&uIs[i], ray, 0, t);
             vFlag[i] = vIsect.Test(&vIs[i], ray, 0, t);
@@ -1151,7 +1191,7 @@ bool TestLeafNode(Intersection &isect, // [inout]
               hit = true;
           }
       } else {
-          if (PatchIsectDisp(isect, bv, tr, level, intersectKernel, uvMargin, cropUV, bezierClip, displaceScale, displaceFreq)) {
+          if (PatchIsectDisp(isect, bv, tr, level, intersectKernel, uvMargin, cropUV, bezierClip, eps, maxLevel, useTriangle, useRayDiffEpsilon, displaceScale, displaceFreq)) {
               // Update isect state
               isect.faceID = faceIdx;
               hit = true;

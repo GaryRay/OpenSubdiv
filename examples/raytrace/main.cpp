@@ -270,7 +270,7 @@ int g_preTess = 0;
 int g_preTessLevel = 1;
 int g_intersectKernel = 1;
 int g_watertight = 1;
-int g_cropUV = 1;
+int g_cropUV = 0;
 int g_bezierClip = 1;
 int g_debug = 0;
 float g_debugScale = 0.01f;
@@ -280,10 +280,10 @@ float g_displaceScale = 0.0f;
 float g_displaceFreq = 100.0f;
 
 int g_epsLevel = 4;//4->16
-int g_maxLevel = 5;//10->32
-bool g_useTriangle = false;
+int g_maxLevel = 16;//10->32
+int g_useTriangle = 0;
 
-bool g_useRayDiffEpsilon = false;
+int g_useRayDiffEpsilon = 1;
 
 int g_animate = 0;
 int g_frame = 0;
@@ -1175,7 +1175,7 @@ initHUD()
     g_hud.AddCheckBox("Intersect Triangle (E)", g_useTriangle != 0,
                       10, y, callbackCheckBox, kHUD_CB_TRIANGLE, 'e');y+=20;
 
-    g_hud.AddCheckBox("Use RayDiff Epsilon (R)", g_useRayDiffEpsilon != 0,
+    g_hud.AddCheckBox("RayDiff Epsilon (R)", g_useRayDiffEpsilon != 0,
                       10, y, callbackCheckBox, kHUD_CB_RAYDIFFEPSILON, 'r');y+=20;
 
 

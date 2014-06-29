@@ -117,7 +117,7 @@ public:
         _uRange[0] = _vRange[0] = 0;
         _uRange[1] = _vRange[1] = 1;
 
-        patch.GetMinMax(_min, _max, 1e-6);
+        patch.GetMinMax(_min, _max, Real(1e-3));
     }
     ~OsdUtilBezierPatchIntersection() { }
 
