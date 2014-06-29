@@ -28,6 +28,7 @@ public:
             epsLevel = 4;
             maxLevel = 5;
             useTriangle = false;
+            useRayDiffEpsilon = false;
             displaceScale = displaceFreq = 0.0f;
             step = 1;
         }
@@ -39,8 +40,10 @@ public:
         int maxLevel;
         int step;
         bool useTriangle;
+        bool useRayDiffEpsilon;
         float displaceScale;
         float displaceFreq;
+
 
         std::string Dump() const;
     };

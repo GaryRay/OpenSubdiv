@@ -130,9 +130,12 @@ struct Ray {
   int dirSign[3];
 
   bool hasDifferential;
-  RayDifferential rx;
-  RayDifferential ry;
 
+  real3 dDdx;
+  real3 dDdy;
+
+  RayDifferential rx;//Don't use... 
+  RayDifferential ry;//Don't use... 
 };
 
 

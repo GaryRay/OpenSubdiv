@@ -153,6 +153,30 @@ public:
         return false;
     }
 
+    Real ComputeEpsilon(Ray const & r, Real eps)const
+    {
+        RangeAABB rng;
+        if(r.hasDifferential && intersectAABB(&rng, _min, _max, r, 0, std::numeric_limits<Real>::max()))
+        {
+            Real t = std::max(Real(0), rng.tmin);
+            //ValueType org(r.org[0], r.org[1], r.org[2]);
+            ValueType dir(r.dir[0], r.dir[1], r.dir[2]);
+            ValueType dirDX = (dir + ValueType(r.dDdx[0],r.dDdx[1],r.dDdx[2]));
+            ValueType dirDY = (dir + ValueType(r.dDdy[0],r.dDdy[1],r.dDdy[2]));
+            dirDX.normalize();
+            dirDY.normalize();
+            ValueType P0 = t * dir;
+            ValueType PX = t * dirDX;
+            ValueType PY = t * dirDY;
+
+            Real lx = (PX-P0).length();
+            Real ly = (PY-P0).length();
+
+            eps = std::min(lx,ly)*Real(0.25);
+        }
+        return eps;
+    }
+
 protected:
     bool testInternal(Intersection* info, const Ray& r, Real tmin, Real tmax) const NO_INLINE {
         typename ValueType::Matrix4Type mat(ValueType(r.org), ValueType(r.dir)); // getZAlign
@@ -811,7 +835,6 @@ protected:
 
         return rng->tmin <= rng->tmax;
     }
-
 
     PatchType _patch;
     Real _uRange[2];

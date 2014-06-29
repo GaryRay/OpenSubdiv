@@ -729,7 +729,8 @@ bool PatchIsect(Intersection &isect,
                 bool bezierClip,
                 double eps,
                 int maxLevel,
-                bool useTriangle
+                bool useTriangle,
+                bool useRayDiffEpsilon
                 )
 {
     //int maxLevel = 10;
@@ -743,6 +744,9 @@ bool PatchIsect(Intersection &isect,
             }
     }else if (intersectKernel == BVHAccel::NEW_FLOAT) {
         OsdUtil::OsdUtilBezierPatchIntersection<OsdUtil::vec3f, float, 4> bzi((const OsdUtil::vec3f*)bezierVerts);
+        if(useRayDiffEpsilon){
+          eps = bzi.ComputeEpsilon(ray, eps);
+        }
 
         bzi.SetEpsilon(eps);
         bzi.SetMaxLevel(maxLevel);
@@ -751,14 +755,15 @@ bool PatchIsect(Intersection &isect,
         bzi.SetUseBezierClip(bezierClip);
         bzi.SetUseTriangle  (useTriangle);
 
-
         real t = isect.t;
         if (bzi.Test(&isect, ray, 0, t)) {
             return true;
         }
     }else if (intersectKernel == BVHAccel::NEW_SSE) {
         OsdUtil::OsdUtilBezierPatchIntersection<OsdUtil::vec3sse, float, 4> bzi((const OsdUtil::vec3f*)bezierVerts);
-        
+        if(useRayDiffEpsilon){
+          eps = bzi.ComputeEpsilon(ray, eps);
+        }
         bzi.SetEpsilon(eps);
         bzi.SetMaxLevel(maxLevel);
         bzi.SetCropUV  (cropUV);
@@ -772,7 +777,9 @@ bool PatchIsect(Intersection &isect,
         }
     }else if (intersectKernel == BVHAccel::NEW_DOUBLE) {
         OsdUtil::OsdUtilBezierPatchIntersection<OsdUtil::vec3d, double, 4> bzi((const OsdUtil::vec3f*)bezierVerts);
-        
+        if(useRayDiffEpsilon){
+          eps = bzi.ComputeEpsilon(ray, eps);
+        }
         bzi.SetEpsilon(eps);
         bzi.SetMaxLevel(maxLevel);
         bzi.SetCropUV  (cropUV);
@@ -1098,7 +1105,8 @@ bool TestLeafNode(Intersection &isect, // [inout]
                   float displaceScale, float displaceFreq,
                   double eps,
                   int maxLevel,
-                  bool useTriangle
+                  bool useTriangle,
+                  bool useRayDiffEpsilon
                   ) {
   bool hit = false;
 
@@ -1137,7 +1145,7 @@ bool TestLeafNode(Intersection &isect, // [inout]
       trace("TestLeafNode(%d/%d) patch = %d\n", i, numTriangles, faceIdx);
 
       if (displaceScale == 0) {
-          if (PatchIsect(isect, bv, tr, level, intersectKernel, uvMargin, cropUV, bezierClip, eps, maxLevel, useTriangle)) {
+          if (PatchIsect(isect, bv, tr, level, intersectKernel, uvMargin, cropUV, bezierClip, eps, maxLevel, useTriangle, useRayDiffEpsilon)) {
               // Update isect state
               isect.faceID = faceIdx;
               hit = true;
@@ -1329,7 +1337,7 @@ bool BVHAccel::Traverse(Intersection &isect, const Mesh *mesh, Ray &ray) {
       if (hit) {
           if (TestLeafNode(isect, node, indices_, mesh, ray,
                            _intersectKernel, _uvMargin, _cropUV, _bezierClip,
-                           _displaceScale, _displaceFreq, _epsilon, _maxLevel, _useTriangle)) {
+                           _displaceScale, _displaceFreq, _epsilon, _maxLevel, _useTriangle, _useRayDiffEpsilon)) {
           hitT = isect.t;
         }
       }

@@ -199,7 +199,8 @@ enum HudCheckBox { kHUD_CB_DISPLAY_BVH,
                    kHUD_CB_PRE_TESSELLATE,
                    kHUD_CB_ANIMATE,
                    kHUD_CB_DEBUG,
-                   kHUD_CB_TRIANGLE };
+                   kHUD_CB_TRIANGLE,
+                   kHUD_CB_RAYDIFFEPSILON };
 
 struct SimpleShape {
     std::string  name;
@@ -282,6 +283,7 @@ int g_epsLevel = 4;//4->16
 int g_maxLevel = 5;//10->32
 bool g_useTriangle = false;
 
+bool g_useRayDiffEpsilon = false;
 
 int g_animate = 0;
 int g_frame = 0;
@@ -452,6 +454,7 @@ setup() {
     config.epsLevel = g_epsLevel;
     config.maxLevel = g_maxLevel;
     config.useTriangle = g_useTriangle;
+    config.useRayDiffEpsilon = g_useRayDiffEpsilon;
     config.step = g_step;
 
     g_scene.SetConfig(config);
@@ -1130,6 +1133,10 @@ callbackCheckBox(bool checked, int button)
         g_useTriangle = checked;
         startRender();
         break;
+    case kHUD_CB_RAYDIFFEPSILON:
+        g_useRayDiffEpsilon = checked;
+        startRender();
+        break;
     }
     display();
 }
@@ -1167,6 +1174,9 @@ initHUD()
 
     g_hud.AddCheckBox("Intersect Triangle (E)", g_useTriangle != 0,
                       10, y, callbackCheckBox, kHUD_CB_TRIANGLE, 'e');y+=20;
+
+    g_hud.AddCheckBox("Use RayDiff Epsilon (R)", g_useRayDiffEpsilon != 0,
+                      10, y, callbackCheckBox, kHUD_CB_RAYDIFFEPSILON, 'r');y+=20;
 
 
     g_hud.AddSlider("Epsilon Level", 1, 16, g_epsLevel,

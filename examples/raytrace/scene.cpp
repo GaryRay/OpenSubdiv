@@ -166,7 +166,8 @@ Scene::Config::Dump() const
        << "BezierClip = " << bezierClip << ", "
        << "Eps level = " << epsLevel << ", "
        << "Max level = " << maxLevel << ", "
-       << "Use Triangle = " << useTriangle;
+       << "Use Triangle = " << useTriangle << ", "
+       << "Use RayDiffEpsilon = " << useRayDiffEpsilon;
 
     return ss.str();
 }
@@ -653,9 +654,11 @@ public:
 
 #ifdef OPENSUBDIV_HAS_TBB
     void operator() (tbb::blocked_range<int> const &r) const {
+        bool useRayDiff = true;
         for (int rr = r.begin(); rr < r.end(); ++rr) {
 #else
     void operator() (int begin, int end) const {
+        bool useRayDiff = true;
         for (int rr = begin; rr < end; ++rr) {
 #endif
             int y = rr*_step + _stepIndex/_step;
@@ -665,6 +668,14 @@ public:
                 float v = 0.5;
 
                 Ray ray = _camera->GenerateRay(x + u + _step / 2.0f, y + v + _step / 2.0f);
+                if(useRayDiff){
+                    Ray rayO  = _camera->GenerateRay(x + _step / 2.0f, y + _step / 2.0f);
+                    Ray rayDX = _camera->GenerateRay(x + 1 + _step / 2.0f, y + _step / 2.0f);
+                    Ray rayDY = _camera->GenerateRay(x + _step / 2.0f, y + 1 + _step / 2.0f);
+                    ray.dDdx = rayDX.dir-rayO.dir;
+                    ray.dDdy = rayDY.dir-rayO.dir;
+                    ray.hasDifferential = true;
+                }
 
                 Intersection isect;
                 bool hit = _accel->Traverse(isect, _mesh, ray);
@@ -733,6 +744,7 @@ Scene::SetConfig(Config const &config)
     _accel.SetEpsilon (EPS_FROM_LEVEL[config.epsLevel]);
     _accel.SetMaxLevel(config.maxLevel*2);
     _accel.SetUseTriangle(config.useTriangle);
+    _accel.SetUseRayDiffEpsilon(config.useRayDiffEpsilon);
 
 #ifdef OPENSUBDIV_HAS_OPENCL
     if (_accel.IsGpuKernel()) {
@@ -816,6 +828,7 @@ Scene::recordMetric(int id, std::ostream &out, Config const &config)
         << config.epsLevel << ", "
         << config.maxLevel << ", "
         << config.useTriangle << ", "
+        << config.useRayDiffEpsilon << ", "
         << renderTime << "], \n";
 }
 
@@ -867,6 +880,7 @@ Scene::MakeReport(const char *filename)
     bool cropUVs[] = { true, false };
     bool bezierClips[] = { true, false };
     bool useTriangles[] = { true, false };
+    bool useRayDiffEpsilons[] = { true, false };
 
     float uvMargins[] = { 0.0f, 0.01f, 0.1f };
     int epsLevels[] = {4, 5, 6, 7}; //{ 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16 };
@@ -874,7 +888,7 @@ Scene::MakeReport(const char *filename)
 
     ofs << "<script>\n";
     ofs << "var rawData=[\n";
-    ofs << "['id', 'kernel', 'cropUV', 'bezierClip', 'eps', 'maxLevel', 'useTriangle', 'renderTime'],\n";
+    ofs << "['id', 'kernel', 'cropUV', 'bezierClip', 'eps', 'maxLevel', 'useTriangle', 'useRayDiffEpsilon', 'renderTime'],\n";
 
     int id = 0;
     for (int kernel = 0; kernel < 3; ++kernel) {
