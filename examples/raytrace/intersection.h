@@ -15,6 +15,10 @@ typedef struct {
     unsigned int clipLevel;
     unsigned int quadHash;
 
+    // for SGA tech brief
+    float        eps;
+    unsigned int maxLevel;
+
     unsigned int f0;
     unsigned int f1;
     unsigned int f2;

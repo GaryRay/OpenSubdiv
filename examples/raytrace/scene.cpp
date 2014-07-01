@@ -945,6 +945,25 @@ inline float randomreal(void) {
   return w * (1.0f / 4294967296.0f);
 }
 
+// Simple heat map coloring
+inline void 
+ShadeHeatmap(float col[3], float val, float maxVal)
+{
+    float blue[3]; blue[0] = 0.0; blue[1] = 0.0; blue[2] = 1.0;
+    //vector3 green(0.0, 1.0, 0.0);
+    float red[3]; red[0] = 1.0; red[1] = 0.0; red[2] = 0.0;
+    //vector3 red(1.0, 0.0, 0.0);
+
+    // 0 -> blue, 50 -> (blue + red)/2, 100 -> red
+    if (val < 0.0) val = 0.0;
+    if (val > maxVal) val = maxVal;
+    float t = val / maxVal; // => [0, 1]
+
+    col[0] = (1.0 - t) * blue[0] + t * red[0];
+    col[1] = (1.0 - t) * blue[1] + t * red[1];
+    col[2] = (1.0 - t) * blue[2] + t * red[2];
+}
+
 void
 Scene::Shade(float rgba[4], const Intersection &isect, const Ray &ray)
 {
@@ -969,6 +988,7 @@ Scene::Shade(float rgba[4], const Intersection &isect, const Ray &ray)
         color[1] = std::max(real(0), color[1]);
         color[2] = std::max(real(0), color[2]);
     } else if (_mode == CLIP_LEVEL) {
+#if 0
         float colors[][3] = { { 0, 0, 1 }, //0
                               { 0, 1, 0 },
                               { 0, 1, 1 },
@@ -988,6 +1008,14 @@ Scene::Shade(float rgba[4], const Intersection &isect, const Ray &ray)
         color[0] = colors[l][0];
         color[1] = colors[l][1];
         color[2] = colors[l][2];
+#else // SGA 2014 tech brief
+        float col[3];
+        ShadeHeatmap(col, isect.level, isect.maxLevel);
+        //printf("col = %f, %f, %f(lv:%d, mlv: %d)\n", col[0], col[1], col[2], isect.level, isect.maxLevel);
+        color[0] = col[0];
+        color[1] = col[1];
+        color[2] = col[2];
+#endif
     } else if (_mode == QUADS) {
         color[0] = d*((((isect.quadHash>>0)&0xff)/255.0)*0.5 + 0.5);
         color[1] = d*((((isect.quadHash>>8)&0xff)/255.0)*0.5 + 0.5);
