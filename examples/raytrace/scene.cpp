@@ -1010,7 +1010,7 @@ Scene::Shade(float rgba[4], const Intersection &isect, const Ray &ray)
         color[2] = colors[l][2];
 #else // SGA 2014 tech brief
         float col[3];
-        ShadeHeatmap(col, isect.level, isect.maxLevel);
+        ShadeHeatmap(col, isect.clipLevel, isect.maxLevel);
         //printf("col = %f, %f, %f(lv:%d, mlv: %d)\n", col[0], col[1], col[2], isect.level, isect.maxLevel);
         color[0] = col[0];
         color[1] = col[1];

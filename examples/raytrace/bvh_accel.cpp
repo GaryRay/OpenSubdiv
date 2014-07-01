@@ -1333,6 +1333,7 @@ bool BVHAccel::Traverse(Intersection &isect, const Mesh *mesh, Ray &ray) {
   isect.u = 0.0;
   isect.v = 0.0;
   isect.faceID = -1;
+  isect.maxLevel = _maxLevel;
 
   int dirSign[3];
   dirSign[0] = ray.dir[0] < 0.0 ? 1 : 0;
