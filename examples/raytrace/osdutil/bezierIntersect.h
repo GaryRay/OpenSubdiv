@@ -11,7 +11,6 @@
 //namespace OpenSubdiv {
 //namespace OPENSUBDIV_VERSION {
 
-#define DIRECT_BILINEAR 0
 #define USE_BEZIERCLIP 1
 #define USE_COARSESORT 1
 #define USE_UVCROP 1
@@ -111,7 +110,9 @@ public:
         _maxLevel(DEFAULT_MAX_LEVEL),
         _uvMargin(true),
         _cropUV(true), _useBezierClip(true),
-        _useTriangle(false)
+        _useTriangle(false),
+        _directBilinear(false),
+        _wcpFlag(0)
     {
 
         _uRange[0] = _vRange[0] = 0;
@@ -139,14 +140,22 @@ public:
     void SetUseTriangle(bool useTriangle){
         _useTriangle = useTriangle;
     }
+    void SetDirectBilinear(bool directBilinear){
+        _directBilinear = directBilinear;
+    }
+    void SetWatertightFlag(int wcpFlag) {
+        _wcpFlag = wcpFlag;
+    }
 
-
-    bool Test(Intersection* info, Ray const &r, Real tmin, Real tmax) const NO_INLINE {
+    bool Test(Intersection* info, Ray const &r, Real tmin, Real tmax) NO_INLINE {
 
         RangeAABB rng;
         if (intersectAABB(&rng, _min, _max, r, tmin, tmax)) {
             tmin = std::max(tmin, rng.tmin);
             tmax = std::min(tmax, rng.tmax);
+
+            typename ValueType::Matrix4Type mat(ValueType(r.org), ValueType(r.dir)); // getZAlign
+            _mat = mat;
 
             return testInternal(info, r, tmin, tmax);
         }
@@ -179,11 +188,9 @@ public:
 
 protected:
     bool testInternal(Intersection* info, const Ray& r, Real tmin, Real tmax) const NO_INLINE {
-        typename ValueType::Matrix4Type mat(ValueType(r.org), ValueType(r.dir)); // getZAlign
-
         UVT uvt;
         PatchType patch(_patch);
-        patch.Transform(mat);
+        patch.Transform(_mat);
         if (testBezierPatch(&uvt, patch, tmin, tmax, _eps)) {
             Real t = uvt.t;
             Real u = uvt.u;
@@ -602,6 +609,50 @@ protected:
         return false;
     }
 
+    bool testBezierClipL2(UVT* info, PatchType const &patch,
+                          Real u0, Real u1, Real v0, Real v1,
+                          Real zmin, Real zmax, int level) const NO_INLINE {
+        if (_wcpFlag != 0 &&
+            (u0 == 0 or u1 ==1 or v0 == 0 or v1 == 1)) {
+            // TODO: more efficient test (using wcpFlag and uv)
+
+            // test against split faces too
+                /*
+                  +---+---+
+               ^  | 2 | 3 |
+               |  +---+---+
+               |  | 0 | 1 |
+               u  +---+---+
+                    v---->
+                 */
+            PatchType tmp[2];
+            PatchType children[4];
+            _patch.SplitU(tmp, 0.5);
+            tmp[0].SplitV(&children[0], 0.5);
+            tmp[1].SplitV(&children[2], 0.5);
+            children[0].Transform(_mat);
+            children[1].Transform(_mat);
+            children[2].Transform(_mat);
+            children[3].Transform(_mat);
+            PatchType cp;
+            bool bRet = false;
+            if (children[0].Crop(cp, u0*2, u1*2, v0*2, v1*2)) {
+                bRet = testBezierClipL(info, cp, u0, u1, v0, v1, zmin, zmax, level);
+            }
+            if (!bRet && children[1].Crop(cp, u0*2, u1*2, (v0-0.5)*2, (v1-0.5)*2)) {
+                bRet = testBezierClipL(info, cp, u0, u1, v0, v1, zmin, zmax, level);
+            }
+            if (!bRet && children[2].Crop(cp, (u0-0.5)*2, (u1-0.5)*2, v0*2, v1*2)) {
+                bRet = testBezierClipL(info, cp, u0, u1, v0, v1, zmin, zmax, level);
+            }
+            if (!bRet && children[3].Crop(cp, (u0-0.5)*2, (u1-0.5)*2, (v0-0.5)*2, (v1-0.5)*2)) {
+                bRet = testBezierClipL(info, cp, u0, u1, v0, v1, zmin, zmax, level);
+            }
+            if (bRet) return true;
+        }
+        return testBezierClipL(info, patch, u0, u1, v0, v1, zmin, zmax, level);
+    }
+
     bool testBezierClipL(UVT* info, PatchType const &patch,
                          Real u0, Real u1, Real v0, Real v1,
                          Real zmin, Real zmax, int level) const NO_INLINE {
@@ -610,23 +661,25 @@ protected:
         trace("testBezierClipL (%f, %f) - (%f, %f) z:%f, %f  level=%d\n",
               u0, u1, v0, v1, zmin, zmax, level);
 
-#if DIRECT_BILINEAR
-        ValueType P[4];
-        P[0] = patch.Get(0, 0);
-        P[1] = patch.Get(N-1, 0);
-        P[2] = patch.Get(0, N-1);
-        P[3] = patch.Get(N-1, N-1);
-        if (testBilinearPatch(&t, &u, &v, P, zmin, zmax, uvMargin)) {
-            u = u0*(1-u)+u1*u;
-            v = v0*(1-v)+v1*v;
-            info->u = u;
-            info->v = v;
-            info->t = t;
-            info->level = level;
-            return true;
+        if (_directBilinear) {
+            ValueType P[4];
+            P[0] = patch.Get(0, 0);
+            P[1] = patch.Get(N-1, 0);
+            P[2] = patch.Get(0, N-1);
+            P[3] = patch.Get(N-1, N-1);
+            if (testBilinearPatch(&t, &u, &v, P, zmin, zmax, _uvMargin)) {
+                u = u0*(1-u)+u1*u;
+                v = v0*(1-v)+v1*v;
+                info->u = u;
+                info->v = v;
+                info->t = t;
+                info->level = level;
+                info->quadHash = computeHash(u0, u1, v0, v1);
+                return true;
+            }
+            return false;
         }
-        return false;
-#else
+
         bool bRet = false;
         int nPu = N - 1;
         int nPv = N - 1;
@@ -695,7 +748,6 @@ protected:
         }
 
         return bRet;
-#endif
     }
 
     bool testBezierClipRangeU(UVT* info, PatchType const & patch,
@@ -717,7 +769,7 @@ protected:
         
         bool bClip = isClip(level);
         if (bClip && (isEps(min,max,eps) || isLevel(level,max_level))){
-            return testBezierClipL(info, mpatch, u0, u1, v0, v1, zmin, zmax, level);
+            return testBezierClipL2(info, mpatch, u0, u1, v0, v1, zmin, zmax, level);
         } else {
             Real tw = 1;
             Real tt0 = 0;
@@ -775,7 +827,7 @@ protected:
 
         bool bClip = isClip(level);
         if (bClip && (isEps(min,max,eps) || isLevel(level,max_level))) {
-            return testBezierClipL(info, mpatch, u0, u1, v0, v1, zmin, zmax, level);
+            return testBezierClipL2(info, mpatch, u0, u1, v0, v1, zmin, zmax, level);
         } else {
             Real tw = 1;
             Real tt0 = 0;
@@ -847,6 +899,9 @@ protected:
     bool _cropUV;
     bool _useBezierClip;
     bool _useTriangle;
+    bool _directBilinear;
+    int _wcpFlag;
+    typename ValueType::Matrix4Type _mat;
 };
 
 }   // end OsdUtil

@@ -721,6 +721,7 @@ inline bool TriangleIsect(real &tInOut, real &uOut, real &vOut, const real3 &v0,
 
 bool PatchIsect(Intersection &isect,
                 const real *bezierVerts,
+                int wcpFlag,
                 const Ray &ray,
                 int level,
                 int intersectKernel,
@@ -730,7 +731,8 @@ bool PatchIsect(Intersection &isect,
                 double eps,
                 int maxLevel,
                 bool useTriangle,
-                bool useRayDiffEpsilon
+                bool useRayDiffEpsilon,
+                bool directBilinear
                 )
 {
     //int maxLevel = 10;
@@ -754,6 +756,7 @@ bool PatchIsect(Intersection &isect,
         bzi.SetUVMergin(uvMargin);
         bzi.SetUseBezierClip(bezierClip);
         bzi.SetUseTriangle  (useTriangle);
+        bzi.SetDirectBilinear(directBilinear);
 
         real t = isect.t;
         if (bzi.Test(&isect, ray, 0, t)) {
@@ -770,6 +773,7 @@ bool PatchIsect(Intersection &isect,
         bzi.SetUVMergin(uvMargin);
         bzi.SetUseBezierClip(bezierClip);
         bzi.SetUseTriangle  (useTriangle);
+        bzi.SetDirectBilinear(directBilinear);
 
         real t = isect.t;
         if (bzi.Test(&isect, ray, 0, t)) {
@@ -786,6 +790,7 @@ bool PatchIsect(Intersection &isect,
         bzi.SetUVMergin(uvMargin);
         bzi.SetUseBezierClip(bezierClip);
         bzi.SetUseTriangle  (useTriangle);
+        bzi.SetDirectBilinear(directBilinear);
 
         real t = isect.t;
         if (bzi.Test(&isect, ray, 0, t)) {
@@ -1146,7 +1151,8 @@ bool TestLeafNode(Intersection &isect, // [inout]
                   double eps,
                   int maxLevel,
                   bool useTriangle,
-                  bool useRayDiffEpsilon
+                  bool useRayDiffEpsilon,
+                  bool conservativeTest
                   ) {
   bool hit = false;
 
@@ -1177,6 +1183,7 @@ bool TestLeafNode(Intersection &isect, // [inout]
       int faceIdx = indices[i + offset];
 
       const real *bv = &mesh->bezierVertices[faceIdx * 16 * 3];
+      int wcpFlag = conservativeTest ? mesh->wcpFlags[faceIdx] : 0;
 
       const OpenSubdiv::FarPatchParam &param = mesh->patchParams[faceIdx];
       unsigned int bits = param.bitField.field;
@@ -1185,7 +1192,7 @@ bool TestLeafNode(Intersection &isect, // [inout]
       trace("TestLeafNode(%d/%d) patch = %d\n", i, numTriangles, faceIdx);
 
       if (displaceScale == 0) {
-          if (PatchIsect(isect, bv, tr, level, intersectKernel, uvMargin, cropUV, bezierClip, eps, maxLevel, useTriangle, useRayDiffEpsilon)) {
+          if (PatchIsect(isect, bv, wcpFlag, tr, level, intersectKernel, uvMargin, cropUV, bezierClip, eps, maxLevel, useTriangle, useRayDiffEpsilon, /*directBilinear=*/conservativeTest)) {
               // Update isect state
               isect.faceID = faceIdx;
               hit = true;
@@ -1378,7 +1385,8 @@ bool BVHAccel::Traverse(Intersection &isect, const Mesh *mesh, Ray &ray) {
       if (hit) {
           if (TestLeafNode(isect, node, indices_, mesh, ray,
                            _intersectKernel, _uvMargin, _cropUV, _bezierClip,
-                           _displaceScale, _displaceFreq, _epsilon, _maxLevel, _useTriangle, _useRayDiffEpsilon)) {
+                           _displaceScale, _displaceFreq, _epsilon, _maxLevel,
+                           _useTriangle, _useRayDiffEpsilon, _conservativeTest)) {
           hitT = isect.t;
         }
       }

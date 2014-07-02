@@ -242,6 +242,7 @@ Scene::BezierConvert(float *inVertices, int numVertices,
     _mesh.bezierVertices.clear();
     _mesh.bezierBounds.clear();
     _mesh.colors.clear();
+    _mesh.wcpFlags.clear();
 
     std::vector<int> cpIndices; // 16 * numPatches
     // iterate patch types.
@@ -306,6 +307,7 @@ Scene::BezierConvert(float *inVertices, int numVertices,
     //     VERBOSE("Patch %d out=%x\n", i, out);
     // }
 
+    _mesh.wcpFlags.resize(numTotalPatches);
 
     // vertex position verification pass
     if (_watertight) {
@@ -411,6 +413,92 @@ Scene::BezierConvert(float *inVertices, int numVertices,
 #endif
                 }
             }
+        }
+
+//  OSD_TRANSITION_PATTERN0*
+//  +-------------+
+//  |     /\\     |
+//  | 1  /  \\  2 |
+//  |   /    \\   |
+//  |  /      \\  |
+//  | /    0   \\ |
+//  |/          \\|
+//  +-------------+
+// OSD_TRANSITION_PATTERN1*
+//  +-------------+
+//  | 0   /\\   2 |
+//  |    /   \\   |
+//  |   /  3   \\ |
+//  |  /       /  |
+//  | /    /    1 |
+//  |/ /          |
+//  +-------------+
+//  OSD_TRANSITION_PATTERN2*
+//  +-------------+
+//  |             |
+//  |      0      |
+//  |             |
+//  |-------------|
+//  |\\    3    / |
+//  |  \\     /   |
+//  | 1  \\ /   2 |
+//  +-------------+
+//  OSD_TRANSITION_PATTERN3*
+//  +-------------+
+//  |      |      |
+//  |  1   |  0   |
+//  |      |      |
+//  |------|------|
+//  |      |      |
+//  |  3   |  2   |
+//  |      |      |
+//  +-------------+
+//  OSD_TRANSITION_PATTERN4*
+//  +-------------+
+//  |      |      |
+//  |      |      |
+//  |      |      |
+//  |  1   |   0  |
+//  |      |      |
+//  |      |      |
+//  |      |      |
+//  +-------------+
+
+  /*
+                      <----------- v
+                         edge 0
+                      +-----+-----+         u
+                      |     |     |         |
+                      |  1  |  0  |         |
+                      |     |     |         |
+               edge 1 +-----+-----+ edge 3  |
+                      |     |     |         |
+                      |  2  |  3  |         v
+                      |     |(c.i)|
+                      +-----+-----+
+                          edge 2
+                     */
+        // save wcp flags
+        for (int i = 0; i < numTotalPatches; ++i) {
+            int hbrFace = patchParam[i].hbrFaceIndex;
+            OsdHbrFace *face = hbrMesh->GetFace(hbrFace);
+
+            int wcpFlag = 0;
+            int rots = face->_adaptiveFlags.rots;
+            switch(face->_adaptiveFlags.transitionType) {
+            case OsdHbrFace::kTransition0:
+                wcpFlag = 1 << rots; break;
+            case OsdHbrFace::kTransition1:
+                wcpFlag = (1 << rots) | (1 << ((rots+3)%4)); break;
+            case OsdHbrFace::kTransition2:
+                wcpFlag = (1 << ((rots+1)%4)) | (1 << ((rots+2)%4)) | (1 << ((rots+3)%4));
+            case OsdHbrFace::kTransition3:
+                wcpFlag = 0xf;
+            case OsdHbrFace::kTransition4:
+                wcpFlag = (1 << rots) | (1 << ((rots+2)%4)); break;
+                break;
+            }
+            _mesh.wcpFlags[i] = wcpFlag;
         }
 
         // different level subdivision
@@ -745,6 +833,7 @@ Scene::SetConfig(Config const &config)
     _accel.SetMaxLevel(config.maxLevel*2);
     _accel.SetUseTriangle(config.useTriangle);
     _accel.SetUseRayDiffEpsilon(config.useRayDiffEpsilon);
+    _accel.SetConservativeTest(config.conservativeTest);
 
 #ifdef OPENSUBDIV_HAS_OPENCL
     if (_accel.IsGpuKernel()) {

@@ -30,6 +30,7 @@ public:
             useTriangle = false;
             useRayDiffEpsilon = false;
             displaceScale = displaceFreq = 0.0f;
+            conservativeTest = false;
             step = 1;
         }
         int intersectKernel;
@@ -41,6 +42,7 @@ public:
         int step;
         bool useTriangle;
         bool useRayDiffEpsilon;
+        bool conservativeTest;
         float displaceScale;
         float displaceFreq;
 

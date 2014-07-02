@@ -86,6 +86,7 @@ public:
   void SetMaxLevel(int level){_maxLevel=level;}
   void SetUseTriangle(bool flag){_useTriangle=flag;}
   void SetUseRayDiffEpsilon(bool flag){_useRayDiffEpsilon=flag;}
+  void SetConservativeTest(bool flag){_conservativeTest=flag;}
 
   const std::vector<BVHNode> &GetNodes() const { return nodes_; }
   const std::vector<unsigned int> &GetIndices() const { return indices_; }
@@ -111,6 +112,7 @@ private:
   int    _maxLevel; 
   bool _useTriangle;
   bool _useRayDiffEpsilon;
+  bool _conservativeTest;
 };
 
 #endif // __BVH_ACCEL_H__

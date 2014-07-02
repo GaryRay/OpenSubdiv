@@ -200,7 +200,8 @@ enum HudCheckBox { kHUD_CB_DISPLAY_BVH,
                    kHUD_CB_ANIMATE,
                    kHUD_CB_DEBUG,
                    kHUD_CB_TRIANGLE,
-                   kHUD_CB_RAYDIFFEPSILON };
+                   kHUD_CB_RAYDIFFEPSILON,
+                   kHUD_CB_CONSERVATIVE_TEST };
 
 struct SimpleShape {
     std::string  name;
@@ -275,7 +276,7 @@ int g_bezierClip = 1;
 int g_debug = 0;
 float g_debugScale = 0.01f;
 int g_debugScope[2] = { g_width/2, g_height/2 };
-float g_uvMargin = 0.01f;
+float g_uvMargin = 0.0f;
 float g_displaceScale = 0.0f;
 float g_displaceFreq = 100.0f;
 
@@ -284,6 +285,7 @@ int g_maxLevel = 16;//10->32
 int g_useTriangle = 0;
 
 int g_useRayDiffEpsilon = 1;
+int g_conservativeTest = 0;
 
 int g_animate = 0;
 int g_frame = 0;
@@ -455,6 +457,7 @@ setup() {
     config.maxLevel = g_maxLevel;
     config.useTriangle = g_useTriangle;
     config.useRayDiffEpsilon = g_useRayDiffEpsilon;
+    config.conservativeTest = g_conservativeTest;
     config.step = g_step;
 
     g_scene.SetConfig(config);
@@ -1137,6 +1140,10 @@ callbackCheckBox(bool checked, int button)
         g_useRayDiffEpsilon = checked;
         startRender();
         break;
+    case kHUD_CB_CONSERVATIVE_TEST:
+        g_conservativeTest = checked;
+        startRender();
+        break;
     }
     display();
 }
@@ -1178,6 +1185,8 @@ initHUD()
     g_hud.AddCheckBox("RayDiff Epsilon (R)", g_useRayDiffEpsilon != 0,
                       10, y, callbackCheckBox, kHUD_CB_RAYDIFFEPSILON, 'r');y+=20;
 
+    g_hud.AddCheckBox("Conservative Test (Y)", g_conservativeTest != 0,
+                      10, y, callbackCheckBox, kHUD_CB_CONSERVATIVE_TEST, 'y');y+=20;
 
     g_hud.AddSlider("Epsilon Level", 1, 16, g_epsLevel,
                     10, y, 20, true, callbackSlider, -2);y+=30;

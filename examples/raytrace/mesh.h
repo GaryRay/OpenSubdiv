@@ -28,6 +28,8 @@ struct Mesh {
     OpenSubdiv::FarPatchParam const *patchParams;  /// [FarPatchParam] * numBezierPatches
     std::vector<float> colors;                     /// [rgb] * numBezierPatches;
 
+    std::vector<int> wcpFlags; 
+
     float displaceBound;
 };
 

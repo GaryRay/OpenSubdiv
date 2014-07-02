@@ -330,6 +330,18 @@ public:
         }
     }
 
+    bool Crop(This &patch, Real u0, Real u1, Real v0, Real v1) const {
+        u0 = std::max(Real(0), u0);
+        u1 = std::min(Real(1), u1);
+        v0 = std::max(Real(0), v0);
+        v1 = std::min(Real(1), v1);
+        if (u0 > 1 || u1 < 0 || v0 > 1 || v1 < 0) return false;
+        ValueType tmp[Ncp];
+        for (int i = 0; i < N; ++i) bezierCrop (&tmp[i*N+0], &_cp[i*N+0], u0, u1);
+        for (int i = 0; i < N; ++i) bezierCropV(&patch._cp[i], &tmp[i], v0, v1);
+        return true;
+    }
+
     ValueType GetLv() const {
         return Get(0, N-1) - Get(0, 0) + Get(N-1, N-1) - Get(N-1, 0);
     }
