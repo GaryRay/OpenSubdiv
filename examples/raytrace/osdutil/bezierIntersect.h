@@ -501,7 +501,7 @@ protected:
         
         bool bClip = isClip(level);
         if (bClip && (isEps(min,max,eps) || isLevel(level,max_level))){
-            return testBezierClipL(info, patch, u0, u1, v0, v1, zmin, zmax, level);
+            return testBezierClipL2(info, patch, u0, u1, v0, v1, zmin, zmax, level);
         } else {
             Real tw = 1;
             Real tt0 = 0;
@@ -563,7 +563,7 @@ protected:
 
         bool bClip = isClip(level);
         if (bClip && (isEps(min,max,eps) || isLevel(level,max_level))) {
-            return testBezierClipL(info, patch, u0, u1, v0, v1, zmin, zmax, level);
+            return testBezierClipL2(info, patch, u0, u1, v0, v1, zmin, zmax, level);
         } else {
             Real tw = 1;
             Real tt0 = 0;
@@ -612,8 +612,7 @@ protected:
     bool testBezierClipL2(UVT* info, PatchType const &patch,
                           Real u0, Real u1, Real v0, Real v1,
                           Real zmin, Real zmax, int level) const NO_INLINE {
-        if (_wcpFlag != 0 &&
-            (u0 == 0 or u1 ==1 or v0 == 0 or v1 == 1)) {
+        if (_wcpFlag != 0 && (u0 == 0 or u1 ==1 or v0 == 0 or v1 == 1)) {
             // TODO: more efficient test (using wcpFlag and uv)
 
             // test against split faces too
@@ -636,17 +635,26 @@ protected:
             children[3].Transform(_mat);
             PatchType cp;
             bool bRet = false;
+            trace("Subface uv (%f-%f),(%f-%f)\n", u0, u1, v0, v1);
             if (children[0].Crop(cp, u0*2, u1*2, v0*2, v1*2)) {
                 bRet = testBezierClipL(info, cp, u0, u1, v0, v1, zmin, zmax, level);
+                info->quadHash = computeHash(u0*2, u1*2, v0*2, v1*2);
+                trace("Child 0 %d\n", bRet);
             }
             if (!bRet && children[1].Crop(cp, u0*2, u1*2, (v0-0.5)*2, (v1-0.5)*2)) {
                 bRet = testBezierClipL(info, cp, u0, u1, v0, v1, zmin, zmax, level);
+                info->quadHash = computeHash(u0*2, u1*2, v0*2, v1);
+                trace("Child 1 %d\n", bRet);
             }
             if (!bRet && children[2].Crop(cp, (u0-0.5)*2, (u1-0.5)*2, v0*2, v1*2)) {
                 bRet = testBezierClipL(info, cp, u0, u1, v0, v1, zmin, zmax, level);
+                info->quadHash = computeHash(u0*2, u1*2, v0, v1*2);
+                trace("Child 2 %d\n", bRet);
             }
             if (!bRet && children[3].Crop(cp, (u0-0.5)*2, (u1-0.5)*2, (v0-0.5)*2, (v1-0.5)*2)) {
                 bRet = testBezierClipL(info, cp, u0, u1, v0, v1, zmin, zmax, level);
+                info->quadHash = computeHash(u0*2, u1, v0*2, v1*2);
+                trace("Child 3 %d\n", bRet);
             }
             if (bRet) return true;
         }
@@ -667,15 +675,28 @@ protected:
             P[1] = patch.Get(N-1, 0);
             P[2] = patch.Get(0, N-1);
             P[3] = patch.Get(N-1, N-1);
-            if (testBilinearPatch(&t, &u, &v, P, zmin, zmax, _uvMargin)) {
-                u = u0*(1-u)+u1*u;
-                v = v0*(1-v)+v1*v;
-                info->u = u;
-                info->v = v;
-                info->t = t;
-                info->level = level;
-                info->quadHash = computeHash(u0, u1, v0, v1);
-                return true;
+            if (!_useTriangle) {
+                if (testBilinearPatch(&t, &u, &v, P, zmin, zmax, _uvMargin)) {
+                    u = u0*(1-u)+u1*u;
+                    v = v0*(1-v)+v1*v;
+                    info->u = u;
+                    info->v = v;
+                    info->t = t;
+                    info->level = level;
+                    info->quadHash = computeHash(u0, u1, v0, v1);
+                    return true;
+                }
+            } else {
+                if (testQuadPlane(&t, &u, &v, P, ValueType(0,0,0), ValueType(0,0,1), zmin, zmax)){
+                    u = u0*(1-u)+u1*u;
+                    v = v0*(1-v)+v1*v;
+                    info->u = u;
+                    info->v = v;
+                    info->t = t;
+                    info->level = level;
+                    info->quadHash = computeHash(u0, u1, v0, v1);
+                    return true;
+                }
             }
             return false;
         }
