@@ -834,6 +834,7 @@ Scene::SetConfig(Config const &config)
     _accel.SetUseTriangle(config.useTriangle);
     _accel.SetUseRayDiffEpsilon(config.useRayDiffEpsilon);
     _accel.SetConservativeTest(config.conservativeTest);
+    _accel.SetDirectBilinear(config.directBilinear);
 
 #ifdef OPENSUBDIV_HAS_OPENCL
     if (_accel.IsGpuKernel()) {
@@ -968,10 +969,9 @@ Scene::MakeReport(const char *filename)
     int kernels[] = { BVHAccel::NEW_FLOAT, BVHAccel::NEW_SSE, BVHAccel::NEW_DOUBLE };
     bool cropUVs[] = { true, false };
     bool bezierClips[] = { true, false };
-    bool useTriangles[] = { true, false };
-    bool useRayDiffEpsilons[] = { true, false };
-
-    float uvMargins[] = { 0.0f, 0.01f, 0.1f };
+    //bool useTriangles[] = { true, false };
+    //bool useRayDiffEpsilons[] = { true, false };
+    //float uvMargins[] = { 0.0f, 0.01f, 0.1f };
     int epsLevels[] = {4, 5, 6, 7}; //{ 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16 };
     int maxLevels[] = {2, 4, 8, 16}; //{ 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16 };
 

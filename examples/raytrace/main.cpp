@@ -201,7 +201,8 @@ enum HudCheckBox { kHUD_CB_DISPLAY_BVH,
                    kHUD_CB_DEBUG,
                    kHUD_CB_TRIANGLE,
                    kHUD_CB_RAYDIFFEPSILON,
-                   kHUD_CB_CONSERVATIVE_TEST };
+                   kHUD_CB_CONSERVATIVE_TEST,
+                   kHUD_CB_DIRECT_BILINEAR };
 
 struct SimpleShape {
     std::string  name;
@@ -286,6 +287,7 @@ int g_useTriangle = 0;
 
 int g_useRayDiffEpsilon = 1;
 int g_conservativeTest = 0;
+int g_directBilinear = 0;
 
 int g_animate = 0;
 int g_frame = 0;
@@ -458,6 +460,7 @@ setup() {
     config.useTriangle = g_useTriangle;
     config.useRayDiffEpsilon = g_useRayDiffEpsilon;
     config.conservativeTest = g_conservativeTest;
+    config.directBilinear = g_directBilinear;
     config.step = g_step;
 
     g_scene.SetConfig(config);
@@ -1144,6 +1147,10 @@ callbackCheckBox(bool checked, int button)
         g_conservativeTest = checked;
         startRender();
         break;
+    case kHUD_CB_DIRECT_BILINEAR:
+        g_directBilinear = checked;
+        startRender();
+        break;
     }
     display();
 }
@@ -1188,9 +1195,12 @@ initHUD()
     g_hud.AddCheckBox("Conservative Test (Y)", g_conservativeTest != 0,
                       10, y, callbackCheckBox, kHUD_CB_CONSERVATIVE_TEST, 'y');y+=20;
 
+    g_hud.AddCheckBox("Direct bilinear (X)", g_directBilinear != 0,
+                      10, y, callbackCheckBox, kHUD_CB_DIRECT_BILINEAR, 'x');y+=20;
+
     g_hud.AddSlider("Epsilon Level", 1, 16, g_epsLevel,
                     10, y, 20, true, callbackSlider, -2);y+=30;
-    g_hud.AddSlider("Max Level", 2, 16, g_maxLevel,
+    g_hud.AddSlider("Max Level", 0, 16, g_maxLevel,
                     10, y, 20, true, callbackSlider, -1);y+=30;
 
     g_hud.AddSlider("UV Margin", 0, 0.01, g_uvMargin,

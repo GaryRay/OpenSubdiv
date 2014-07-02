@@ -31,6 +31,7 @@ public:
             useRayDiffEpsilon = false;
             displaceScale = displaceFreq = 0.0f;
             conservativeTest = false;
+            directBilinear = false;
             step = 1;
         }
         int intersectKernel;
@@ -43,6 +44,7 @@ public:
         bool useTriangle;
         bool useRayDiffEpsilon;
         bool conservativeTest;
+        bool directBilinear;
         float displaceScale;
         float displaceFreq;
 

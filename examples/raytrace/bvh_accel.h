@@ -56,7 +56,9 @@ public:
   BVHAccel(float uvMargin=0.1f) : _intersectKernel(ORIGINAL),
                                   _uvMargin(uvMargin), _cropUV(true),
                                   _bezierClip(true), _displaceScale(0), _displaceFreq(100) ,
-                                  _epsilon(1e-4), _maxLevel(10), _useTriangle(false), _useRayDiffEpsilon(false){}
+                                  _epsilon(1e-4), _maxLevel(10), _useTriangle(false),
+                                  _useRayDiffEpsilon(false), _conservativeTest(false),
+                                  _directBilinear(false) {}
   ~BVHAccel() {};
 
   ///< Build BVH for input mesh.
@@ -87,6 +89,7 @@ public:
   void SetUseTriangle(bool flag){_useTriangle=flag;}
   void SetUseRayDiffEpsilon(bool flag){_useRayDiffEpsilon=flag;}
   void SetConservativeTest(bool flag){_conservativeTest=flag;}
+  void SetDirectBilinear(bool flag){_directBilinear=flag;}
 
   const std::vector<BVHNode> &GetNodes() const { return nodes_; }
   const std::vector<unsigned int> &GetIndices() const { return indices_; }
@@ -113,6 +116,7 @@ private:
   bool _useTriangle;
   bool _useRayDiffEpsilon;
   bool _conservativeTest;
+ bool _directBilinear;
 };
 
 #endif // __BVH_ACCEL_H__

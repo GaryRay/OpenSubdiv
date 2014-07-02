@@ -757,6 +757,7 @@ bool PatchIsect(Intersection &isect,
         bzi.SetUseBezierClip(bezierClip);
         bzi.SetUseTriangle  (useTriangle);
         bzi.SetDirectBilinear(directBilinear);
+        bzi.SetWatertightFlag(wcpFlag);
 
         real t = isect.t;
         if (bzi.Test(&isect, ray, 0, t)) {
@@ -774,6 +775,7 @@ bool PatchIsect(Intersection &isect,
         bzi.SetUseBezierClip(bezierClip);
         bzi.SetUseTriangle  (useTriangle);
         bzi.SetDirectBilinear(directBilinear);
+        bzi.SetWatertightFlag(wcpFlag);
 
         real t = isect.t;
         if (bzi.Test(&isect, ray, 0, t)) {
@@ -791,6 +793,7 @@ bool PatchIsect(Intersection &isect,
         bzi.SetUseBezierClip(bezierClip);
         bzi.SetUseTriangle  (useTriangle);
         bzi.SetDirectBilinear(directBilinear);
+        bzi.SetWatertightFlag(wcpFlag);
 
         real t = isect.t;
         if (bzi.Test(&isect, ray, 0, t)) {
@@ -1152,7 +1155,8 @@ bool TestLeafNode(Intersection &isect, // [inout]
                   int maxLevel,
                   bool useTriangle,
                   bool useRayDiffEpsilon,
-                  bool conservativeTest
+                  bool conservativeTest,
+                  bool directBilinear
                   ) {
   bool hit = false;
 
@@ -1192,7 +1196,7 @@ bool TestLeafNode(Intersection &isect, // [inout]
       trace("TestLeafNode(%d/%d) patch = %d\n", i, numTriangles, faceIdx);
 
       if (displaceScale == 0) {
-          if (PatchIsect(isect, bv, wcpFlag, tr, level, intersectKernel, uvMargin, cropUV, bezierClip, eps, maxLevel, useTriangle, useRayDiffEpsilon, /*directBilinear=*/conservativeTest)) {
+          if (PatchIsect(isect, bv, wcpFlag, tr, level, intersectKernel, uvMargin, cropUV, bezierClip, eps, maxLevel, useTriangle, useRayDiffEpsilon, directBilinear)) {
               // Update isect state
               isect.faceID = faceIdx;
               hit = true;
@@ -1386,7 +1390,7 @@ bool BVHAccel::Traverse(Intersection &isect, const Mesh *mesh, Ray &ray) {
           if (TestLeafNode(isect, node, indices_, mesh, ray,
                            _intersectKernel, _uvMargin, _cropUV, _bezierClip,
                            _displaceScale, _displaceFreq, _epsilon, _maxLevel,
-                           _useTriangle, _useRayDiffEpsilon, _conservativeTest)) {
+                           _useTriangle, _useRayDiffEpsilon, _conservativeTest, _directBilinear)) {
           hitT = isect.t;
         }
       }
