@@ -711,7 +711,7 @@ debugTrace(int x, int y) {
     g_selectedColor[2] = p[2];
 
     g_traceEnabled = true;
-    g_scene.DebugTrace(x, y);
+    g_scene.DebugTrace(x + g_step/2.0f, y + g_step/2.0f);
     g_traceEnabled = false;
 }
 

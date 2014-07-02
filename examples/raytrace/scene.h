@@ -71,7 +71,7 @@ public:
     void Render(int stepIndex, int step);
     void Render() { Render(0, 1); }
 
-    void DebugTrace(int x, int y);
+    void DebugTrace(float x, float y);
 
     void MakeReport(const char *filename);
 

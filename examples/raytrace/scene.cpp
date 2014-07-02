@@ -786,10 +786,10 @@ Scene::Render(int stepIndex, int step)
 }
 
 void
-Scene::DebugTrace(int x, int y)
+Scene::DebugTrace(float x, float y)
 {
     printf("------------------------------------------\n");
-    printf("Debug Trace at pixel %d, %d\n", x, y);
+    printf("Debug Trace at pixel %f, %f\n", x, y);
 
     float u = 0.5;
     float v = 0.5;
