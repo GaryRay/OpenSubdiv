@@ -90,9 +90,12 @@ public:
         Real tmin, tmax;
     };
     struct UVT {
+        UVT() : u(0), v(0), t(0), level(0), quadHash(0),
+                failAtBilinear(false) {}
         Real u, v, t;
         int level;
         int quadHash;
+        bool failAtBilinear;
     };
 
     OsdUtilBezierPatchIntersection(PatchType const &patch) NO_INLINE :
@@ -179,8 +182,7 @@ protected:
         typename ValueType::Matrix4Type mat(ValueType(r.org), ValueType(r.dir)); // getZAlign
 
         UVT uvt;
-        PatchType patch(_patch);
-        patch.Transform(mat);
+        PatchType patch(_patch, mat);
         if (testBezierPatch(&uvt, patch, tmin, tmax, _eps)) {
             Real t = uvt.t;
             Real u = uvt.u;
@@ -207,7 +209,7 @@ protected:
             return true;
         }
         // watertight critical pass
-        if (_wcpFlag != 0) {
+        if (uvt.failAtBilinear && _wcpFlag != 0) {
             // TODO: more efficient test (using wcpFlag and uv)
 
             // test against split faces too
@@ -224,7 +226,7 @@ protected:
             _patch.SplitU(tmp, 0.5);
             tmp[0].SplitV(&children[0], 0.5);
             tmp[1].SplitV(&children[2], 0.5);
-            
+
             for (int i = 0; i < 4; ++i) {
                 children[i].Transform(mat);
                 // if (u0 == 0 && (i == 2 || i == 3)) continue;
@@ -256,7 +258,7 @@ protected:
 
         return false;
     }
-    bool testBezierPatch(UVT* info, PatchType const & patch, Real zmin, Real zmax, Real eps) const {
+    bool testBezierPatch(UVT* info, PatchType const & patch, Real zmin, Real zmax, Real eps) const NO_INLINE {
         ValueType min, max;
         patch.GetMinMax(min, max, eps*1e-3);
 
@@ -683,6 +685,7 @@ protected:
                     return true;
                 }
             }
+            info->failAtBilinear = true;
             return false;
         }
 
@@ -748,11 +751,12 @@ protected:
             }
         }
 
-        if(bRet) {
+        if (bRet) {
             ValueType p = patch.Evaluate(uu,vv);
             info->t = p[2];
+        } else {
+            info->failAtBilinear = true;
         }
-
         return bRet;
     }
 

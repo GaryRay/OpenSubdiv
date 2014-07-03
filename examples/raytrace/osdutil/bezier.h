@@ -152,6 +152,12 @@ public:
     }
 
     /// Constructor.
+    template<typename MATRIX>
+    OsdUtilBezierPatch(OsdUtilBezierPatch const &other, MATRIX const &m) {
+        for (int i = 0; i < Ncp; ++i) _cp[i] = m * other._cp[i];
+    }
+
+    /// Constructor.
     OsdUtilBezierPatch(OsdUtilBezierPatch const &other, Real u0, Real u1, Real v0, Real v1) {//with crop
         for (int i = 0; i < Ncp; ++i) _cp[i] = other._cp[i];
         ValueType tmp[Ncp];

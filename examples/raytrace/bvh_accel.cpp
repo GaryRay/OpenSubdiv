@@ -1256,6 +1256,7 @@ void BuildIntersection(Intersection &isect, const Mesh *mesh, Ray &ray)
         isect.patchID = isect.faceID;
         isect.faceID = param.faceIndex;
         isect.level = (bits & 0xf);
+#if 0
         int level = 1 << ((bits & 0xf) - ((bits >> 4) &1));
         int pu = (bits >> 17) & 0x3ff;
         int pv = (bits >> 7) & 0x3ff;
@@ -1272,6 +1273,7 @@ void BuildIntersection(Intersection &isect, const Mesh *mesh, Ray &ray)
 
         //isect.u = (u + pu)/(float)level;
         //isect.v = (v + pv)/(float)level;
+#endif
     } else {
         // face index
         isect.patchID = isect.faceID;
