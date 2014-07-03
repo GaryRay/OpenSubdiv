@@ -286,7 +286,7 @@ int g_maxLevel = 16;//10->32
 int g_useTriangle = 0;
 
 int g_useRayDiffEpsilon = 1;
-int g_conservativeTest = 0;
+int g_conservativeTest = 1;
 int g_directBilinear = 0;
 
 int g_animate = 0;
