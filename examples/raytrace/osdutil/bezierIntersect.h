@@ -209,7 +209,8 @@ protected:
             return true;
         }
         // watertight critical pass
-        if (uvt.failAtBilinear && _wcpFlag != 0) {
+        //if (uvt.failAtBilinear && _wcpFlag != 0) {
+        if (_wcpFlag != 0) {
             // TODO: more efficient test (using wcpFlag and uv)
 
             // test against split faces too
