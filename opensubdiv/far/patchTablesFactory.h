@@ -598,7 +598,7 @@ FarPatchTablesFactory<T>::FarPatchTablesFactory( HbrMesh<T> const * mesh, int nf
                     case 1 : {   for (unsigned char j=0; j<4; ++j) {
                                      if (f->GetEdge(j)->IsTriangleHead())
                                          break;
-                                     f->_adaptiveFlags.rots++;
+                                     //f->_adaptiveFlags.rots++;
                                  }
                                  f->_adaptiveFlags.transitionType = HbrFace<T>::kTransition0;
                             } break;
@@ -612,7 +612,7 @@ FarPatchTablesFactory<T>::FarPatchTablesFactory( HbrMesh<T> const * mesh, int nf
                                          if (f->GetEdge(j)->IsTriangleHead())
                                              break;
                                      }
-                                     f->_adaptiveFlags.rots++;
+                                     //f->_adaptiveFlags.rots++;
                                  }
 
                                  if (isConnected)
@@ -624,7 +624,7 @@ FarPatchTablesFactory<T>::FarPatchTablesFactory( HbrMesh<T> const * mesh, int nf
                     case 3 : {   for (unsigned char j=0; j<4; ++j) {
                                      if (not f->GetEdge(j)->IsTriangleHead())
                                          break;
-                                     f->_adaptiveFlags.rots++;
+                                     //f->_adaptiveFlags.rots++;
                                  }
                                  f->_adaptiveFlags.transitionType = HbrFace<T>::kTransition2;
                              } break;

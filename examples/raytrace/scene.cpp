@@ -559,6 +559,22 @@ Scene::BezierConvert(float *inVertices, int numVertices,
             // childindex 2 -> edge 1, 2
             // childindex 3 -> edge 2, 3
             // for each edge
+
+                    /*
+                      <----------- v
+                          edge 0
+                      +-----+-----+         u
+                      |     |     |         |
+                      |  1  |  0  |         |
+                      |     |     |         |
+               edge 1 +-----+-----+ edge 3  |
+                      |     |     |         |
+                      |  2  |  3  |         v
+                      |     |(childIndex)|
+                      +-----+-----+
+                          edge 2
+                     */
+
             int edgeScan[4][2] = { {3, 0}, {0, 1}, {1, 2}, {2, 3} };
             for (int j = 0; j < 2; ++j) {
                 int edge = edgeScan[childIndex][j];
@@ -576,9 +592,12 @@ Scene::BezierConvert(float *inVertices, int numVertices,
                 VERBOSE( " search %d-%d edge, face %d \n", v0->GetID(), v1->GetID(),
                          parentFace->GetEdge(edge)->GetOpposite()->GetFace()->GetID());
 
+                if (parentFace->_adaptiveFlags.bverts > 0) continue;
+
                 if (edgeBeziers.count(e) != 0) {
                     Bezier parentEdge = edgeBeziers[e];  // todo, lookup
-                    if (e._edges[0] != v0->GetID()) {
+                    bool reverse = e._edges[0] != v0->GetID();
+                    if (reverse) {
                         parentEdge.Reverse();
                     }
 
@@ -587,15 +606,43 @@ Scene::BezierConvert(float *inVertices, int numVertices,
                     vec3f tmp[2][4];
                     OsdUtil::BezierSplit<4, 0, /*stride*/1, vec3f, float> split(
                         tmp[0], tmp[1], edgeBeziers[e].cp, 0.5);
-
                     VERBOSE("[[%f %f %f - ", tmp[0][0][0], tmp[0][0][1], tmp[0][0][2]);
                     VERBOSE("%f %f %f - ", tmp[1][0][0], tmp[1][0][1], tmp[1][0][2]);
                     VERBOSE("%f %f %f]]\n", tmp[1][3][0], tmp[1][3][1], tmp[1][3][2]);
 
+#if 1
+                    vec3f *d = (vec3f*)(&_mesh.bezierVertices[i*16*3]);
+                    if (edge == 0) {
+                        for (int k = 0; k < 4; ++k) {
+                            d[k*4+0] = reverse
+                                ? tmp[childIndex==0?1:0][3-k]
+                                : tmp[childIndex==0?0:1][k];
+                        }
+                    } else if (edge == 1) {
+                        for (int k = 0; k < 4; ++k) {
+                            d[12+k] = reverse
+                                ? tmp[childIndex==1?1:0][3-k]
+                                : tmp[childIndex==1?0:1][k];
+                        }
+                    } else if (edge == 2) {
+                        for (int k = 0; k < 4; ++k) {
+                            d[k*4+3] = reverse
+                                ? tmp[childIndex==2?1:0][k]
+                                : tmp[childIndex==2?0:1][3-k];
+                        }
+                    } else if (edge == 3) {
+                        for (int k = 0; k < 4; ++k) {
+                            d[k] = reverse
+                                ? tmp[childIndex==3?1:0][k]
+                                : tmp[childIndex==3?0:1][3-k];
+                        }
+                    }
+#else
                     if (consolidateBezier(Bezier(tmp[0]), Bezier(tmp[1]),
                                           &_mesh.bezierVertices[(i*16*3)]) == false) {
                         printf("Matching error. face = %d, hbr face=%d\n", i, face->GetID());
                     }
+#endif
                 } else {
                     printf("Topology error --- Not found hbr verts in edge dict%d,%d\n",
                            v0->GetID(), v1->GetID());
