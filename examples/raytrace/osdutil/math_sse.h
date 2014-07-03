@@ -269,10 +269,14 @@ public:
     }
 
     vec3sse operator*(vec3sse const & vec) const {
-        __m128 t0 = _mm_mul_ps(v[0], vec.v);
-        __m128 t1 = _mm_mul_ps(v[1], vec.v);
-        __m128 t2 = _mm_mul_ps(v[2], vec.v);
-        __m128 t3 = _mm_mul_ps(v[3], vec.v);
+        // set w=1 (sad... bezierSplit should be fixed not to update w.)
+        __m128 p = _mm_shuffle_ps(vec.v, vec.v, _MM_SHUFFLE(0, 1, 2, 3));
+        p = _mm_move_ss(p, _mm_set_ss(1));
+        p = _mm_shuffle_ps(p, p, _MM_SHUFFLE(0, 1, 2, 3));
+        __m128 t0 = _mm_mul_ps(v[0], p);
+        __m128 t1 = _mm_mul_ps(v[1], p);
+        __m128 t2 = _mm_mul_ps(v[2], p);
+        __m128 t3 = _mm_mul_ps(v[3], p);
         _MM_TRANSPOSE4_PS(t0, t1, t2, t3);
         return vec3sse(_mm_add_ps(_mm_add_ps(t0, t1), _mm_add_ps(t2, t3)));
     }
