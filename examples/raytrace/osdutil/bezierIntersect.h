@@ -138,15 +138,12 @@ public:
         _wcpFlag = wcpFlag;
     }
 
-    bool Test(Intersection* info, Ray const &r, Real tmin, Real tmax) NO_INLINE {
+    bool Test(Intersection* info, Ray const &r, Real tmin, Real tmax) const NO_INLINE {
 
         RangeAABB rng;
         if (intersectAABB(&rng, _min, _max, r, tmin, tmax)) {
             tmin = std::max(tmin, rng.tmin);
             tmax = std::min(tmax, rng.tmax);
-
-            typename ValueType::Matrix4Type mat(ValueType(r.org), ValueType(r.dir)); // getZAlign
-            _mat = mat;
 
             return testInternal(info, r, tmin, tmax);
         }
@@ -179,9 +176,11 @@ public:
 
 protected:
     bool testInternal(Intersection* info, const Ray& r, Real tmin, Real tmax) const NO_INLINE {
+        typename ValueType::Matrix4Type mat(ValueType(r.org), ValueType(r.dir)); // getZAlign
+
         UVT uvt;
         PatchType patch(_patch);
-        patch.Transform(_mat);
+        patch.Transform(mat);
         if (testBezierPatch(&uvt, patch, tmin, tmax, _eps)) {
             Real t = uvt.t;
             Real u = uvt.u;
@@ -205,12 +204,59 @@ protected:
                 //                info->binormal = Conv(V);
             }
             trace("hit t = %f, uv = (%f, %f)\n", t, u, v);
-
             return true;
         }
+        // watertight critical pass
+        if (_wcpFlag != 0) {
+            // TODO: more efficient test (using wcpFlag and uv)
+
+            // test against split faces too
+                /*
+                  +---+---+
+               ^  | 2 | 3 |
+               |  +---+---+
+               |  | 0 | 1 |
+               u  +---+---+
+                    v---->
+                 */
+            PatchType tmp[2];
+            PatchType children[4];
+            _patch.SplitU(tmp, 0.5);
+            tmp[0].SplitV(&children[0], 0.5);
+            tmp[1].SplitV(&children[2], 0.5);
+            
+            for (int i = 0; i < 4; ++i) {
+                children[i].Transform(mat);
+                // if (u0 == 0 && (i == 2 || i == 3)) continue;
+                // if (u1 == 1 && (i == 0 || i == 1)) continue;
+                // if (v0 == 0 && (i == 1 || i == 3)) continue;
+                // if (v1 == 1 && (i == 0 || i == 2)) continue;
+                trace("Child pass %d\n", i);
+                if (testBezierPatch(&uvt, children[i], tmin, tmax, _eps)) {
+                    info->t = uvt.t;
+                    info->u = uvt.u;
+                    info->v = uvt.v;
+                    if (i == 0) {
+                        info->u = info->u * 0.5;
+                        info->v = info->v * 0.5;
+                    } else if (i == 1) {
+                        info->u = info->u * 0.5;
+                        info->v = info->v * 0.5 + 0.5;
+                    } else if (i == 2) {
+                        info->u = info->u * 0.5 + 0.5;
+                        info->v = info->v * 0.5;
+                    } else {
+                        info->u = info->u * 0.5 + 0.5;
+                        info->v = info->v * 0.5 + 0.5;
+                    }
+                    return true;
+                }
+            }
+        }
+
         return false;
     }
-    bool testBezierPatch(UVT* info, PatchType const & patch, Real zmin, Real zmax, Real eps, bool wcpPass=false) const {
+    bool testBezierPatch(UVT* info, PatchType const & patch, Real zmin, Real zmax, Real eps) const {
         ValueType min, max;
         patch.GetMinMax(min, max, eps*1e-3);
 
@@ -218,8 +264,8 @@ protected:
         if (0 < min[1] || max[1] < 0) return false;//y
         if (max[2] < zmin || zmax < min[2]) return false;//z
 
-        if (_cropUV) return testBezierClipRangeU(info, patch, 0, 1, 0, 1, zmin, zmax, 0, _maxLevel, eps, wcpPass);
-        else         return testBezierClipU     (info, patch, 0, 1, 0, 1, zmin, zmax, 0, _maxLevel, eps, wcpPass);
+        if (_cropUV) return testBezierClipRangeU(info, patch, 0, 1, 0, 1, zmin, zmax, 0, _maxLevel, eps);
+        else         return testBezierClipU     (info, patch, 0, 1, 0, 1, zmin, zmax, 0, _maxLevel, eps);
     }
 
     // ----------------------------------------------------------------------
@@ -477,7 +523,7 @@ protected:
     bool testBezierClipU(UVT* info, PatchType const & patch,
                          Real u0, Real u1, Real v0, Real v1,
                          Real zmin, Real zmax,
-                         int level, int max_level, Real eps, bool wcpPass) const NO_INLINE {
+                         int level, int max_level, Real eps) const NO_INLINE {
         PatchType tpatch(patch);
         rotateU(tpatch);
 
@@ -492,7 +538,7 @@ protected:
         
         bool bClip = isClip(level);
         if (bClip && (isEps(min,max,eps) || isLevel(level,max_level))){
-            return testBezierClipL2(info, patch, u0, u1, v0, v1, zmin, zmax, level, wcpPass);
+            return testBezierClipL(info, patch, u0, u1, v0, v1, zmin, zmax, level);
         } else {
             Real tw = 1;
             Real tt0 = 0;
@@ -518,7 +564,7 @@ protected:
                 bool bRet = false;
                 for (int i = 0; i < 2; ++i) {
                     if (testBezierClipV(info, tmp[order[i]], ut[2*order[i]], ut[2*order[i]+1],
-                                        v0, v1, zmin, zmax, level+1, max_level, eps, wcpPass)){
+                                        v0, v1, zmin, zmax, level+1, max_level, eps)){
                         zmax = info->t;
                         bRet = true;
                     }
@@ -531,7 +577,7 @@ protected:
                 PatchType tmp;
                 patch.CropU(tmp, tt0, tt1);
                 return testBezierClipV(info, tmp, ut[0], ut[1],
-                                       v0, v1, zmin, zmax, level+1, max_level, eps, wcpPass);
+                                       v0, v1, zmin, zmax, level+1, max_level, eps);
             }
         }
         return false;
@@ -539,7 +585,7 @@ protected:
 
     bool testBezierClipV(UVT *info, PatchType const &patch,
                          Real u0, Real u1, Real v0, Real v1, Real zmin, Real zmax,
-                         int level, int max_level, Real eps, bool wcpPass) const NO_INLINE {
+                         int level, int max_level, Real eps) const NO_INLINE {
         PatchType tpatch(patch);
         rotateV(tpatch);
 
@@ -554,7 +600,7 @@ protected:
 
         bool bClip = isClip(level);
         if (bClip && (isEps(min,max,eps) || isLevel(level,max_level))) {
-            return testBezierClipL2(info, patch, u0, u1, v0, v1, zmin, zmax, level, wcpPass);
+            return testBezierClipL(info, patch, u0, u1, v0, v1, zmin, zmax, level);
         } else {
             Real tw = 1;
             Real tt0 = 0;
@@ -581,7 +627,7 @@ protected:
                 for (int i = 0; i < 2; ++i) {
                     if (testBezierClipU(info, tmp[order[i]], u0, u1,
                                         vt[2*order[i]], vt[2*order[i]+1],
-                                        zmin, zmax, level+1, max_level, eps, wcpPass)){
+                                        zmin, zmax, level+1, max_level, eps)){
                         zmax = info->t;
                         bRet = true;
                     }
@@ -594,75 +640,7 @@ protected:
                 PatchType tmp;
                 patch.CropV(tmp, tt0, tt1);
                 return testBezierClipU(info, tmp, u0, u1,
-                                       vt[0], vt[1], zmin, zmax, level+1, max_level, eps, wcpPass);
-            }
-        }
-        return false;
-    }
-
-    bool testBezierClipL2(UVT* info, PatchType const &patch,
-                          Real u0, Real u1, Real v0, Real v1,
-                          Real zmin, Real zmax, int level, bool wcpPass) const NO_INLINE {
-        
-        if (testBezierClipL(info, patch, u0, u1, v0, v1, zmin, zmax, level)) {
-            return true;
-        }
-        
-        if (_wcpFlag != 0 && !wcpPass && (u0 == 0 || u1 ==1 || v0 == 0 || v1 == 1)) {
-            // TODO: more efficient test (using wcpFlag and uv)
-
-            // test against split faces too
-                /*
-                  +---+---+
-               ^  | 2 | 3 |
-               |  +---+---+
-               |  | 0 | 1 |
-               u  +---+---+
-                    v---->
-                 */
-            PatchType tmp[2];
-            PatchType children[4];
-            _patch.SplitU(tmp, 0.5);
-            tmp[0].SplitV(&children[0], 0.5);
-            tmp[1].SplitV(&children[2], 0.5);
-            children[0].Transform(_mat);
-            children[1].Transform(_mat);
-            children[2].Transform(_mat);
-            children[3].Transform(_mat);
-            Real uvs[4][4] = { { u0*2, u1*2, v0*2, v1*2},
-                               { u0*2, u1*2, (v0-0.5)*2, (v1-0.5)*2 },
-                               { (u0-0.5)*2, (u1-0.5)*2, v0*2, v1*2 },
-                               { (u0-0.5)*2, (u1-0.5)*2, (v0-0.5)*2, (v1-0.5)*2 } };
-            PatchType cp;
-            trace("Subface uv (%f-%f),(%f-%f)\n", u0, u1, v0, v1);
-
-            // XXX: revisit this logic... seems very redundant.
-            
-            for (int i = 0; i < 4; ++i) {
-                if (uvs[i][0] > 1 || uvs[i][1] < 0 ||
-                    uvs[i][2] > 1 || uvs[i][3] < 0) continue;
-                if (u0 == 0 && (i == 2 || i == 3)) continue;
-                if (u1 == 1 && (i == 0 || i == 1)) continue;
-                if (v0 == 0 && (i == 1 || i == 3)) continue;
-                if (v1 == 1 && (i == 0 || i == 2)) continue;
-
-                trace("Child pass %d\n", i);
-                if (testBezierPatch(info, children[i], zmin, zmax, _eps, /*wcpPass=*/true)) {
-                    if (i == 0) {
-                        info->u = info->u * 0.5;
-                        info->v = info->v * 0.5;
-                    } else if (i == 1) {
-                        info->u = info->u * 0.5;
-                        info->v = info->v * 0.5 + 0.5;
-                    } else if (i == 2) {
-                        info->u = info->u * 0.5 + 0.5;
-                        info->v = info->v * 0.5;
-                    } else {
-                        info->u = info->u * 0.5 + 0.5;
-                        info->v = info->v * 0.5 + 0.5;
-                    }
-                    return true;
-                }
+                                       vt[0], vt[1], zmin, zmax, level+1, max_level, eps);
             }
         }
         return false;
@@ -781,7 +759,7 @@ protected:
     bool testBezierClipRangeU(UVT* info, PatchType const & patch,
                               Real u0, Real u1,
                               Real v0, Real v1, Real zmin, Real zmax,
-                              int level, int max_level, Real eps, bool wcpPass) const NO_INLINE {
+                              int level, int max_level, Real eps) const NO_INLINE {
         PatchType mpatch(patch, u0, u1, v0, v1);
         PatchType tpatch(mpatch);
         rotateU(tpatch);
@@ -797,7 +775,7 @@ protected:
         
         bool bClip = isClip(level);
         if (bClip && (isEps(min,max,eps) || isLevel(level,max_level))){
-            return testBezierClipL2(info, mpatch, u0, u1, v0, v1, zmin, zmax, level, wcpPass);
+            return testBezierClipL(info, mpatch, u0, u1, v0, v1, zmin, zmax, level);
         } else {
             Real tw = 1;
             Real tt0 = 0;
@@ -820,7 +798,7 @@ protected:
                 bool bRet = false;
                 for (int i = 0; i < 2; ++i) {
                     if (testBezierClipRangeV(info, patch, ut[2*order[i]], ut[2*order[i]+1],
-                                             v0, v1, zmin, zmax, level+1, max_level, eps, wcpPass)) {
+                                             v0, v1, zmin, zmax, level+1, max_level, eps)) {
                         zmax = info->t;
                         bRet = true;
                     }
@@ -831,7 +809,7 @@ protected:
                 tt1 = std::min<Real>(tt1+UVEPS, 1.0);
                 Real ut[] = {lerp(u0,u1,tt0),lerp(u0,u1,tt1)};
                 return testBezierClipRangeV(info, patch, ut[0], ut[1],
-                                            v0, v1, zmin, zmax, level+1, max_level, eps, wcpPass);
+                                            v0, v1, zmin, zmax, level+1, max_level, eps);
             }
         }
         return false;
@@ -839,7 +817,7 @@ protected:
 
     bool testBezierClipRangeV(UVT *info, PatchType const &patch,
                               Real u0, Real u1, Real v0, Real v1, Real zmin, Real zmax,
-                              int level, int max_level, Real eps, bool wcpPass) const NO_INLINE {
+                              int level, int max_level, Real eps) const NO_INLINE {
         PatchType mpatch(patch, u0, u1, v0, v1);
         PatchType tpatch(mpatch);
         rotateV(tpatch);
@@ -855,7 +833,7 @@ protected:
 
         bool bClip = isClip(level);
         if (bClip && (isEps(min,max,eps) || isLevel(level,max_level))) {
-            return testBezierClipL2(info, mpatch, u0, u1, v0, v1, zmin, zmax, level, wcpPass);
+            return testBezierClipL(info, mpatch, u0, u1, v0, v1, zmin, zmax, level);
         } else {
             Real tw = 1;
             Real tt0 = 0;
@@ -879,7 +857,7 @@ protected:
                 for (int i = 0; i < 2; ++i) {
                     if (testBezierClipRangeU(info, patch, u0, u1,
                                              vt[2*order[i]], vt[2*order[i]+1],
-                                             zmin, zmax, level+1, max_level, eps, wcpPass)){
+                                             zmin, zmax, level+1, max_level, eps)){
                         zmax = info->t;
                         bRet = true;
                     }
@@ -890,7 +868,7 @@ protected:
                 tt1 = std::min<Real>(tt1+UVEPS,1.0);
                 Real vt[] = {lerp(v0,v1,tt0),lerp(v0,v1,tt1)};
                 return testBezierClipRangeU(info, patch, u0, u1,
-                                            vt[0], vt[1], zmin, zmax, level+1, max_level, eps, wcpPass);
+                                            vt[0], vt[1], zmin, zmax, level+1, max_level, eps);
             }
         }
         return false;
@@ -937,7 +915,6 @@ protected:
     bool _useTriangle;
     bool _directBilinear;
     int _wcpFlag;
-    typename ValueType::Matrix4Type _mat;
 };
 
 }   // end OsdUtil
