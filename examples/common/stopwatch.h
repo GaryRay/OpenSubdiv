@@ -46,7 +46,6 @@ public:
 
     void Stop() {
         struct timeval l_rtime;
-
         gettimeofday(&l_rtime,0);
         _elapsed = (l_rtime.tv_sec + l_rtime.tv_usec/1000000.0) - _elapsed;
         _totalElapsed += _elapsed;
@@ -59,6 +58,7 @@ public:
     double GetTotalElapsed() const {
         return _totalElapsed;
     }
+
 #else
     Stopwatch() {
         QueryPerformanceFrequency(&_frequency);
@@ -85,6 +85,9 @@ public:
         return (double) _totalElapsed / _frequency.QuadPart;
     }
 #endif
+    void Reset() {
+        _elapsed = _totalElapsed = 0;
+    }
 
 private:
 

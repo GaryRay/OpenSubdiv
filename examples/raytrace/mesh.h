@@ -7,11 +7,12 @@
 #include "common.h"
 
 struct Mesh {
-    Mesh() : numTriangles(0), numBezierPatches(0), patchParams(NULL), displaceBound(0) {
+    Mesh() : numTriangles(0),
+             numBezierPatches(0), patchParams(NULL), displaceBound(0) {
     }
 
     bool IsBezierMesh() const {
-        return numBezierPatches > 0;
+        return numTriangles == 0;
     }
 
     // triangles
@@ -29,6 +30,7 @@ struct Mesh {
     std::vector<float> colors;                     /// [rgb] * numBezierPatches;
 
     std::vector<int> wcpFlags; 
+
 
     float displaceBound;
 };

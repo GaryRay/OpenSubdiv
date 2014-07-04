@@ -14,6 +14,7 @@
 #define NEED_HBR_FACE_INDEX
 
 #include "bvh_accel.h"
+#include "../common/stopwatch.h"
 
 #include "bezier_patch.hpp"
 #include "bezier_patch_intersection.h"
@@ -614,10 +615,6 @@ bool BVHAccel::Load(const char *filename) {
 
 namespace {
 
-bool TestLeafNode(Intersection &isect, // [inout]
-                  const BVHNode &node, const std::vector<unsigned int> &indices,
-                  const Mesh *mesh, const Ray &ray) NO_INLINE;
-
 bool IntersectRayAABB(real &tminOut, // [out]
                              real &tmaxOut, // [out]
                              real maxT, real bmin[3], real bmax[3],
@@ -1196,18 +1193,23 @@ bool TestLeafNode(Intersection &isect, // [inout]
       trace("TestLeafNode(%d/%d) patch = %d\n", i, numTriangles, faceIdx);
 
       if (displaceScale == 0) {
-          if (PatchIsect(isect, bv, wcpFlag, tr, level, intersectKernel, uvMargin, cropUV, bezierClip, eps, maxLevel, useTriangle, useRayDiffEpsilon, directBilinear)) {
+          if (PatchIsect(isect, bv, wcpFlag, tr, level, intersectKernel, uvMargin,
+                         cropUV, bezierClip, eps, maxLevel, useTriangle,
+                         useRayDiffEpsilon, directBilinear)) {
               // Update isect state
               isect.faceID = faceIdx;
               hit = true;
           }
       } else {
-          if (PatchIsectDisp(isect, bv, tr, level, intersectKernel, uvMargin, cropUV, bezierClip, eps, maxLevel, useTriangle, useRayDiffEpsilon, displaceScale, displaceFreq)) {
+          if (PatchIsectDisp(isect, bv, tr, level, intersectKernel, uvMargin,
+                             cropUV, bezierClip, eps, maxLevel, useTriangle,
+                             useRayDiffEpsilon, displaceScale, displaceFreq)) {
               // Update isect state
               isect.faceID = faceIdx;
               hit = true;
           }
       }
+
     }
   } else {
     for (unsigned int i = 0; i < numTriangles; i++) {
@@ -1333,7 +1335,10 @@ void BuildIntersection(Intersection &isect, const Mesh *mesh, Ray &ray)
 
 } // namespace
 
-bool BVHAccel::Traverse(Intersection &isect, const Mesh *mesh, Ray &ray) {
+bool BVHAccel::Traverse(Intersection &isect, const Mesh *mesh, Ray &ray, Context *context) {
+
+    if (context) context->BeginTraverse();
+
   real hitT = std::numeric_limits<real>::max(); // far = no hit.
 
   int nodeStackIndex = 0;
@@ -1389,12 +1394,22 @@ bool BVHAccel::Traverse(Intersection &isect, const Mesh *mesh, Ray &ray) {
     } else { // leaf node
 
       if (hit) {
+          if (context) {
+              context->EndTraverse();
+              context->BeginIntersect();
+          }
+
           if (TestLeafNode(isect, node, indices_, mesh, ray,
                            _intersectKernel, _uvMargin, _cropUV, _bezierClip,
                            _displaceScale, _displaceFreq, _epsilon, _maxLevel,
                            _useTriangle, _useRayDiffEpsilon, _conservativeTest, _directBilinear)) {
-          hitT = isect.t;
-        }
+              hitT = isect.t;
+          }
+
+          if (context) {
+              context->EndIntersect();
+              context->BeginTraverse();
+          }
       }
     }
   }
@@ -1403,8 +1418,11 @@ bool BVHAccel::Traverse(Intersection &isect, const Mesh *mesh, Ray &ray) {
 
   if (isect.t < std::numeric_limits<real>::max()) {
     BuildIntersection(isect, mesh, ray);
+
+    if (context) context->EndTraverse();
     return true;
   }
 
+  if (context) context->EndTraverse();
   return false;
 }

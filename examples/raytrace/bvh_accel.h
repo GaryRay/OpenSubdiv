@@ -6,6 +6,7 @@
 #include "common.h"
 #include "mesh.h"
 #include "intersection.h"
+#include "context.h"
 
 class BVHNode {
 public:
@@ -74,7 +75,7 @@ public:
   bool Load(const char *filename);
 
   ///< Traverse into BVH along ray and find closest hit point if found
-  bool Traverse(Intersection &isect, const Mesh *mesh, Ray &ray);
+    bool Traverse(Intersection &isect, const Mesh *mesh, Ray &ray, Context *context);
 
   enum { ORIGINAL, NEW_FLOAT, NEW_SSE, NEW_DOUBLE, OPENCL } IntersectKernel;
   void SetIntersectKernel(int k) {_intersectKernel = k; }

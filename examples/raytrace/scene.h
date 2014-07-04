@@ -23,15 +23,16 @@ public:
         Config() {
             intersectKernel = BVHAccel::NEW_FLOAT;
             uvMargin = 0.0f;
-            cropUV = true;
+            cropUV = false;
             bezierClip = true;
             epsLevel = 4;
-            maxLevel = 5;
+            maxLevel = 16;
             useTriangle = false;
-            useRayDiffEpsilon = false;
+            useRayDiffEpsilon = true;
             displaceScale = displaceFreq = 0.0f;
-            conservativeTest = false;
+            conservativeTest = true;
             directBilinear = false;
+            preTessLevel = 0;
             step = 1;
         }
         int intersectKernel;
@@ -45,6 +46,7 @@ public:
         bool useRayDiffEpsilon;
         bool conservativeTest;
         bool directBilinear;
+        int preTessLevel;
         float displaceScale;
         float displaceFreq;
 
@@ -83,7 +85,7 @@ public:
     int GetNumPatches() const { return _mesh.numBezierPatches; }
     int GetNumTriangles() const { return _mesh.numTriangles; }
 
-    void Shade(float rgba[4], const Intersection &isect, const Ray &ray);
+    void Shade(float rgba[4], const Intersection &isect, const Ray &ray, Context *context);
 
     enum ShadeMode { SHADED, PTEX_COORD, PATCH_TYPE, CLIP_LEVEL, QUADS, AO, TRANSPARENT };
 
@@ -117,6 +119,10 @@ private:
     BVHAccel _accel;
     ShadeMode _mode;
     bool _watertight;
+
+    double _traverseTime;
+    double _intersectTime;
+    double _shadeTime;
 
     GLuint _vbo;
     int _width;

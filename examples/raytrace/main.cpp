@@ -613,6 +613,7 @@ updateGeom() {
         g_tessellateTime = s.GetElapsed() * 1000.0f;
     } else {
         g_tessellateTime = 0;
+        g_scene.Tessellate(0);
     }
 
     s.Start();
@@ -1012,7 +1013,7 @@ keyboardChar(GLFWwindow *, unsigned int codepoint)
         case '-': g_preTessLevel = std::max(1, g_preTessLevel-1); updateGeom(); break;
         case 'G': dumpCamera(); break;
         case 'g': loadCamera(); setCamera(); break;
-        case 'R': makeReport(); break;
+        case '!': makeReport(); break;
     }
 }
 static void
