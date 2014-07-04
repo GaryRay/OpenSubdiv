@@ -1023,7 +1023,7 @@ Scene::MakeReport(const char *filename)
         << "  isStacked: true,\n"
         << "  hAxis: {minValue: 0 } };\n"
         << "  var view = new google.visualization.DataView(data);\n"
-        << "  view.setColumns([0, 10, 11, 12] );\n"
+        << "  view.setColumns([0, 11, 12, 13] );\n"
         << "  var chart = new google.visualization.BarChart(document.getElementById('renderTimeChart'));\n"
         << "  chart.draw(view, options);\n"
 
