@@ -820,7 +820,8 @@ createTopology( shape const * sh, OpenSubdiv::HbrMesh<T> * mesh, Scheme scheme) 
             }
 
             if(opposite && opposite->GetOpposite() ) {
-                printf(" A non-manifold edge incident to more than 2 faces was found\n");
+                printf(" A non-manifold edge incident to more than 2 faces was found (face=%d, verts=%d)\n",
+                       f, fv[j]);
                 valid=false;
                 break;
             }

@@ -73,55 +73,6 @@ static float diffBezier(const Bezier &a, const Bezier &b)
         + (a.cp[3]-b.cp[3]).length();
 }
 
-// brute-force matching
-static bool consolidateBezier(const Bezier &r0, const Bezier &r1, float *v)
-{
-    using namespace OsdUtil;
-
-    int edgeVerts[][4] = { {0, 4, 8, 12},
-                           {12, 13, 14, 15},
-                           {15, 11, 7, 3},
-                           {3, 2, 1, 0} };
-
-    Bezier testBezier[4];
-    testBezier[0] = r0;
-    testBezier[1] = r1;
-    testBezier[2] = r0;
-    testBezier[3] = r1;
-    testBezier[2].Reverse();
-    testBezier[3].Reverse();
-
-    float dmin = 1.0f;
-    int imin = -1, jmin = -1;
-    for (int i = 0; i < 4; ++i) {
-        Bezier bezier(vec3f(v + edgeVerts[i][0]*3),
-                      vec3f(v + edgeVerts[i][1]*3),
-                      vec3f(v + edgeVerts[i][2]*3),
-                      vec3f(v + edgeVerts[i][3]*3));
-
-        for (int j = 0; j < 4; ++j) {
-            float d = diffBezier(testBezier[j], bezier);
-            if (d < dmin) {
-                dmin = d;
-                imin = i;
-                jmin = j;
-            }
-        }
-    }
-
-    if (dmin < 0.00001f && imin >=0 && jmin >= 0) {
-//        VERBOSE("DMIN = %.10f\n", dmin);
-        for (int k = 0; k < 4; ++k) {
-            for (int l = 0; l < 3; ++l) {
-                v[edgeVerts[imin][k]*3+l] = testBezier[jmin].cp[k][l];
-            }
-        }
-        return true;
-    } else {
-        return false;
-    }
-}
-
 static float const *getAdaptivePatchColor(OpenSubdiv::FarPatchTables::Descriptor const & desc)
 {
     static float _colors[4][5][4] = {{{1.0f,  1.0f,  1.0f,  1.0f},   // regular
@@ -245,6 +196,8 @@ Scene::BezierConvert(float *inVertices, int numVertices,
     _mesh.wcpFlags.clear();
 
     std::vector<int> cpIndices; // 16 * numPatches
+
+    int gregoryBegin = -1, gregoryEnd = 0;
     // iterate patch types.
     for (FarPatchTables::PatchArrayVector::const_iterator it = patchArrays.begin();
          it != patchArrays.end(); ++it) {
@@ -277,12 +230,16 @@ Scene::BezierConvert(float *inVertices, int numVertices,
                                         _mesh.bezierBounds,
                                         cpIndices,
                                         &vertices[0], patchTables, *it);
+            gregoryBegin = numTotalPatches;
+            gregoryEnd = numTotalPatches + numPatches;
             break;
         case FarPatchTables::GREGORY_BOUNDARY:
             numPatches = convertBoundaryGregory(_mesh.bezierVertices,
                                                 _mesh.bezierBounds,
                                                 cpIndices,
                                                 &vertices[0], patchTables, *it);
+            if (gregoryBegin == -1) gregoryBegin = numTotalPatches;
+            gregoryEnd = numTotalPatches + numPatches;
             break;
         default:
             break;
@@ -313,9 +270,6 @@ Scene::BezierConvert(float *inVertices, int numVertices,
     if (_watertight) {
         using namespace OsdUtil;
 
-        std::vector<int> filled(vertices.size());
-        std::vector<vec3f> sharedPositions(vertices.size());
-        std::vector<int> levels(vertices.size());
         std::map<Edge, Bezier > edgeBeziers;
 
         for (int i = 0; i < numTotalPatches; ++i) {
@@ -326,6 +280,10 @@ Scene::BezierConvert(float *inVertices, int numVertices,
 //            int edgeVerts[][4] = { {0, 4, 8, 12},{12, 13, 14, 15}, {15, 11, 7, 3}, {3, 2, 1, 0} };
 
             int edgeParents[][2] = { {0, 2}, {0, 1}, {2, 3}, {1, 3} };
+
+            // store bezier edges (skip gregory)
+            if (gregoryBegin <= i && i < gregoryEnd) continue;
+
             for (int j = 0; j < 4; ++j) {
                 int parent = cpIndices[i*4+parentQuad[j]];
                 if (parent < 0) continue;
@@ -333,31 +291,6 @@ Scene::BezierConvert(float *inVertices, int numVertices,
                 // parent = vertexParentIDs[parent];
                 parent = farToHbr[parent];
                 //VERBOSE("%d/%d  %d: %f %f %f\n", i, cornerQuad[j], parent, v[0], v[1], v[2]);
-#if 0
-                int cornerQuad[] = { 0, 3, 12, 15 };
-                float *v = &_mesh.bezierVertices[(i*16 + cornerQuad[j])*3];
-                VERBOSE("%d\n", parent);
-                if (filled[parent] == 0) {
-                    filled[parent] = 1;
-                    sharedPositions[parent] = vec3f(v[0], v[1], v[2]);;
-                    levels[parent] = patchParam[i].bitField.GetDepth();
-                } else {
-                    vec3f pos(v[0], v[1], v[2]);
-                    if (pos != sharedPositions[parent]) {
-                        VERBOSE("%d/%d ParentID = %d: (level=%d/%d) delta = %g %g %g, (%g, %g, %g)\n",
-                               i, cornerQuad[j], parent,
-                               patchParam[i].bitField.GetDepth(), levels[parent],
-                               sharedPositions[parent][0]-pos[0],
-                               sharedPositions[parent][1]-pos[1],
-                               sharedPositions[parent][2]-pos[2],
-                               pos[0], pos[1], pos[2]);
-                        // update points
-                        v[0] = sharedPositions[parent][0];
-                        v[1] = sharedPositions[parent][1];
-                        v[2] = sharedPositions[parent][2];
-                    }
-                }
-#endif
 
                 // for edge verts
                 vec3f e0(&_mesh.bezierVertices[(i*16 + edgeVerts[j][0]) * 3]);
@@ -381,103 +314,20 @@ Scene::BezierConvert(float *inVertices, int numVertices,
                     } else {
                         edgeBeziers[edge] = Bezier(e3, e2, e1, e0);
                     }
-                } else {
-#if 0
-                    std::pair<vec3f, vec3f> ref = edgePositions[edge];
-                    vec3f re0 = ref.first;
-                    vec3f re1 = ref.second;
-                    if (edge._edges[0] != ep0) std::swap(re0, re1);
-
-                    if (e0 != re0) {
-                        VERBOSE("Edge %d-%d: (level=%d) delta = %g %g %g\n",
-                               ep0, ep1,
-                               patchParam[i].bitField.GetDepth(),
-                               re0[0] - e0[0],
-                               re0[1] - e0[1],
-                               re0[2] - e0[2]);
-                        ppe0[0] = re0[0];
-                        ppe0[1] = re0[1];
-                        ppe0[2] = re0[2];
-                    }
-                    if (e1 != re1) {
-                        VERBOSE("Edge %d-%d: (level=%d) delta = %g %g %g\n",
-                               ep0, ep1,
-                               patchParam[i].bitField.GetDepth(),
-                               re1[0] - e1[0],
-                               re1[1] - e1[1],
-                               re1[2] - e1[2]);
-                        ppe1[0] = re1[0];
-                        ppe1[1] = re1[1];
-                        ppe1[2] = re1[2];
-                    }
-#endif
                 }
             }
         }
-
-//  OSD_TRANSITION_PATTERN0*
-//  +-------------+
-//  |     /\\     |
-//  | 1  /  \\  2 |
-//  |   /    \\   |
-//  |  /      \\  |
-//  | /    0   \\ |
-//  |/          \\|
-//  +-------------+
-// OSD_TRANSITION_PATTERN1*
-//  +-------------+
-//  | 0   /\\   2 |
-//  |    /   \\   |
-//  |   /  3   \\ |
-//  |  /       /  |
-//  | /    /    1 |
-//  |/ /          |
-//  +-------------+
-//  OSD_TRANSITION_PATTERN2*
-//  +-------------+
-//  |             |
-//  |      0      |
-//  |             |
-//  |-------------|
-//  |\\    3    / |
-//  |  \\     /   |
-//  | 1  \\ /   2 |
-//  +-------------+
-//  OSD_TRANSITION_PATTERN3*
-//  +-------------+
-//  |      |      |
-//  |  1   |  0   |
-//  |      |      |
-//  |------|------|
-//  |      |      |
-//  |  3   |  2   |
-//  |      |      |
-//  +-------------+
-//  OSD_TRANSITION_PATTERN4*
-//  +-------------+
-//  |      |      |
-//  |      |      |
-//  |      |      |
-//  |  1   |   0  |
-//  |      |      |
-//  |      |      |
-//  |      |      |
-//  +-------------+
-
-  /*
-                      <----------- v
-                         edge 0
-                      +-----+-----+         u
-                      |     |     |         |
-                      |  1  |  0  |         |
-                      |     |     |         |
-               edge 1 +-----+-----+ edge 3  |
-                      |     |     |         |
-                      |  2  |  3  |         v
-                      |     |(c.i)|
-                      +-----+-----+
-                          edge 2
-                     */
+/*
+    pattern0        pattern1       pattern2        pattern3        pattern4
+ +-------------+ +-------------+ +-------------+ +-------------+ +-------------+
+ |     /\\     | | 0   /\\   2 | |             | |      |      | |      |      |
+ | 1  /  \\  2 | |    /   \\   | |      0      | |  1   |  0   | |      |      |
+ |   /    \\   | |   /  3   \\ | |-------------| |------|------| |  1   |   0  |
+ |  /      \\  | |  /       /  | |\\    3    / | |      |      | |      |      |
+ | /    0   \\ | | /    /    1 | |  \\     /   | |  3   |  2   | |      |      |
+ |/          \\| |/ /          | | 1  \\ /   2 | |      |      | |      |      |
+ +-------------+ +-------------+ +-------------+ +-------------+ +-------------+
+*/
         // save wcp flags
         for (int i = 0; i < numTotalPatches; ++i) {
             int hbrFace = patchParam[i].hbrFaceIndex;
@@ -507,10 +357,51 @@ Scene::BezierConvert(float *inVertices, int numVertices,
             int hbrFace = patchParam[i].hbrFaceIndex;
             OsdHbrFace *face = hbrMesh->GetFace(hbrFace);
 
+            // ---------------- gregory
+            if (gregoryBegin <= i && i < gregoryEnd) {
+                for (int j = 0; j < 4; ++j) {
+                    OsdHbrHalfedge *ed = face->GetEdge(j);
+                    // pick two vertices
+                    OsdHbrVertex *v0 = ed->GetVertex();
+                    OsdHbrVertex *v1 = ed->GetNext()->GetVertex();
+
+                    Edge e(v0->GetID(), v1->GetID());
+                    // lookup edge dictionary
+                    if (edgeBeziers.count(e) != 0) {
+                        Bezier edge = edgeBeziers[e];
+                        bool reverse = e._edges[0] != v0->GetID();
+
+                        // overwrite
+                        vec3f *d = (vec3f*)(&_mesh.bezierVertices[i*16*3]);
+                        if (j == 0) {
+                            for (int k = 0; k < 4; ++k) {
+                                d[k*4+0] = reverse ? edge.cp[3-k] : edge.cp[k];
+                            }
+                        } else if (j == 1) {
+                            for (int k = 0; k < 4; ++k) {
+                                d[12+k] = reverse ? edge.cp[3-k] : edge.cp[k];
+                            }
+                        } else if (j == 2) {
+                            for (int k = 0; k < 4; ++k) {
+                                d[k*4+3] = reverse ? edge.cp[k] : edge.cp[3-k];
+                            }
+                        } else if (j == 3) {
+                            for (int k = 0; k < 4; ++k) {
+                                d[k] = reverse ? edge.cp[k] : edge.cp[3-k];
+                            }
+                        }
+                    } else {
+                        // boundary of gregory-and-gregory.
+                    }
+                }
+                continue;
+            }
+
+            // ---------------- non gregory
+
             if (not face->_adaptiveFlags.isCritical) continue;
 
             VERBOSE("Critical patch %d, %d----\n", i, hbrFace);
-
             OsdHbrFace *parentFace = face->GetParent();
 
             if (not parentFace) continue;
@@ -519,11 +410,6 @@ Scene::BezierConvert(float *inVertices, int numVertices,
                 VERBOSE("non-quad parent %d\n", parentFace->GetID());
                 continue;
             }
-            // printf("parent face = <%d, lv=%d>, extraordinary = %d ", parentFace->GetID(), parentFace->GetDepth(), parentFace->_adaptiveFlags.isExtraordinary);
-            // for (int j = 0; j < 4; ++j) {
-            //     printf("%d, ", parentFace->GetVertex(j)->GetID());
-            // }
-            // printf("\n");
 
             int childIndex = -1;
             bool watertightEdges[4] = { false, false, false, false };
@@ -544,15 +430,6 @@ Scene::BezierConvert(float *inVertices, int numVertices,
             VERBOSE(" CHILD=%d, rot=%d\n", childIndex, face->_adaptiveFlags.rots);
 
             if (childIndex == -1) continue;
-
-            // for (int j = 0; j < 4; ++j) {
-            //     int edgeParents[][2] = { {0, 2}, {0, 1}, {2, 3}, {1, 3} };
-            //     int ep0 = cpIndices[i*4 + edgeParents[j][0]];
-            //     int ep1 = cpIndices[i*4 + edgeParents[j][1]];
-            //     ep0 = farToHbr[ep0];
-            //     ep1 = farToHbr[ep1];
-            //     VERBOSE("Edge %d-%d\n", ep0, ep1);
-            // }
 
             // childindex 0 -> edge 3, 0
             // childindex 1 -> edge 0, 1
@@ -610,7 +487,6 @@ Scene::BezierConvert(float *inVertices, int numVertices,
                     VERBOSE("%f %f %f - ", tmp[1][0][0], tmp[1][0][1], tmp[1][0][2]);
                     VERBOSE("%f %f %f]]\n", tmp[1][3][0], tmp[1][3][1], tmp[1][3][2]);
 
-#if 1
                     vec3f *d = (vec3f*)(&_mesh.bezierVertices[i*16*3]);
                     if (edge == 0) {
                         for (int k = 0; k < 4; ++k) {
@@ -637,12 +513,6 @@ Scene::BezierConvert(float *inVertices, int numVertices,
                                 : tmp[childIndex==3?0:1][3-k];
                         }
                     }
-#else
-                    if (consolidateBezier(Bezier(tmp[0]), Bezier(tmp[1]),
-                                          &_mesh.bezierVertices[(i*16*3)]) == false) {
-                        printf("Matching error. face = %d, hbr face=%d\n", i, face->GetID());
-                    }
-#endif
                 } else {
                     printf("Topology error --- Not found hbr verts in edge dict%d,%d\n",
                            v0->GetID(), v1->GetID());
