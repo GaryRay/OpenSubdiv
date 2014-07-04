@@ -1105,7 +1105,7 @@ Scene::Shade(float rgba[4], const Intersection &isect, const Ray &ray)
 {
     real3 I = ray.dir;
 
-    real d = std::max(real(0), vdot(I, isect.normal));
+    real d = std::max(real(0.2), vdot(I, isect.normal)); // No zero in d to distinguish crack pixel color(dark background color)
     real3 color;
     if (_mode == SHADED) {
         //        real3 reflect = I - 2 * d * isect.normal;
