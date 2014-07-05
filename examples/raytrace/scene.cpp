@@ -10,11 +10,12 @@
 #define NEED_HBR_FACE_INDEX
 #include "scene.h"
 #include "convert_bezier.h"
-#include "../common/stopwatch.h"
+#include "context.h"
 
 #ifdef OPENSUBDIV_HAS_TBB
 #include <tbb/parallel_for.h>
 #include <tbb/task_scheduler_init.h>
+#include <tbb/enumerable_thread_specific.h>
 #endif
 
 #include <osd/cpuEvalLimitContext.h>
@@ -64,14 +65,6 @@ struct Bezier {
     }
     OsdUtil::vec3f cp[4];
 };
-
-static float diffBezier(const Bezier &a, const Bezier &b)
-{
-    return (a.cp[0]-b.cp[0]).length()
-        + (a.cp[1]-b.cp[1]).length()
-        + (a.cp[2]-b.cp[2]).length()
-        + (a.cp[3]-b.cp[3]).length();
-}
 
 static float const *getAdaptivePatchColor(OpenSubdiv::FarPatchTables::Descriptor const & desc)
 {
@@ -548,14 +541,20 @@ static void evalBezier(float *p, float *n, float u, float v, const float *cp)
 void
 Scene::Tessellate(int level)
 {
-    float *cp = &_mesh.bezierVertices[0];
-    int vindex = 0;
-    int numTriangles = 0;
-
     _mesh.triVertices.clear();
     _mesh.triNormals.clear();
     _mesh.faces.clear();
     _mesh.colors.clear();
+    _mesh.numTriangles = 0;
+
+    if (level == 0) {
+        return;
+    }
+
+    float *cp = &_mesh.bezierVertices[0];
+    int vindex = 0;
+    int numTriangles = 0;
+
     std::vector<float> colors;
     for (size_t patchIndex = 0; patchIndex < _mesh.numBezierPatches; ++patchIndex) {
 
@@ -602,11 +601,6 @@ Scene::Tessellate(int level)
 
     _mesh.numTriangles = numTriangles;
     _mesh.colors.swap(colors);
-
-    // clear bezier patch
-    _mesh.numBezierPatches = 0;
-    _mesh.bezierVertices.clear();
-    _mesh.bezierBounds.clear();
 }
 
 void
@@ -649,6 +643,41 @@ Scene::VBOBuild()
     glBindBuffer(GL_ARRAY_BUFFER, 0);
 }
 
+#ifdef OPENSUBDIV_HAS_TBB
+typedef tbb::enumerable_thread_specific<Context> EtsContext;
+EtsContext etsContexts;
+#else
+typedef std::vector<Context> EtsContext;
+EtsContext etsContexts(1);
+#endif
+
+static double GetTraverseTime() {
+    double time = 0;
+    for (EtsContext::const_iterator it = etsContexts.begin(); it != etsContexts.end(); ++it) {
+        time += it->GetTraverseTime();
+    }
+    return time / etsContexts.size();
+}
+static double GetIntersectTime() {
+    double time = 0;
+    for (EtsContext::const_iterator it = etsContexts.begin(); it != etsContexts.end(); ++it) {
+        time += it->GetIntersectTime();
+    }
+    return time / etsContexts.size();
+}
+static double GetShadeTime() {
+    double time = 0;
+    for (EtsContext::const_iterator it = etsContexts.begin(); it != etsContexts.end(); ++it) {
+        time += it->GetShadeTime();
+    }
+    return time / etsContexts.size();
+}
+static void Reset() {
+    for (EtsContext::iterator it = etsContexts.begin(); it != etsContexts.end(); ++it) {
+        it->Reset();
+    }
+}
+
 class Kernel {
 public:
     Kernel(int width, int stepIndex, int step, BVHAccel *accel, Mesh *mesh,
@@ -660,10 +689,13 @@ public:
 #ifdef OPENSUBDIV_HAS_TBB
     void operator() (tbb::blocked_range<int> const &r) const {
         bool useRayDiff = true;
+        EtsContext::reference context = etsContexts.local();
         for (int rr = r.begin(); rr < r.end(); ++rr) {
+
 #else
     void operator() (int begin, int end) const {
         bool useRayDiff = true;
+        Context &context = etsContexts[0];
         for (int rr = begin; rr < end; ++rr) {
 #endif
             int y = rr*_step + _stepIndex/_step;
@@ -683,12 +715,14 @@ public:
                 }
 
                 Intersection isect;
-                bool hit = _accel->Traverse(isect, _mesh, ray);
+                bool hit = _accel->Traverse(isect, _mesh, ray, &context);
+
+                context.BeginShade();
 
                 float rgba[4] = { 0, 0, 0, 0 };
                 float *d = _image + 4 * (y * _width + x);
                 if (hit) {
-                    _scene->Shade(rgba, isect, ray);
+                    _scene->Shade(rgba, isect, ray, &context);
                 } else {
                     // Maya like gradation. Maybe helpful to check crack visually.
                     rgba[0] = 0.1f; 
@@ -700,6 +734,8 @@ public:
                 d[1] = rgba[1];
                 d[2] = rgba[2];
                 d[3] = rgba[3];
+
+                context.EndShade();
             }
         }
     }
@@ -781,14 +817,19 @@ Scene::Render(int stepIndex, int step)
 
     } else {
 #ifdef OPENSUBDIV_HAS_TBB
-    tbb::blocked_range<int> range(0, _height/step, 1);
+    tbb::blocked_range<int> range(0, _height/step, 100);
 
     Kernel kernel(_width, stepIndex, step, &_accel, &_mesh, &_camera, _image, this);
+    Reset();
     tbb::parallel_for(range, kernel);
 #else
     Kernel kernel(_width, stepIndex, step, &_accel, &_mesh, &_camera, _image, this);
     kernel(0, _height/step);
 #endif
+
+    _traverseTime += GetTraverseTime() * 1000;
+    _intersectTime += GetIntersectTime() * 1000;
+    _shadeTime += GetShadeTime() * 1000;
     }
 }
 
@@ -804,11 +845,11 @@ Scene::DebugTrace(float x, float y)
     Ray ray = _camera.GenerateRay(x + u, y + v);
 
     Intersection isect;
-    bool hit = _accel.Traverse(isect, &_mesh, ray);
+    bool hit = _accel.Traverse(isect, &_mesh, ray, NULL);
 
     float rgba[4] = { 0, 0, 0, 0};
     if (hit) {
-        Shade(rgba, isect, ray);
+        Shade(rgba, isect, ray, NULL);
     }
     printf("%f %f %f %f\n", rgba[0], rgba[1], rgba[2], rgba[3]);
 }
@@ -817,26 +858,47 @@ void
 Scene::recordMetric(int id, std::ostream &out, Config const &config)
 {
     int iteration = 1;
+    _traverseTime = 0;
+    _intersectTime = 0;
+    _shadeTime = 0;
+
     Stopwatch s;
+
+    s.Start();
+    Tessellate(config.preTessLevel);
+    s.Stop();
+    float tessTime = config.preTessLevel > 0 ? s.GetElapsed() * 1000.0f : 0;
+
+    s.Start();
+    Build();
+    s.Stop();
+    float bvhTime = s.GetElapsed() * 1000.0f;
+
     SetConfig(config);
     s.Start();
     for (int i = 0; i < iteration; ++i) {
         Render();
     }
     s.Stop();
-    float renderTime = s.GetElapsed() * 1000.0f / iteration; //ms
+    float renderTime = s.GetElapsed() * 1000.0f; //ms
 
     std::cout << config.Dump() << "\n";
     out << "["
         << id << ", "
+        << config.preTessLevel << ", "
+        << (config.preTessLevel > 0 ? _mesh.numTriangles : _mesh.numBezierPatches) << ", "
+        << tessTime << ", "
+        << bvhTime << ", "
         << config.intersectKernel << ", "
         << config.cropUV << ", "
         << config.bezierClip << ", "
         << config.epsLevel << ", "
         << config.maxLevel << ", "
-        << config.useTriangle << ", "
         << config.useRayDiffEpsilon << ", "
-        << renderTime << "], \n";
+        << _traverseTime/iteration << ", "
+        << _intersectTime/iteration << ", "
+        << _shadeTime/iteration << ", "
+        << renderTime/iteration << "], \n";
 }
 
 void
@@ -878,25 +940,42 @@ Scene::MakeReport(const char *filename)
 
     ofs << "BVH build = " << bvhBuild << " ms\n";
 
-    ofs << "<div id='chart' style='height:800px'></div>\n";
     ofs << "<div id='table'></div>\n";
+    ofs << "<div id='renderTimeChart' style='width:600px;height:400px;float:left;'></div>\n";
+    ofs << "<div id='prepTimeChart' style='width:600px;height:400px;float:left;'></div>\n";
 
     // ---------- render timing ------------
 
     int kernels[] = { BVHAccel::NEW_FLOAT, BVHAccel::NEW_SSE, BVHAccel::NEW_DOUBLE };
-    bool cropUVs[] = { true, false };
-    bool bezierClips[] = { true, false };
+    bool cropUVs[] = { false };
+    bool bezierClips[] = { true };
+    //bool cropUVs[] = { true, false };
+    //bool bezierClips[] = { true, false };
     //bool useTriangles[] = { true, false };
     //bool useRayDiffEpsilons[] = { true, false };
     //float uvMargins[] = { 0.0f, 0.01f, 0.1f };
-    int epsLevels[] = {4, 5, 6, 7}; //{ 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16 };
-    int maxLevels[] = {2, 4, 8, 16}; //{ 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16 };
+    int epsLevels[] = {4}; //{4, 5, 6, 7}; //{ 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16 };
+    int maxLevels[] = {16}; //{2, 4, 8, 16}; //{ 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16 };
 
     ofs << "<script>\n";
     ofs << "var rawData=[\n";
-    ofs << "['id', 'kernel', 'cropUV', 'bezierClip', 'eps', 'maxLevel', 'useTriangle', 'useRayDiffEpsilon', 'renderTime'],\n";
+    ofs << "['ID', 'PreTess Level', '# of elements', 'Tess Time', 'BVH Build', 'Kernel', 'crop UV', 'Bezier Clip', "
+        << "'Eps LV', 'Max Lv', "
+        << "'Raydiff Eps', 'Traverse Time', 'Intersect Time', "
+        << "'Shade Time', 'Total Render Time'],\n";
 
     int id = 0;
+
+    // pretess
+    {
+        for (int i = 1; i < 7; ++i) {
+            Config config;
+            config.preTessLevel = i;
+            recordMetric(id++, ofs, config);
+        }
+    }
+
+    // patch kernel (float, sse, double)
     for (int kernel = 0; kernel < 3; ++kernel) {
         Config config;
         config.intersectKernel = kernels[kernel];
@@ -904,10 +983,10 @@ Scene::MakeReport(const char *filename)
     }
 
 #if 1
-    for (int cropUV = 0; cropUV < 2; ++cropUV) {
-        for (int bezierClip = 0; bezierClip < 2; ++bezierClip) {
-            for (int eps = 0; eps < 4; ++eps) {
-                for (int maxLevel = 0; maxLevel < 4; ++maxLevel) {
+    for (int cropUV = 0; cropUV < sizeof(cropUVs)/sizeof(cropUVs[0]); ++cropUV) {
+        for (int bezierClip = 0; bezierClip < sizeof(bezierClips)/sizeof(bezierClips[0]); ++bezierClip) {
+            for (int eps = 0; eps < sizeof(epsLevels)/sizeof(epsLevels[0]); ++eps) {
+                for (int maxLevel = 0; maxLevel < sizeof(maxLevels)/sizeof(maxLevels[0]); ++maxLevel) {
                     Config config;
                     config.cropUV = cropUVs[cropUV];
                     config.bezierClip = bezierClips[bezierClip];
@@ -923,19 +1002,33 @@ Scene::MakeReport(const char *filename)
     ofs << "];\n";
     ofs << "google.load('visualization', '1', {packages:['corechart']});\n"
         << "google.load('visualization', '1', {packages:['table']});\n"
-        << "google.setOnLoadCallback(drawChart);\n"
-        << "function drawChart() {\n"
-        << "var data = google.visualization.arrayToDataTable(rawData);\n"
-        << "var table = new google.visualization.Table(document.getElementById('table'));\n"
-        << "table.draw(data, {showRowNumber: true});\n"
-        << "var options = { title: 'render timings',\n"
-        << "vAxis: {title: 'ID', format: '#', direction: -1, titleTextStyle: {color: 'red'} },\n"
-        << "hAxis: {minValue: 0 } };\n";
-    ofs << "var view = new google.visualization.DataView(data);\n"
-        << "view.setColumns([ 0, 7] );\n"
-        << "var chart = new google.visualization.BarChart(document.getElementById('chart'));\n"
-        << "chart.draw(view, options);\n"
+        << "google.setOnLoadCallback(drawChart);\n";
+
+    ofs << "function drawChart() {\n"
+        << "  var data = google.visualization.arrayToDataTable(rawData);\n"
+        << "  var table = new google.visualization.Table(document.getElementById('table'));\n"
+        << "  table.draw(data, {showRowNumber: true});\n";
+
+    ofs << "  var options = { title: 'prep timings (ms)',\n"
+        << "  vAxis: {title: 'ID', format: '#', direction: -1, titleTextStyle: {color: 'red'} },\n"
+        << "  isStacked: true,\n"
+        << "  hAxis: {minValue: 0 } };\n"
+        << "  var view = new google.visualization.DataView(data);\n"
+        << "  view.setColumns([0, 3, 4] );\n"
+        << "  var chart = new google.visualization.BarChart(document.getElementById('prepTimeChart'));\n"
+        << "  chart.draw(view, options);\n";
+
+    ofs << "  var options = { title: 'render timings (ms)',\n"
+        << "  vAxis: {title: 'ID', format: '#', direction: -1, titleTextStyle: {color: 'red'} },\n"
+        << "  isStacked: true,\n"
+        << "  hAxis: {minValue: 0 } };\n"
+        << "  var view = new google.visualization.DataView(data);\n"
+        << "  view.setColumns([0, 11, 12, 13] );\n"
+        << "  var chart = new google.visualization.BarChart(document.getElementById('renderTimeChart'));\n"
+        << "  chart.draw(view, options);\n"
+
         << "}\n";
+
     ofs << "</script></body></html>";
 }
 
@@ -971,7 +1064,7 @@ ShadeHeatmap(float col[3], float val, float maxVal)
 }
 
 void
-Scene::Shade(float rgba[4], const Intersection &isect, const Ray &ray)
+Scene::Shade(float rgba[4], const Intersection &isect, const Ray &ray, Context *context)
 {
     real3 I = ray.dir;
 
@@ -1038,7 +1131,7 @@ Scene::Shade(float rgba[4], const Intersection &isect, const Ray &ray)
             sray.dir = sample * (vdot(sample, isect.normal) > 0 ? -1 : 1);
             sray.invDir = sray.dir.neg();
             sray.org = ray.org + ray.dir * isect.t + sray.dir * 0.0001;
-            numHits += _accel.Traverse(si, &_mesh, sray) ? 1 : 0;
+            numHits += _accel.Traverse(si, &_mesh, sray, context) ? 1 : 0;
         }
 
         color[0] = color[1] = color[2] = d * (1.0-numHits/float(numSamples));
@@ -1055,8 +1148,8 @@ Scene::Shade(float rgba[4], const Intersection &isect, const Ray &ray)
             sray.dir = ray.dir;
             sray.invDir = ray.invDir;
             sray.org = ray.org + ray.dir * (isect.t + 0.0001);
-            if (_accel.Traverse(si, &_mesh, sray)) {
-                Shade(rgba, si, sray);
+            if (_accel.Traverse(si, &_mesh, sray, context)) {
+                Shade(rgba, si, sray, context);
             } else {
                 rgba[3] = 1.0;
                 return;
