@@ -84,6 +84,7 @@ _add_glfw_executable(raytrace
     camera.cpp
     scene.cpp
     raydiff.cpp
+    jpge.cpp
     "${CL_SOURCE_FILES}"
     "${SHADER_FILES}"
     "${INC_FILES}"

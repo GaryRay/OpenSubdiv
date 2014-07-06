@@ -72,6 +72,7 @@ OpenSubdiv::OsdCpuComputeContext *g_cpuComputeContext = NULL;
 
 #include "scene.h"
 #include "common.h"
+#include "jpge.h" // SGA TB. To save framebuffer.
 
 #include <cfloat>
 #include <vector>
@@ -292,6 +293,8 @@ int g_directBilinear = 0;
 int g_animate = 0;
 int g_frame = 0;
 
+Scene::BackgroundMode g_backgroundType = Scene::GRADATION;
+
 struct Transform {
     float ModelViewMatrix[16];
     float ProjectionMatrix[16];
@@ -464,6 +467,7 @@ setup() {
     config.step = g_step;
 
     g_scene.SetConfig(config);
+    g_scene.SetBackgroudMode(g_backgroundType);
 }
 
 static void
@@ -558,6 +562,60 @@ loadCamera()
   fscanf(fp, "%f %f\n", &g_rotate[0], &g_rotate[1]);
   fclose(fp);
   printf("camera data loaded.\n"); fflush(stdout);
+}
+
+inline unsigned char fclamp(float x) {
+  int i = x * 255.5;
+  if (i < 0)
+    return 0;
+  if (i > 255)
+    return 255;
+  return (unsigned char)i;
+}
+
+inline float gamma_correct(float x, float inv_gamma) {
+  return pow(x, inv_gamma);
+}
+
+
+void HDRToLDR(std::vector<unsigned char> &out, const std::vector<float> &in,
+              int width, int height, float gamma = 2.2) {
+  out.resize(width * height * 4);
+  if (in.size() != (width * height * 4)) {
+    fprintf(stderr, "sz mismatch.\n");
+    exit(1); 
+  }
+
+  float inv_gamma = 1.0 / gamma;
+
+  // Flip w and h
+  for (int x = 0; x < width; x++) {
+    for (int y = 0; y < height; y++) {
+      out[4*(y*width+x)+0] = fclamp(gamma_correct(in[4*(x*width+y)+0], inv_gamma));
+      out[4*(y*width+x)+1] = fclamp(gamma_correct(in[4*(x*width+y)+1], inv_gamma));
+      out[4*(y*width+x)+2] = fclamp(gamma_correct(in[4*(x*width+y)+2], inv_gamma));
+      out[4*(y*width+x)+3] = fclamp(in[4*(x*width+y)+3]); // no gamma correct for alpha component
+    }
+  }
+}
+
+static void
+saveImage()
+{
+  const char *filename = "output.jpg";
+
+  std::vector<unsigned char> ldr;
+  ldr.resize(g_width * g_height * 4);
+
+  HDRToLDR(ldr, g_image, g_width, g_height, 1.0f);
+
+  jpge::params comp_params;
+  comp_params.m_quality = 100;
+  bool ret = jpge::compress_image_to_jpeg_file(filename, g_width, g_height, 4,
+                                               &ldr.at(0), comp_params);
+  assert(ret);
+
+  printf("Save %s\n", filename);
 }
 
 static void
@@ -1013,6 +1071,18 @@ keyboardChar(GLFWwindow *, unsigned int codepoint)
         case '-': g_preTessLevel = std::max(1, g_preTessLevel-1); updateGeom(); break;
         case 'G': dumpCamera(); break;
         case 'g': loadCamera(); setCamera(); break;
+        case '@': saveImage(); break;
+        case '#': {
+            if (g_backgroundType == Scene::GRADATION) {
+              g_backgroundType = Scene::WHITE;
+            } else if (g_backgroundType == Scene::WHITE) {
+              g_backgroundType = Scene::BLACK;
+            } else if (g_backgroundType == Scene::BLACK) {
+              g_backgroundType = Scene::GRADATION;
+            }
+            g_scene.SetBackgroudMode(g_backgroundType);
+            startRender(); break;
+          }
         case '!': makeReport(); break;
     }
 }

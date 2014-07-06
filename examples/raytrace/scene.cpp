@@ -724,11 +724,23 @@ public:
                 if (hit) {
                     _scene->Shade(rgba, isect, ray, &context);
                 } else {
-                    // Maya like gradation. Maybe helpful to check crack visually.
-                    rgba[0] = 0.1f; 
-                    rgba[1] = 0.1f;
-                    rgba[2] = 0.4f * ((_width - x - 1)/(double)_width);
-                    rgba[3] = 1.0f;
+                    if (_scene->GetBackgroundMode() == Scene::GRADATION) {
+                      // Maya like gradation. Maybe helpful to check crack visually.
+                      rgba[0] = 0.1f; 
+                      rgba[1] = 0.1f;
+                      rgba[2] = 0.4f * ((_width - x - 1)/(double)_width);
+                      rgba[3] = 1.0f;
+                    } else if (_scene->GetBackgroundMode() == Scene::WHITE) {
+                      rgba[0] = 1.0f; 
+                      rgba[1] = 1.0f;
+                      rgba[2] = 1.0f;
+                      rgba[3] = 1.0f;
+                    } else {
+                      rgba[0] = 0.0f; 
+                      rgba[1] = 0.0f;
+                      rgba[2] = 0.0f;
+                      rgba[3] = 1.0f;
+                    }
                 }
                 d[0] = rgba[0];
                 d[1] = rgba[1];

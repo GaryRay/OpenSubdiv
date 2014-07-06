@@ -93,6 +93,15 @@ public:
         _mode = mode;
     }
 
+    enum BackgroundMode { GRADATION, WHITE, BLACK };
+
+    void SetBackgroudMode(BackgroundMode mode) {
+        _backgroundMode = mode;
+    }
+    BackgroundMode GetBackgroundMode() const {
+        return _backgroundMode;
+    }
+
     GLuint GetVBO() const { return _vbo; }
     int GetNumBVHNode() const { return (int)_accel.GetNodes().size(); }
 
@@ -118,6 +127,7 @@ private:
     Mesh _mesh;
     BVHAccel _accel;
     ShadeMode _mode;
+    BackgroundMode _backgroundMode;
     bool _watertight;
 
     double _traverseTime;
