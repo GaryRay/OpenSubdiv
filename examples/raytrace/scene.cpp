@@ -829,7 +829,7 @@ Scene::Render(int stepIndex, int step)
 
     } else {
 #ifdef OPENSUBDIV_HAS_TBB
-    tbb::blocked_range<int> range(0, _height/step, 100);
+    tbb::blocked_range<int> range(0, _height/step, 1);
 
     Kernel kernel(_width, stepIndex, step, &_accel, &_mesh, &_camera, _image, this);
     Reset();

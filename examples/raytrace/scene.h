@@ -111,11 +111,15 @@ public:
         size_t mem = 0;
         if (_mesh.IsBezierMesh()) {
             mem += _mesh.bezierVertices.size() * sizeof(float);  // cp
-            mem += _mesh.bezierBounds.size() * sizeof(float);   // bounds
+            mem += _mesh.numBezierPatches/2; // (4bit per patch);
+            //mem += _mesh.bezierBounds.size() * sizeof(float);   // bounds
         } else {
-            mem += _mesh.triVertices.size() * 3 * sizeof(float); // verts
+            mem += _mesh.triVertices.size() * sizeof(float); // verts
             mem += _mesh.faces.size() * sizeof(unsigned int); // indices
         }
+        // bvh
+        mem += _accel.GetNodes().size() * sizeof(BVHNode);
+        mem += _accel.GetIndices().size() * sizeof(unsigned int);
         return mem;
     }
 
