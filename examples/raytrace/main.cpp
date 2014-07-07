@@ -488,6 +488,15 @@ makeReport() {
 }
 
 static void
+report() {
+    setup();
+    g_scene.RenderReport();
+
+    g_stepIndex = g_step*g_step;
+    g_renderTimer.Start();
+}
+
+static void
 setCamera() {
     // prepare view matrix
     double aspect = g_width/(double)g_height;
@@ -1084,6 +1093,7 @@ keyboardChar(GLFWwindow *, unsigned int codepoint)
             startRender(); break;
           }
         case '!': makeReport(); break;
+        case '*': report(); break;
     }
 }
 static void

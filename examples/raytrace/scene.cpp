@@ -914,6 +914,30 @@ Scene::recordMetric(int id, std::ostream &out, Config const &config)
 }
 
 void
+Scene::RenderReport()
+{
+    int iteration = 4;
+
+    _traverseTime = 0;
+    _intersectTime = 0;
+    _shadeTime = 0;
+
+    Stopwatch s;
+    s.Start();
+    for (int i = 0; i < iteration; ++i) {
+        Render();
+    }
+    s.Stop();
+    float renderTime = s.GetElapsed() * 1000.0f; //ms
+
+    std::cout << "["
+        << _traverseTime/iteration << ", "
+        << _intersectTime/iteration << ", "
+        << _shadeTime/iteration << ", "
+        << renderTime/iteration << "], \n";
+}
+
+void
 Scene::MakeReport(const char *filename)
 {
     std::ofstream ofs;

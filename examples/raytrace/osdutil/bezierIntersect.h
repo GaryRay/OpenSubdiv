@@ -906,10 +906,14 @@ protected:
 
     template<typename T>
     uint32_t computeHash(T a, T b, T c, T d) const {
+#if 0
         uint32_t hash = fastHash((const char *)&_patch, sizeof(_patch), 0);
         T v[4] = {a, b, c, d};
         hash = fastHash((const char*)v, sizeof(v), hash);
         return hash;
+#else
+        return 0;
+#endif
     }
 
     PatchType _patch;

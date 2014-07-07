@@ -79,6 +79,7 @@ public:
 
     void DebugTrace(float x, float y);
 
+    void RenderReport();
     void MakeReport(const char *filename);
 
 
