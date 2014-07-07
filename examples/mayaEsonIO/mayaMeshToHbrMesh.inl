@@ -70,6 +70,7 @@ typename MayaMeshToHbrMesh<T>::HMesh* MayaMeshToHbrMesh<T>::operator()(
 	MItMeshPolygon & inMeshItPolygon,
 	std::vector<int> & fvarIndices,
 	std::vector<int> & fvarWidths,
+	MayaFVarDataDesc* fvarDataDesc,
 	float * maxCreaseSharpness )
 {
 	MStatus returnStatus;
@@ -88,6 +89,10 @@ typename MayaMeshToHbrMesh<T>::HMesh* MayaMeshToHbrMesh<T>::operator()(
 	// Create face-varying data with independent float channels of dimension 1
 	// Note: This FVarData needs to be kept around for the duration of the HBR mesh
 	int totalFvarWidth = 2*uvSetNames.length() + totalColorSetChannels;
+	if( fvarDataDesc ){
+		fvarDataDesc->stride_ = totalFvarWidth;
+	}
+	
 	fvarIndices.resize(totalFvarWidth);
 	fvarWidths.resize(totalFvarWidth);
 	for (int i=0; i < totalFvarWidth; ++i) {
@@ -171,11 +176,17 @@ typename MayaMeshToHbrMesh<T>::HMesh* MayaMeshToHbrMesh<T>::operator()(
 		OpenSubdiv::HbrFace<VertexType> * face = hbrMesh->NewFace(nv, fvArrayPtr, 0);
 
 		// Increment ptex index
+		//TEMP
+		#if 0
 		face->SetPtexIndex(ptxidx);
+		#else
+		face->SetPtexIndex(inMeshItPolygon.index());
+		#endif
 
 		// Add FaceVaryingData (UVSets, ...)
 		if (totalFvarWidth > 0) {
 
+			
 			// Retrieve all UV and ColorSet data
 			for (unsigned int i=0; i < uvSetNames.length(); ++i) {
 				inMeshItPolygon.getUVs(uvSet_uCoords[i], uvSet_vCoords[i], &uvSetNames[i] );
@@ -185,11 +196,12 @@ typename MayaMeshToHbrMesh<T>::HMesh* MayaMeshToHbrMesh<T>::operator()(
 			}
 
 			std::vector<float> fvarItem(totalFvarWidth); // storage for all the face-varying channels for this face-vertex
-
+			
 			// loop over each uvSet and the uvs within
 			for (unsigned int fvid=0; fvid < fvArray.length(); ++fvid) {
 
 				int fvarItemIndex = 0;
+				
 				// Handle uvSets
 				for( unsigned int uvSetIt=0; uvSetIt < uvSetNames.length(); ++uvSetIt ) {
 					if (fvid < uvSet_uCoords[uvSetIt].length()) {
@@ -216,6 +228,7 @@ typename MayaMeshToHbrMesh<T>::HMesh* MayaMeshToHbrMesh<T>::operator()(
 					}
 					fvarItemIndex += nchannels;
 				}
+				
 				assert((fvarItemIndex) == totalFvarWidth); // For UVs, sanity check the resulting value
 
 				// Insert into the HBR structure for that face
@@ -262,6 +275,45 @@ typename MayaMeshToHbrMesh<T>::HMesh* MayaMeshToHbrMesh<T>::operator()(
 
 // - - - - - - - - - - - - - - - - - -
 template< typename T >
+MStatus MayaMeshToHbrMesh<T>::getMayaFvarFieldParams(
+	MFnMesh const & inMeshFn,
+	MStringArray & uvSetNames,
+	MStringArray & colorSetNames,
+	std::vector<int> & colorSetChannels,
+	std::vector<MFnMesh::MColorRepresentation> &colorSetReps,
+	int & totalColorSetChannels)
+{
+	MStatus returnStatus;
+
+	returnStatus = inMeshFn.getUVSetNames(uvSetNames);
+	MCHECKERR(returnStatus, "Cannot get uvSet names");
+
+	returnStatus = inMeshFn.getColorSetNames(colorSetNames);
+	MCHECKERR(returnStatus, "Cannot get colorSet names");
+
+	colorSetChannels.resize(colorSetNames.length());
+	colorSetReps.resize(colorSetNames.length());
+	totalColorSetChannels = 0;
+
+	for (unsigned int i=0; i < colorSetNames.length(); i++) {
+
+		colorSetReps[i] = inMeshFn.getColorRepresentation(colorSetNames[i], &returnStatus);
+		MCHECKERR(returnStatus, "Cannot get colorSet representation");
+
+		if (colorSetReps[i] == MFnMesh::kAlpha) {
+			colorSetChannels[i] = 1;
+		} else if (colorSetReps[i] == MFnMesh::kRGB) {
+			colorSetChannels[i] = 3;
+		} else {
+			colorSetChannels[i] = 4; // kRGBA
+		}
+		totalColorSetChannels += colorSetChannels[i];
+	}
+	return MS::kSuccess;
+}
+
+// - - - - - - - - - - - - - - - - - -
+template< typename T >
 void MayaMeshToHbrMesh<T>::setHbrVertices(	HMesh* hbrMesh,
 											 MFnMesh const & inMeshFn )
 {
@@ -299,44 +351,6 @@ void MayaMeshToHbrMesh< SimpleVertexXYZd >::setHbrVertices( HMesh* hbrMesh,
 	}
 }
 
-// - - - - - - - - - - - - - - - - - -
-template< typename T >
-MStatus MayaMeshToHbrMesh<T>::getMayaFvarFieldParams(
-	MFnMesh const & inMeshFn,
-	MStringArray & uvSetNames,
-	MStringArray & colorSetNames,
-	std::vector<int> & colorSetChannels,
-	std::vector<MFnMesh::MColorRepresentation> &colorSetReps,
-	int & totalColorSetChannels)
-{
-	MStatus returnStatus;
-
-	returnStatus = inMeshFn.getUVSetNames(uvSetNames);
-	MCHECKERR(returnStatus, "Cannot get uvSet names");
-
-	returnStatus = inMeshFn.getColorSetNames(colorSetNames);
-	MCHECKERR(returnStatus, "Cannot get colorSet names");
-
-	colorSetChannels.resize(colorSetNames.length());
-	colorSetReps.resize(colorSetNames.length());
-	totalColorSetChannels = 0;
-
-	for (unsigned int i=0; i < colorSetNames.length(); i++) {
-
-		colorSetReps[i] = inMeshFn.getColorRepresentation(colorSetNames[i], &returnStatus);
-		MCHECKERR(returnStatus, "Cannot get colorSet representation");
-
-		if (colorSetReps[i] == MFnMesh::kAlpha) {
-			colorSetChannels[i] = 1;
-		} else if (colorSetReps[i] == MFnMesh::kRGB) {
-			colorSetChannels[i] = 3;
-		} else {
-			colorSetChannels[i] = 4; // kRGBA
-		}
-		totalColorSetChannels += colorSetChannels[i];
-	}
-	return MS::kSuccess;
-}
 
 // - - - - - - - - - - - - - - - - - -
 template< typename T >

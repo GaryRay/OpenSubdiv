@@ -14,6 +14,7 @@
 
 //Local
 #include "simpleVertexXYZ.h"
+#include "mayaFvarDataDesc.h"
 
 #if !defined( MAYA_MESH_TOHBR_MESH_INCLUDED__ )
 #define MAYA_MESH_TOHBR_MESH_INCLUDED__
@@ -24,7 +25,7 @@
 // ====================================
 template< typename T >
 class MayaMeshToHbrMesh{
-public:
+ public:
 	typedef T VertexType;
 
 	typedef OpenSubdiv::HbrMesh<VertexType>               HMesh;
@@ -39,26 +40,29 @@ public:
 	typedef OpenSubdiv::FarSubdivisionTables              FSubdivision;
 	typedef OpenSubdiv::FarPatchTables                    FPatches;
 
-public:
+ public:
 	virtual HMesh* operator()(	MFnMesh const & inMeshFn,
 								MItMeshPolygon & inMeshItPolygon,
 								std::vector<int> & fvarIndices,
 								std::vector<int> & fvarWidths,
+								MayaFVarDataDesc* fvarDataDesc,
 								float * maxCreaseSharpness = 0 );
-protected:
-	virtual void setHbrVertices( HMesh* hbrMesh,
-								 MFnMesh const & inMeshFn );
-	
+
 	virtual MStatus getMayaFvarFieldParams(	MFnMesh const & inMeshFn,
 											MStringArray & uvSetNames,
 											MStringArray & colorSetNames,
 											std::vector<int> & colorSetChannels,
 											std::vector<MFnMesh::MColorRepresentation> &colorSetReps,
 											int & totalColorSetChannels);
-	
+
+ protected:
+	virtual void setHbrVertices( HMesh* hbrMesh,
+								 MFnMesh const & inMeshFn );
+
+
 	virtual float applyCreaseEdges(	MFnMesh const & inMeshFn,
 									HMesh * hbrMesh);
-	
+
 	virtual float applyCreaseVertices(	MFnMesh const & inMeshFn,
 										HMesh * hbrMesh );
 

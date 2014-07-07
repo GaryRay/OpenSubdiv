@@ -7,12 +7,18 @@
 
 // - - - - - - - - - - - - - - - - - -
 template< typename T >
-void	HbrMeshToEson<T>::operator()( HMesh*	hbrMesh, std::string outputPath, int smoothLevel, bool useAdaptive ){
+void	HbrMeshToEson<T>::operator()( HMesh*	hbrMesh,
+									  MayaFVarDataDesc& fvarDataDesc,
+									  std::vector<short>& faceMatIds,
+									  std::string outputPath,
+									  int smoothLevel,
+									  bool useAdaptive )
+{
 
 	using namespace OpenSubdiv;
 
 	FMeshFactory meshFactory( hbrMesh, smoothLevel, useAdaptive );
-	std::shared_ptr<FMesh> farMesh = std::shared_ptr<FMesh>( meshFactory.Create() );
+	std::shared_ptr<FMesh> farMesh = std::shared_ptr<FMesh>( meshFactory.Create( true ) );
 	static OpenSubdiv::FarComputeController computeController;
 	computeController.Refine( farMesh.get() );
 
@@ -29,11 +35,21 @@ void	HbrMeshToEson<T>::operator()( HMesh*	hbrMesh, std::string outputPath, int s
 	FarPatchTables const *patchTables = farMesh->GetPatchTables();
 	FarPatchTables::PatchArrayVector const &patchArrays = patchTables->GetPatchArrayVector();
 	FarPatchTables::PatchParamTable const &patchParam = patchTables->GetPatchParamTable();
+	std::vector<float> const &fvarData =  patchTables->GetFVarData().GetAllData();
 
 	int numPatches = 0;
 	std::vector<float> bezierVertices;
 	std::vector<float> bezierBounds;
 	std::vector<int> cpIndices; // 16 * numPatches
+
+	#if 1
+	typedef unsigned short MatIndexType;
+	#else
+	typedef unsigned int MatIndexType;
+	#endif
+	
+	std::vector<MatIndexType>materialIndices;
+	
 	// iterate patch types.
 	for (FarPatchTables::PatchArrayVector::const_iterator it = patchArrays.begin();
 		 it != patchArrays.end(); ++it) {
@@ -85,6 +101,19 @@ void	HbrMeshToEson<T>::operator()( HMesh*	hbrMesh, std::string outputPath, int s
 
 	if( bezierBounds.size() > 0 ){
 		mesh["bezier_bounds"] = eson::Value((uint8_t*)&bezierBounds[0], sizeof(float)*bezierBounds.size());
+	}
+
+	{
+		
+		for( auto i = 0; i < numPatches; ++i ){
+			if( patchParam[i].faceIndex < faceMatIds.size() ){
+				materialIndices.push_back( static_cast<MatIndexType>( faceMatIds[ patchParam[i].faceIndex ] ) );
+			}else{
+				materialIndices.push_back( 0 ); //Temp
+			}
+		}
+
+		mesh["material_ids"] = eson::Value((uint8_t*)&materialIndices[0], sizeof(MatIndexType)*materialIndices.size());
 	}
 
 	assert(numPatches*16*3 == (int)bezierVertices.size());
