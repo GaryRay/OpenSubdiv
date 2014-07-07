@@ -90,12 +90,10 @@ public:
         Real tmin, tmax;
     };
     struct UVT {
-        UVT() : u(0), v(0), t(0), level(0), quadHash(0),
-                failAtBilinear(false) {}
+        UVT() : u(0), v(0), t(0), level(0), quadHash(0) { }
         Real u, v, t;
         int level;
         int quadHash;
-        bool failAtBilinear;
     };
 
     OsdUtilBezierPatchIntersection(PatchType const &patch) NO_INLINE :
@@ -141,7 +139,7 @@ public:
         _wcpFlag = wcpFlag;
     }
 
-    bool Test(Intersection* info, Ray const &r, Real tmin, Real tmax) const NO_INLINE {
+    bool Test(Intersection* info, Ray const &r, Real tmin, Real tmax) NO_INLINE {
 
         RangeAABB rng;
         if (intersectAABB(&rng, _min, _max, r, tmin, tmax)) {
@@ -178,10 +176,10 @@ public:
     }
 
 protected:
-    bool testInternal(Intersection* info, const Ray& r, Real tmin, Real tmax) const NO_INLINE {
+    bool testInternal(Intersection* info, const Ray& r, Real tmin, Real tmax) NO_INLINE {
         typename ValueType::Matrix4Type mat(ValueType(r.org), ValueType(r.dir)); // getZAlign
-        // watertight critical pass
-        //if (uvt.failAtBilinear && _wcpFlag != 0) {
+
+        _failFlag = 0;
         {
             UVT uvt;
             PatchType patch(_patch, mat);
@@ -211,7 +209,11 @@ protected:
                 return true;
             }
         }
-        if (_wcpFlag != 0) {
+
+        if (_failFlag != 0 and _wcpFlag != 0) {
+            // TODO: still inefficient. wcpFlag knows which edge has to be split
+            // and failFlag knows which edge is actually being tested.
+
             // test against split faces too
             /*
               +---+---+
@@ -229,6 +231,7 @@ protected:
             tmp[1].SplitV(&children[2], 0.5);
             for (int i = 0; i < 4; ++i) {
                 children[i].Transform(mat);
+
                 // if (u0 == 0 && (i == 2 || i == 3)) continue;
                 // if (u1 == 1 && (i == 0 || i == 1)) continue;
                 // if (v0 == 0 && (i == 1 || i == 3)) continue;
@@ -264,7 +267,7 @@ protected:
         }
         return false;
     }
-    bool testBezierPatch(UVT* info, PatchType const & patch, Real zmin, Real zmax, Real eps) const NO_INLINE {
+    bool testBezierPatch(UVT* info, PatchType const & patch, Real zmin, Real zmax, Real eps) NO_INLINE {
         ValueType min, max;
         patch.GetMinMax(min, max, eps*1e-3);
 
@@ -531,7 +534,7 @@ protected:
     bool testBezierClipU(UVT* info, PatchType const & patch,
                          Real u0, Real u1, Real v0, Real v1,
                          Real zmin, Real zmax,
-                         int level, int max_level, Real eps) const NO_INLINE {
+                         int level, int max_level, Real eps) NO_INLINE {
         PatchType tpatch(patch);
         rotateU(tpatch);
 
@@ -540,9 +543,15 @@ protected:
 
         ValueType min, max;
         tpatch.GetMinMax(min, max, eps*1e-3);
-        if (0 < min[0] || max[0] < 0) return false;//x
-        if (0 < min[1] || max[1] < 0) return false;//y
-        if (max[2] < zmin || zmax < min[2]) return false;//z
+        if (0 < min[0] || max[0] < 0 || // x
+            0 < min[1] || max[1] < 0 || // y
+            max[2] < zmin || zmax < min[2]) { // z
+            _failFlag = ((u0 == Real(0)) << 0)
+                      | ((u1 == Real(1)) << 1)
+                      | ((v0 == Real(0)) << 2)
+                      | ((v1 == Real(1)) << 3);
+            return false;
+        }
         
         bool bClip = isClip(level);
         if (bClip && (isEps(min,max,eps) || isLevel(level,max_level))){
@@ -593,7 +602,7 @@ protected:
 
     bool testBezierClipV(UVT *info, PatchType const &patch,
                          Real u0, Real u1, Real v0, Real v1, Real zmin, Real zmax,
-                         int level, int max_level, Real eps) const NO_INLINE {
+                         int level, int max_level, Real eps) NO_INLINE {
         PatchType tpatch(patch);
         rotateV(tpatch);
 
@@ -602,9 +611,15 @@ protected:
 
         ValueType min, max;
         tpatch.GetMinMax(min, max, eps*1e-3);
-        if (0 < min[0] || max[0] < 0) return false;//x
-        if (0 < min[1] || max[1] < 0) return false;//y
-        if (max[2] < zmin || zmax < min[2])return false;//z
+        if (0 < min[0] || max[0] < 0 || // x
+            0 < min[1] || max[1] < 0 || // y
+            max[2] < zmin || zmax < min[2]) { // z
+            _failFlag = ((u0 == Real(0)) << 0)
+                      | ((u1 == Real(1)) << 1)
+                      | ((v0 == Real(0)) << 2)
+                      | ((v1 == Real(1)) << 3);
+            return false;
+        }
 
         bool bClip = isClip(level);
         if (bClip && (isEps(min,max,eps) || isLevel(level,max_level))) {
@@ -656,7 +671,7 @@ protected:
 
     bool testBezierClipL(UVT* info, PatchType const &patch,
                          Real u0, Real u1, Real v0, Real v1,
-                         Real zmin, Real zmax, int level) const NO_INLINE {
+                         Real zmin, Real zmax, int level) NO_INLINE {
         Real t = Real(0), u = Real(0), v = Real(0);
 
         trace("testBezierClipL (%f, %f) - (%f, %f) z:%f, %f  level=%d\n",
@@ -691,7 +706,10 @@ protected:
                     return true;
                 }
             }
-            info->failAtBilinear = true;
+            _failFlag = ((u0 == Real(0)) << 0)
+                      | ((u1 == Real(1)) << 1)
+                      | ((v0 == Real(0)) << 2)
+                      | ((v1 == Real(1)) << 3);
             return false;
         }
 
@@ -761,7 +779,10 @@ protected:
             ValueType p = patch.Evaluate(uu,vv);
             info->t = p[2];
         } else {
-            info->failAtBilinear = true;
+            _failFlag = ((u0 == Real(0)) << 0)
+                      | ((u1 == Real(1)) << 1)
+                      | ((v0 == Real(0)) << 2)
+                      | ((v1 == Real(1)) << 3);
         }
         return bRet;
     }
@@ -769,7 +790,7 @@ protected:
     bool testBezierClipRangeU(UVT* info, PatchType const & patch,
                               Real u0, Real u1,
                               Real v0, Real v1, Real zmin, Real zmax,
-                              int level, int max_level, Real eps) const NO_INLINE {
+                              int level, int max_level, Real eps) NO_INLINE {
         PatchType mpatch(patch, u0, u1, v0, v1);
         PatchType tpatch(mpatch);
         rotateU(tpatch);
@@ -779,9 +800,15 @@ protected:
 
         ValueType min, max;
         tpatch.GetMinMax(min, max, eps*1e-3);
-        if (0 < min[0] || max[0] < 0) return false;//x
-        if (0 < min[1] || max[1] < 0) return false;//y
-        if (max[2] < zmin || zmax < min[2]) return false;//z
+        if (0 < min[0] || max[0] < 0 || // x
+            0 < min[1] || max[1] < 0 || // y
+            max[2] < zmin || zmax < min[2]) { // z
+            _failFlag = ((u0 == Real(0)) << 0)
+                      | ((u1 == Real(1)) << 1)
+                      | ((v0 == Real(0)) << 2)
+                      | ((v1 == Real(1)) << 3);
+            return false;
+        }
         
         bool bClip = isClip(level);
         if (bClip && (isEps(min,max,eps) || isLevel(level,max_level))){
@@ -827,7 +854,7 @@ protected:
 
     bool testBezierClipRangeV(UVT *info, PatchType const &patch,
                               Real u0, Real u1, Real v0, Real v1, Real zmin, Real zmax,
-                              int level, int max_level, Real eps) const NO_INLINE {
+                              int level, int max_level, Real eps) NO_INLINE {
         PatchType mpatch(patch, u0, u1, v0, v1);
         PatchType tpatch(mpatch);
         rotateV(tpatch);
@@ -837,9 +864,15 @@ protected:
 
         ValueType min, max;
         tpatch.GetMinMax(min, max, eps*1e-3);
-        if (0 < min[0] || max[0] < 0) return false;//x
-        if (0 < min[1] || max[1] < 0) return false;//y
-        if (max[2] < zmin || zmax < min[2])return false;//z
+        if (0 < min[0] || max[0] < 0 || // x
+            0 < min[1] || max[1] < 0 || // y
+            max[2] < zmin || zmax < min[2]) { // z
+            _failFlag = ((u0 == Real(0)) << 0)
+                      | ((u1 == Real(1)) << 1)
+                      | ((v0 == Real(0)) << 2)
+                      | ((v1 == Real(1)) << 3);
+            return false;
+        }
 
         bool bClip = isClip(level);
         if (bClip && (isEps(min,max,eps) || isLevel(level,max_level))) {
@@ -906,7 +939,7 @@ protected:
 
     template<typename T>
     uint32_t computeHash(T a, T b, T c, T d) const {
-#if 0
+#if 1
         uint32_t hash = fastHash((const char *)&_patch, sizeof(_patch), 0);
         T v[4] = {a, b, c, d};
         hash = fastHash((const char*)v, sizeof(v), hash);
@@ -929,6 +962,7 @@ protected:
     bool _useTriangle;
     bool _directBilinear;
     int _wcpFlag;
+    int _failFlag;               // bit0: u0, bit1: u1, bit2: v0, bit3: v1
 };
 
 }   // end OsdUtil
