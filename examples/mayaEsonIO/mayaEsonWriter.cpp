@@ -61,6 +61,7 @@
 #include "hbrMeshToEson.h"
 #include "mayaEsonWriter.h"
 #include "simpleVertexXYZ.h"
+#include "mayaFvarDataDesc.h"
 
 struct xyzVV;
 
@@ -171,7 +172,7 @@ void MayaEsonWriter::doWrite( const MFileObject& file ){
 		MObject nodeObj = dagPath.node();
 
 		//selective export
-		if( behavior.exportSelOnly && !activeSelList.hasItem( dagPath ) ){
+		if( behavior.exportSelOnly && !activeSelList.hasItem( nodeObj ) ){
 			continue;
 		}
 
@@ -204,11 +205,12 @@ void MayaEsonWriter::doWrite( const MFileObject& file ){
 			std::vector<int> fvarIndices;
 			std::vector<int> fvarWidths;
 			float maxCreaseSharpness = 0.0;
+			MayaFVarDataDesc fvarDesc;
 
 			//Generate
 			MayaMeshToHbrMesh<VertexType >	hbrMeshGenerator;
 			std::shared_ptr<HMesh> hbrMesh = std::shared_ptr<HMesh>( hbrMeshGenerator(
-				fnMesh, itMeshPoly, fvarIndices, fvarWidths, &maxCreaseSharpness ) );
+				fnMesh, itMeshPoly, fvarIndices, fvarWidths, &fvarDesc, &maxCreaseSharpness ) );
 			if( !hbrMesh ){
 				continue;
 			}
@@ -285,10 +287,19 @@ void MayaEsonWriter::doWrite( const MFileObject& file ){
 			}
 			hbrMesh->Finish();
 
+			MObjectArray shaders;
+			MIntArray shaderIndices;
+			fnMesh.getConnectedShaders( 0, shaders, shaderIndices );
+			std::vector<short> shaderIndicesVec;
+
+			for( unsigned int j = 0; j < shaderIndices.length(); ++j ){
+				shaderIndicesVec.push_back( shaderIndices[j] );
+			}
+
 			//Eson
 			std::string filename = file.rawFullName().asChar();
 			try{
-				HbrMeshToEson<VertexType>()( hbrMesh.get(), filename, smoothLevel );
+				HbrMeshToEson<VertexType>()( hbrMesh.get(), fvarDesc, shaderIndicesVec, filename, smoothLevel );
 			}catch(...){
 				continue;
 			}

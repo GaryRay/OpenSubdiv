@@ -14,6 +14,7 @@
 //Local
 #include "eson.h"
 #include "simpleVertexXYZ.h"
+#include "mayaFvarDataDesc.h"
 
 #if !defined( HBR_MESH_TOESON_INCLUDED__ )
 #define HBR_MESH_TOESON_INCLUDED__
@@ -41,6 +42,8 @@ public:
 	
 public:
 	void	operator()( HMesh*	hMesh,
+						MayaFVarDataDesc& fvarDataDesc,
+						std::vector<short>& faceMatIds,
 						std::string outputPath,
 						int smoothLevel,
 						bool useAdaptive = true );
