@@ -214,7 +214,7 @@ protected:
             }
         }
 
-        if (uvt.failFlag and _wcpFlag != 0) {
+        if (uvt.failFlag != 0 and _wcpFlag != 0) {
             // TODO: still inefficient. wcpFlag knows which edge has to be split
             // and failFlag knows which edge is actually being tested.
 
