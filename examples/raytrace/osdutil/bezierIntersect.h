@@ -14,6 +14,7 @@
 #define USE_BEZIERCLIP 1
 #define USE_COARSESORT 1
 #define USE_UVCROP 1
+#define USE_MINMAX_FAILFLAG 0
 
 namespace OsdUtil {
 
@@ -94,6 +95,7 @@ public:
         Real u, v, t;
         int level;
         int quadHash;
+        int failFlag;
     };
 
     OsdUtilBezierPatchIntersection(PatchType const &patch) NO_INLINE :
@@ -179,9 +181,9 @@ protected:
     bool testInternal(Intersection* info, const Ray& r, Real tmin, Real tmax) NO_INLINE {
         typename ValueType::Matrix4Type mat(ValueType(r.org), ValueType(r.dir)); // getZAlign
 
-        _failFlag = 0;
+        UVT uvt;
+        uvt.failFlag = 0;
         {
-            UVT uvt;
             PatchType patch(_patch, mat);
             if (testBezierPatch(&uvt, patch, tmin, tmax, _eps)) {
                 Real t = uvt.t;
@@ -210,7 +212,7 @@ protected:
             }
         }
 
-        if (_failFlag != 0 and _wcpFlag != 0) {
+        if (uvt.failFlag != 0 and _wcpFlag != 0) {
             // TODO: still inefficient. wcpFlag knows which edge has to be split
             // and failFlag knows which edge is actually being tested.
 
@@ -546,10 +548,13 @@ protected:
         if (0 < min[0] || max[0] < 0 || // x
             0 < min[1] || max[1] < 0 || // y
             max[2] < zmin || zmax < min[2]) { // z
-            _failFlag = ((u0 == Real(0)) << 0)
+#if USE_MINMAX_FAILFLAG
+            int failFlag = ((u0 == Real(0)) << 0)
                       | ((u1 == Real(1)) << 1)
                       | ((v0 == Real(0)) << 2)
                       | ((v1 == Real(1)) << 3);
+            info->failFlag |= failFlag;
+#endif
             return false;
         }
         
@@ -614,10 +619,13 @@ protected:
         if (0 < min[0] || max[0] < 0 || // x
             0 < min[1] || max[1] < 0 || // y
             max[2] < zmin || zmax < min[2]) { // z
-            _failFlag = ((u0 == Real(0)) << 0)
+#if USE_MINMAX_FAILFLAG
+            int failFlag = ((u0 == Real(0)) << 0)
                       | ((u1 == Real(1)) << 1)
                       | ((v0 == Real(0)) << 2)
                       | ((v1 == Real(1)) << 3);
+            info->failFlag |= failFlag;
+#endif      
             return false;
         }
 
@@ -706,10 +714,12 @@ protected:
                     return true;
                 }
             }
-            _failFlag = ((u0 == Real(0)) << 0)
+            int failFlag = ((u0 == Real(0)) << 0)
                       | ((u1 == Real(1)) << 1)
                       | ((v0 == Real(0)) << 2)
                       | ((v1 == Real(1)) << 3);
+
+            info->failFlag |= failFlag;
             return false;
         }
 
@@ -779,10 +789,12 @@ protected:
             ValueType p = patch.Evaluate(uu,vv);
             info->t = p[2];
         } else {
-            _failFlag = ((u0 == Real(0)) << 0)
+            int failFlag = ((u0 == Real(0)) << 0)
                       | ((u1 == Real(1)) << 1)
                       | ((v0 == Real(0)) << 2)
                       | ((v1 == Real(1)) << 3);
+
+            info->failFlag |= failFlag;
         }
         return bRet;
     }
@@ -803,10 +815,13 @@ protected:
         if (0 < min[0] || max[0] < 0 || // x
             0 < min[1] || max[1] < 0 || // y
             max[2] < zmin || zmax < min[2]) { // z
-            _failFlag = ((u0 == Real(0)) << 0)
+#if USE_MINMAX_FAILFLAG
+            int failFlag = ((u0 == Real(0)) << 0)
                       | ((u1 == Real(1)) << 1)
                       | ((v0 == Real(0)) << 2)
                       | ((v1 == Real(1)) << 3);
+            info->failFlag |= failFlag;
+#endif
             return false;
         }
         
@@ -867,10 +882,13 @@ protected:
         if (0 < min[0] || max[0] < 0 || // x
             0 < min[1] || max[1] < 0 || // y
             max[2] < zmin || zmax < min[2]) { // z
-            _failFlag = ((u0 == Real(0)) << 0)
+#if USE_MINMAX_FAILFLAG
+            int failFlag = ((u0 == Real(0)) << 0)
                       | ((u1 == Real(1)) << 1)
                       | ((v0 == Real(0)) << 2)
                       | ((v1 == Real(1)) << 3);
+            info->failFlag |= failFlag;
+#endif
             return false;
         }
 
@@ -961,8 +979,7 @@ protected:
     bool _useBezierClip;
     bool _useTriangle;
     bool _directBilinear;
-    int _wcpFlag;
-    int _failFlag;               // bit0: u0, bit1: u1, bit2: v0, bit3: v1
+    int _wcpFlag;              
 };
 
 }   // end OsdUtil
