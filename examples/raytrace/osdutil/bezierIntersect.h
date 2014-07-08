@@ -181,6 +181,7 @@ protected:
     bool testInternal(Intersection* info, const Ray& r, Real tmin, Real tmax) NO_INLINE {
         typename ValueType::Matrix4Type mat(ValueType(r.org), ValueType(r.dir)); // getZAlign
 
+        bool bRet = false;
         UVT uvt;
         uvt.failFlag = 0;
         {
@@ -207,12 +208,13 @@ protected:
                     //                info->tangent  = Conv(U);
                     //                info->binormal = Conv(V);
                 }
+                tmax = t;
+                bRet = true;
                 trace("hit t = %f, uv = (%f, %f)\n", t, u, v);
-                return true;
             }
         }
 
-        if (uvt.failFlag != 0 and _wcpFlag != 0) {
+        if (uvt.failFlag and _wcpFlag != 0) {
             // TODO: still inefficient. wcpFlag knows which edge has to be split
             // and failFlag knows which edge is actually being tested.
 
@@ -231,43 +233,46 @@ protected:
             _patch.SplitU(tmp, 0.5);
             tmp[0].SplitV(&children[0], 0.5);
             tmp[1].SplitV(&children[2], 0.5);
+
+            int ni = -1;
             for (int i = 0; i < 4; ++i) {
                 children[i].Transform(mat);
-
-                // if (u0 == 0 && (i == 2 || i == 3)) continue;
-                // if (u1 == 1 && (i == 0 || i == 1)) continue;
-                // if (v0 == 0 && (i == 1 || i == 3)) continue;
-                // if (v1 == 1 && (i == 0 || i == 2)) continue;
                 trace("Child pass %d\n", i);
-                UVT uvt;
                 if (testBezierPatch(&uvt, children[i], tmin, tmax, _eps)) {
                     Real t = uvt.t;
-                    Real u = uvt.u * 0.5 + offsets[2*i+0];
-                    Real v = uvt.v * 0.5 + offsets[2*i+1];
-
-                    u = _uRange[0]*(1-u) + _uRange[1]*u;//global
-                    v = _vRange[0]*(1-v) + _vRange[1]*v;//global
-                    info->t = t;
-                    info->u = u;
-                    info->v = v;
-                    info->clipLevel = uvt.level;
-                    info->quadHash = uvt.quadHash;
-                    {
-                        ValueType du = _patch.EvaluateDu(u,v);
-                        ValueType dv = _patch.EvaluateDv(u,v);
-                        ValueType normal = cross(du,dv);
-                        normal.normalize();
-                        info->normal = real3(normal[0], normal[1], normal[2]);
-                        info->geometricNormal = real3(normal[0], normal[1], normal[2]);
-                        //                info->tangent  = Conv(U);
-                        //                info->binormal = Conv(V);
-                    }
-                    trace("hit t = %f, uv = (%f, %f)\n", t, u, v);
-                    return true;
+                    tmax = t;
+                    ni = i;
                 }
             }
+
+            if(0<=ni){
+                int i = ni;
+                Real t = uvt.t;
+                Real u = uvt.u * 0.5 + offsets[2*i+0];
+                Real v = uvt.v * 0.5 + offsets[2*i+1];
+
+                u = _uRange[0]*(1-u) + _uRange[1]*u;//global
+                v = _vRange[0]*(1-v) + _vRange[1]*v;//global
+                info->t = t;
+                info->u = u;
+                info->v = v;
+                info->clipLevel = uvt.level;
+                info->quadHash = uvt.quadHash;
+                {
+                    ValueType du = _patch.EvaluateDu(u,v);
+                    ValueType dv = _patch.EvaluateDv(u,v);
+                    ValueType normal = cross(du,dv);
+                    normal.normalize();
+                    info->normal = real3(normal[0], normal[1], normal[2]);
+                    info->geometricNormal = real3(normal[0], normal[1], normal[2]);
+                    //                info->tangent  = Conv(U);
+                    //                info->binormal = Conv(V);
+                }
+                bRet = true;
+                trace("hit t = %f, uv = (%f, %f)\n", t, u, v);
+            }
         }
-        return false;
+        return bRet;
     }
     bool testBezierPatch(UVT* info, PatchType const & patch, Real zmin, Real zmax, Real eps) NO_INLINE {
         ValueType min, max;
