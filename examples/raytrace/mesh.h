@@ -3,12 +3,12 @@
 
 #include <cstdio>
 #include <vector>
-#include <far/patchParam.h>
+#include <far/patchTables.h>
 #include "common.h"
 
 struct Mesh {
     Mesh() : numTriangles(0),
-             numBezierPatches(0), patchParams(NULL), displaceBound(0) {
+             numBezierPatches(0), displaceBound(0) {
     }
 
     bool IsBezierMesh() const {
@@ -26,7 +26,7 @@ struct Mesh {
     std::vector<real> bezierVertices;              /// [xyz] * 16 * numBezierPatches
     std::vector<real> bezierBounds;                /// [xyz] * [min, max] * numBezierPatches
 
-    OpenSubdiv::FarPatchParam const *patchParams;  /// [FarPatchParam] * numBezierPatches
+    OpenSubdiv::Far::PatchTables::PatchParamTable patchParams;       /// [FarPatchParam] * numBezierPatches
     std::vector<float> colors;                     /// [rgb] * numBezierPatches;
 
     std::vector<int> wcpFlags; 

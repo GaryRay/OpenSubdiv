@@ -47,16 +47,6 @@ if ( GLEW_FOUND )
     list(APPEND PLATFORM_LIBRARIES "${GLEW_LIBRARY}")
 endif()
 
-if( OPENCL_FOUND )
-    include_directories("${OPENCL_INCLUDE_DIRS}")
-    list(APPEND CL_SOURCE_FILES
-        clTracer.cpp
-    )
-    list(APPEND KERNEL_FILES
-        clKernel.cl
-    )
-endif()
-
 if( TBB_FOUND )
     include_directories("${TBB_INCLUDE_DIR}")
 
@@ -88,6 +78,7 @@ _add_glfw_executable(raytrace
     "${CL_SOURCE_FILES}"
     "${SHADER_FILES}"
     "${INC_FILES}"
+    $<TARGET_OBJECTS:regression_common_obj>
     $<TARGET_OBJECTS:examples_common_obj>
 )
 

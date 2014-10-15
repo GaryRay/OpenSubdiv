@@ -214,7 +214,9 @@ protected:
             }
         }
 
-        if (uvt.failFlag != 0 and _wcpFlag != 0) {
+        if (uvt.failFlag == 0 or _wcpFlag == 0) return bRet;
+
+        {
             // TODO: still inefficient. wcpFlag knows which edge has to be split
             // and failFlag knows which edge is actually being tested.
 
@@ -962,7 +964,7 @@ protected:
 
     template<typename T>
     uint32_t computeHash(T a, T b, T c, T d) const {
-#if 1
+#if 0
         uint32_t hash = fastHash((const char *)&_patch, sizeof(_patch), 0);
         T v[4] = {a, b, c, d};
         hash = fastHash((const char*)v, sizeof(v), hash);

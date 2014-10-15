@@ -38,18 +38,11 @@
     #endif
 #endif
 
-#if defined(GLFW_VERSION_3)
-    #include <GLFW/glfw3.h>
-    GLFWwindow* g_window=0;
-    GLFWmonitor* g_primary=0;
-#else
-    #include <GL/glfw.h>
-#endif
+#include <GLFW/glfw3.h>
+GLFWwindow* g_window=0;
+GLFWmonitor* g_primary=0;
 
 #define NEED_HBR_FACE_INDEX
-
-#include <far/mesh.h>
-#include <far/meshFactory.h>
 
 #include <osd/error.h>
 #include <osd/vertex.h>
@@ -61,9 +54,7 @@
 #include <osd/cpuComputeContext.h>
 #include <osd/cpuComputeController.h>
 
-OpenSubdiv::OsdCpuVertexBuffer *g_cpuVertexBuffer = NULL;
-OpenSubdiv::OsdCpuComputeContext *g_cpuComputeContext = NULL;
-
+#include <common/vtr_utils.h>
 #include <common/shape_utils.h>
 #include "../common/stopwatch.h"
 #include "../common/simple_math.h"
@@ -187,11 +178,6 @@ static const char *s_VS_Debug =
     "  gl_Position = vec4(pos.x, pos.y, 0, 1);\n"
     "}\n";
 
-typedef OpenSubdiv::HbrMesh<OpenSubdiv::OsdVertex>     OsdHbrMesh;
-typedef OpenSubdiv::HbrVertex<OpenSubdiv::OsdVertex>   OsdHbrVertex;
-typedef OpenSubdiv::HbrFace<OpenSubdiv::OsdVertex>     OsdHbrFace;
-typedef OpenSubdiv::HbrHalfedge<OpenSubdiv::OsdVertex> OsdHbrHalfedge;
-
 enum HudCheckBox { kHUD_CB_DISPLAY_BVH,
                    kHUD_CB_BLOCK_FILL,
                    kHUD_CB_WATERTIGHT,
@@ -203,28 +189,15 @@ enum HudCheckBox { kHUD_CB_DISPLAY_BVH,
                    kHUD_CB_TRIANGLE,
                    kHUD_CB_RAYDIFFEPSILON,
                    kHUD_CB_CONSERVATIVE_TEST,
-                   kHUD_CB_DIRECT_BILINEAR };
-
-struct SimpleShape {
-    std::string  name;
-    Scheme       scheme;
-    std::string  data;
-
-    SimpleShape() { }
-    SimpleShape( std::string const & idata, char const * iname, Scheme ischeme )
-        : name(iname), scheme(ischeme), data(idata) { }
-};
+                   kHUD_CB_DIRECT_BILINEAR,
+                   kHUD_CB_USE_SINGLE_CREASE_PATCH };
 
 static void setCamera();
-
-std::vector<SimpleShape> g_defaultShapes;
-OpenSubdiv::FarMesh<OpenSubdiv::OsdVertex> *g_farMesh = NULL;
-OsdHbrMesh *g_hbrMesh = NULL;
 
 int g_currentShape = 0;
 
 // GUI variables
-int   g_displayStyle = Scene::SHADED,
+int   g_displayStyle = Scene::PATCH_TYPE,
       g_drawBVH = false,
       g_blockFill = true,
       g_mbutton[3] = {0, 0, 0},
@@ -268,6 +241,12 @@ float g_renderTime = 0;
 // geometry
 std::vector<float> g_orgPositions;
 
+OpenSubdiv::Osd::CpuVertexBuffer *g_cpuVertexBuffer = NULL;
+OpenSubdiv::Osd::CpuComputeContext *g_computeContext = NULL;
+OpenSubdiv::Far::KernelBatchVector g_kernelBatches;
+OpenSubdiv::Far::PatchTables *g_patchTables = NULL;
+
+
 int g_level = 2;
 int g_preTess = 0;
 int g_preTessLevel = 1;
@@ -289,6 +268,7 @@ int g_useTriangle = 0;
 int g_useRayDiffEpsilon = 1;
 int g_conservativeTest = 1;
 int g_directBilinear = 0;
+int g_useSingleCreasePatch = 1;
 
 int g_animate = 0;
 int g_frame = 0;
@@ -318,129 +298,8 @@ std::vector<int> g_vertexParentIDs;
 std::vector<int> g_farToHbrVertexRemap;
 
 //------------------------------------------------------------------------------
-static void
-initializeShapes( ) {
 
-#include <shapes/catmark_extraordinary.h>
-    g_defaultShapes.push_back(SimpleShape(catmark_extraordinary, "catmark_extraordinary", kCatmark));
-
-#include <shapes/catmark_cube_corner0.h>
-    g_defaultShapes.push_back(SimpleShape(catmark_cube_corner0, "catmark_cube_corner0", kCatmark));
-
-#include <shapes/catmark_cube_corner1.h>
-    g_defaultShapes.push_back(SimpleShape(catmark_cube_corner1, "catmark_cube_corner1", kCatmark));
-
-#include <shapes/catmark_cube_corner2.h>
-    g_defaultShapes.push_back(SimpleShape(catmark_cube_corner2, "catmark_cube_corner2", kCatmark));
-
-#include <shapes/catmark_cube_corner3.h>
-    g_defaultShapes.push_back(SimpleShape(catmark_cube_corner3, "catmark_cube_corner3", kCatmark));
-
-#include <shapes/catmark_cube_corner4.h>
-    g_defaultShapes.push_back(SimpleShape(catmark_cube_corner4, "catmark_cube_corner4", kCatmark));
-
-#include <shapes/catmark_cube_creases0.h>
-    g_defaultShapes.push_back(SimpleShape(catmark_cube_creases0, "catmark_cube_creases0", kCatmark));
-
-#include <shapes/catmark_cube_creases1.h>
-    g_defaultShapes.push_back(SimpleShape(catmark_cube_creases1, "catmark_cube_creases1", kCatmark));
-
-#include <shapes/catmark_cube.h>
-    g_defaultShapes.push_back(SimpleShape(catmark_cube, "catmark_cube", kCatmark));
-
-#include <shapes/catmark_dart_edgecorner.h>
-    g_defaultShapes.push_back(SimpleShape(catmark_dart_edgecorner, "catmark_dart_edgecorner", kCatmark));
-
-#include <shapes/catmark_dart_edgeonly.h>
-    g_defaultShapes.push_back(SimpleShape(catmark_dart_edgeonly, "catmark_dart_edgeonly", kCatmark));
-
-#include <shapes/catmark_edgecorner.h>
-    g_defaultShapes.push_back(SimpleShape(catmark_edgecorner ,"catmark_edgecorner", kCatmark));
-
-#include <shapes/catmark_edgeonly.h>
-    g_defaultShapes.push_back(SimpleShape(catmark_edgeonly, "catmark_edgeonly", kCatmark));
-
-#include <shapes/catmark_chaikin0.h>
-    g_defaultShapes.push_back(SimpleShape(catmark_chaikin0, "catmark_chaikin0", kCatmark));
-
-#include <shapes/catmark_chaikin1.h>
-    g_defaultShapes.push_back(SimpleShape(catmark_chaikin1, "catmark_chaikin1", kCatmark));
-
-#include <shapes/catmark_fan.h>
-    g_defaultShapes.push_back(SimpleShape(catmark_fan, "catmark_fan", kCatmark));
-
-#include <shapes/catmark_gregory_test1.h>
-    g_defaultShapes.push_back(SimpleShape(catmark_gregory_test1, "catmark_gregory_test1", kCatmark));
-
-#include <shapes/catmark_gregory_test2.h>
-    g_defaultShapes.push_back(SimpleShape(catmark_gregory_test2, "catmark_gregory_test2", kCatmark));
-
-#include <shapes/catmark_gregory_test3.h>
-    g_defaultShapes.push_back(SimpleShape(catmark_gregory_test3, "catmark_gregory_test3", kCatmark));
-
-#include <shapes/catmark_gregory_test4.h>
-    g_defaultShapes.push_back(SimpleShape(catmark_gregory_test4, "catmark_gregory_test4", kCatmark));
-
-#include <shapes/catmark_hole_test1.h>
-    g_defaultShapes.push_back(SimpleShape(catmark_hole_test1, "catmark_hole_test1", kCatmark));
-
-#include <shapes/catmark_hole_test2.h>
-    g_defaultShapes.push_back(SimpleShape(catmark_hole_test2, "catmark_hole_test2", kCatmark));
-
-#include <shapes/catmark_pyramid_creases0.h>
-    g_defaultShapes.push_back(SimpleShape(catmark_pyramid_creases0, "catmark_pyramid_creases0", kCatmark));
-
-#include <shapes/catmark_pyramid_creases1.h>
-    g_defaultShapes.push_back(SimpleShape(catmark_pyramid_creases1, "catmark_pyramid_creases1", kCatmark));
-
-#include <shapes/catmark_pyramid.h>
-    g_defaultShapes.push_back(SimpleShape(catmark_pyramid, "catmark_pyramid", kCatmark));
-
-#include <shapes/catmark_tent_creases0.h>
-    g_defaultShapes.push_back(SimpleShape(catmark_tent_creases0, "catmark_tent_creases0", kCatmark));
-
-#include <shapes/catmark_tent_creases1.h>
-    g_defaultShapes.push_back(SimpleShape(catmark_tent_creases1, "catmark_tent_creases1", kCatmark));
-
-#include <shapes/catmark_tent.h>
-    g_defaultShapes.push_back(SimpleShape(catmark_tent, "catmark_tent", kCatmark));
-
-#include <shapes/catmark_torus.h>
-    g_defaultShapes.push_back(SimpleShape(catmark_torus, "catmark_torus", kCatmark));
-
-#include <shapes/catmark_torus_creases0.h>
-    g_defaultShapes.push_back(SimpleShape(catmark_torus_creases0, "catmark_torus_creases0", kCatmark));
-
-#include <shapes/catmark_square_hedit0.h>
-    g_defaultShapes.push_back(SimpleShape(catmark_square_hedit0, "catmark_square_hedit0", kCatmark));
-
-#include <shapes/catmark_square_hedit1.h>
-    g_defaultShapes.push_back(SimpleShape(catmark_square_hedit1, "catmark_square_hedit1", kCatmark));
-
-#include <shapes/catmark_square_hedit2.h>
-    g_defaultShapes.push_back(SimpleShape(catmark_square_hedit2, "catmark_square_hedit2", kCatmark));
-
-#include <shapes/catmark_square_hedit3.h>
-    g_defaultShapes.push_back(SimpleShape(catmark_square_hedit3, "catmark_square_hedit3", kCatmark));
-
-#include <shapes/catmark_square_hedit4.h>
-    g_defaultShapes.push_back(SimpleShape(catmark_square_hedit4, "catmark_square_hedit4", kCatmark));
-
-#include <shapes/catmark_bishop.h>
-    g_defaultShapes.push_back(SimpleShape(catmark_bishop, "catmark_bishop", kCatmark));
-
-#include <shapes/catmark_car.h>
-    g_defaultShapes.push_back(SimpleShape(catmark_car, "catmark_car", kCatmark));
-
-#include <shapes/catmark_helmet.h>
-    g_defaultShapes.push_back(SimpleShape(catmark_helmet, "catmark_helmet", kCatmark));
-
-#include <shapes/catmark_pawn.h>
-    g_defaultShapes.push_back(SimpleShape(catmark_pawn, "catmark_pawn", kCatmark));
-
-#include <shapes/catmark_rook.h>
-    g_defaultShapes.push_back(SimpleShape(catmark_rook, "catmark_rook", kCatmark));
-}
+#include "init_shapes.h"
 
 //------------------------------------------------------------------------------
 static void
@@ -590,7 +449,7 @@ inline float gamma_correct(float x, float inv_gamma) {
 void HDRToLDR(std::vector<unsigned char> &out, const std::vector<float> &in,
               int width, int height, float gamma = 2.2) {
   out.resize(width * height * 4);
-  if (in.size() != (width * height * 4)) {
+  if ((int)(in.size()) != (width * height * 4)) {
     fprintf(stderr, "sz mismatch.\n");
     exit(1); 
   }
@@ -653,22 +512,20 @@ updateGeom() {
 
     Stopwatch s;
     s.Start();
-    OpenSubdiv::OsdCpuComputeController controller;
-    controller.Refine(g_cpuComputeContext,
-                      g_farMesh->GetKernelBatches(),
-                      g_cpuVertexBuffer);
+    OpenSubdiv::Osd::CpuComputeController controller;
+    controller.Compute(g_computeContext,
+                       g_kernelBatches,
+                       g_cpuVertexBuffer);
     s.Stop();
     g_subdivTime = s.GetElapsed() * 1000.0f;
 
     g_scene.SetWatertight(g_watertight);
 
     s.Start();
+    
     g_scene.BezierConvert(g_cpuVertexBuffer->BindCpuBuffer(),
                           g_cpuVertexBuffer->GetNumVertices(),
-                          g_farMesh->GetPatchTables(),
-                          //g_vertexParentIDs,
-                          g_farToHbrVertexRemap,
-                          g_hbrMesh,
+                          g_patchTables,
                           g_displaceScale/*bound*/);
     s.Stop();
     g_convertTime = s.GetElapsed() * 1000.0f;
@@ -696,65 +553,53 @@ updateGeom() {
 
 //------------------------------------------------------------------------------
 static void
-createOsdMesh( const std::string &shape, int level ){
+createOsdMesh( const std::string &shapeStr, int level ){
 
     checkGLErrors("create osd enter");
     // generate Hbr representation from "obj" description
 
     Stopwatch s;
 
-    s.Start();
-    if (g_hbrMesh) delete g_hbrMesh;
-    g_hbrMesh = simpleHbr<OpenSubdiv::OsdVertex>(shape.c_str(), kCatmark, g_orgPositions);
-    s.Stop();
+    // create refiner
 
-    g_hbrTime = s.GetElapsed() * 1000.0f;
+    Shape * shape = Shape::parseObj(shapeStr.c_str(), kCatmark);
+    OpenSubdiv::Far::TopologyRefiner * refiner = 0;
+    {
+        OpenSubdiv::Sdc::Type type = GetSdcType(*shape);
+        OpenSubdiv::Sdc::Options options = GetSdcOptions(*shape);
 
-    delete g_farMesh;
-    delete g_cpuComputeContext;
-    delete g_cpuVertexBuffer;
+        refiner = OpenSubdiv::Far::TopologyRefinerFactory<Shape>::Create(type, options, *shape);
 
-    // create farmesh
-    s.Start();
-    OpenSubdiv::FarMeshFactory<OpenSubdiv::OsdVertex> meshFactory(g_hbrMesh, level, true);
-    g_farMesh = meshFactory.Create();
-    s.Stop();
-
-
-    // create index reduction table.
-    std::vector<int> remap = meshFactory.GetRemappingTable();
-    // for (int i = 0; i < remap.size(); ++i) {
-    //     printf("%d ", remap[i]);
-    // }
-//    printf("\n");
-
-    std::vector<int> parentIDs(remap.size());
-    std::vector<int> farToHbrVertexRemap(remap.size());
-    for (int i = 0; i < (int)remap.size(); ++i) {
-        OsdHbrVertex *vertex = g_hbrMesh->GetVertex(i);
-        int parentID = i;
-        do {
-            parentID = vertex->GetID();
-            vertex = vertex->GetParentVertex();
-        } while(vertex);
-
-        parentIDs[remap[i]] = remap[parentID];
-        farToHbrVertexRemap[remap[i]] = i;
+        assert(refiner);
     }
-    // for (int i = 0; i < parentIDs.size(); ++i) {
-    //     printf("%d ", parentIDs[i]);
-    // }
-    // printf("\n");
-    g_vertexParentIDs = parentIDs;
-    g_farToHbrVertexRemap = farToHbrVertexRemap;
 
+    // refine
+    refiner->RefineAdaptive(level, /*fullTopollogy=*/false, /*useSingleCrease=*/g_useSingleCreasePatch);
 
-    g_farTime = s.GetElapsed() * 1000.0f;
+    OpenSubdiv::Far::StencilTables const * vertexStencils=0;
+    {
+        OpenSubdiv::Far::StencilTablesFactory::Options options;
+        options.generateOffsets = true;
+        options.generateAllLevels = true;
 
-    g_cpuComputeContext = OpenSubdiv::OsdCpuComputeContext::Create(
-        g_farMesh->GetSubdivisionTables(), g_farMesh->GetVertexEditTables());
-    g_cpuVertexBuffer = OpenSubdiv::OsdCpuVertexBuffer::Create(
-        3, g_farMesh->GetNumVertices());
+        vertexStencils = OpenSubdiv::Far::StencilTablesFactory::Create(*refiner, options);
+        assert(vertexStencils);
+    }
+
+    // create contexts
+    g_computeContext = OpenSubdiv::Osd::CpuComputeContext::Create(vertexStencils);
+    g_kernelBatches.clear();
+    g_kernelBatches.push_back(OpenSubdiv::Far::StencilTablesFactory::Create(*vertexStencils));
+
+    OpenSubdiv::Far::PatchTablesFactory::Options options;
+    options.useSingleCreasePatch = g_useSingleCreasePatch;
+    options.maxIsolationLevel = level;
+    g_patchTables = OpenSubdiv::Far::PatchTablesFactory::Create(*refiner, options);
+
+    int numVerts = vertexStencils->GetNumStencils() + vertexStencils->GetNumControlVertices();
+    g_cpuVertexBuffer = OpenSubdiv::Osd::CpuVertexBuffer::Create(3, numVerts);
+
+    g_orgPositions = std::vector<float>(shape->verts);
 
     // compute model bounding
     float min[3] = { FLT_MAX,  FLT_MAX,  FLT_MAX};
@@ -930,12 +775,8 @@ display() {
 
 //------------------------------------------------------------------------------
 static void
-#if GLFW_VERSION_MAJOR>=3
 motion(GLFWwindow *, double dx, double dy) {
     int x=(int)dx, y=(int)dy;
-#else
-motion(int x, int y) {
-#endif
 
     if (g_hud.MouseCapture()) {
         // check gui (for slider)
@@ -966,11 +807,7 @@ motion(int x, int y) {
 
 //------------------------------------------------------------------------------
 static void
-#if GLFW_VERSION_MAJOR>=3
 mouse(GLFWwindow *, int button, int state, int mods) {
-#else
-mouse(int button, int state) {
-#endif
 
     if (state == GLFW_RELEASE) {
         g_hud.MouseRelease();
@@ -1017,18 +854,12 @@ uninitGL() {
     glDeleteVertexArrays(1, &g_vaoBVH);
     glDeleteBuffers(1, &g_vbo);
 
-    delete g_farMesh;
-    delete g_cpuVertexBuffer;
-    delete g_cpuComputeContext;
+    delete g_computeContext;
 }
 
 //------------------------------------------------------------------------------
 static void
-#if GLFW_VERSION_MAJOR>=3
 reshape(GLFWwindow *, int width, int height) {
-#else
-reshape(int width, int height) {
-#endif
 
     g_width = width;
     g_height = height;
@@ -1036,10 +867,8 @@ reshape(int width, int height) {
     g_frameBufferWidth = width;
     g_frameBufferHeight = height;
 
-#if GLFW_VERSION_MAJOR>=3
     // window size might not match framebuffer size on a high DPI display
     glfwGetWindowSize(g_window, &g_width, &g_height);
-#endif
     g_hud.Rebuild(g_width, g_height);
 
     setCamera();
@@ -1047,22 +876,11 @@ reshape(int width, int height) {
 }
 
 //------------------------------------------------------------------------------
-#if GLFW_VERSION_MAJOR>=3
 void windowClose(GLFWwindow*) {
     g_running = false;
 }
-#else
-int windowClose() {
-    g_running = false;
-    return GL_TRUE;
-}
-#endif
 
 //------------------------------------------------------------------------------
-
-#if GLFW_VERSION_MAJOR<3
-#error "please use glfw3."
-#endif
 
 static void
 keyboardChar(GLFWwindow *, unsigned int codepoint)
@@ -1232,6 +1050,10 @@ callbackCheckBox(bool checked, int button)
         g_directBilinear = checked;
         startRender();
         break;
+    case kHUD_CB_USE_SINGLE_CREASE_PATCH:
+        g_useSingleCreasePatch = checked;
+        rebuildOsdMesh();
+        break;
     }
     display();
 }
@@ -1239,10 +1061,8 @@ callbackCheckBox(bool checked, int button)
 static void
 initHUD()
 {
-#if GLFW_VERSION_MAJOR>=3
     // window size might not match framebuffer size on a high DPI display
     glfwGetWindowSize(g_window, &g_width, &g_height);
-#endif
     g_hud.Init(g_width, g_height);
 
     int y = 10;
@@ -1279,6 +1099,9 @@ initHUD()
     g_hud.AddCheckBox("Direct bilinear (X)", g_directBilinear != 0,
                       10, y, callbackCheckBox, kHUD_CB_DIRECT_BILINEAR, 'x');y+=20;
 
+    g_hud.AddCheckBox("Single-Crease Patch (S)", g_useSingleCreasePatch != 0,
+                      10, y, callbackCheckBox, kHUD_CB_USE_SINGLE_CREASE_PATCH, 's');y+=20;
+
     g_hud.AddSlider("Epsilon Level", 1, 16, g_epsLevel,
                     10, y, 20, true, callbackSlider, -2);y+=30;
     g_hud.AddSlider("Max Level", 0, 16, g_maxLevel,
@@ -1297,7 +1120,6 @@ initHUD()
     g_hud.AddPullDownButton(kernel_pulldown, "Osd float", 1, g_intersectKernel == 1);
     g_hud.AddPullDownButton(kernel_pulldown, "Osd sse", 2, g_intersectKernel == 2);
     g_hud.AddPullDownButton(kernel_pulldown, "Osd double", 3, g_intersectKernel == 3);
-    g_hud.AddPullDownButton(kernel_pulldown, "OpenCL (WIP)", 4, g_intersectKernel == 4);
 
     int shading_pulldown = g_hud.AddPullDown("Shading (W)", 200, 10, 250, callbackDisplayStyle, 'w');
     g_hud.AddPullDownButton(shading_pulldown, "Shaded", Scene::SHADED,
@@ -1392,18 +1214,21 @@ idle() {
 
     g_renderTime = -1.0f;
 
-    int index = g_step*g_step - g_stepIndex;
+    if (g_blockFill) {
+        int index = g_step*g_step - g_stepIndex;
+        index = ((index>>0)&1) * (g_step*g_step>>1)
+            + ((index>>1)&1) * (g_step>>1)
+            + ((index>>2)&1) * (g_step*g_step>>2)
+            + ((index>>3)&1) * (g_step>>2)
+            + ((index>>4)&1) * (g_step*g_step>>3)
+            + ((index>>5)&1) * (g_step>>3);
 
-    index = ((index>>0)&1) * (g_step*g_step>>1)
-          + ((index>>1)&1) * (g_step>>1)
-          + ((index>>2)&1) * (g_step*g_step>>2)
-          + ((index>>3)&1) * (g_step>>2)
-          + ((index>>4)&1) * (g_step*g_step>>3)
-          + ((index>>5)&1) * (g_step>>3);
-
-    g_scene.Render(index, g_step);
-
-    --g_stepIndex;
+        g_scene.Render(index, g_step);
+        --g_stepIndex;
+    } else {
+        g_scene.Render();
+        g_stepIndex = 0;
+    }
 
     if (g_stepIndex == 0) {
         g_renderTimer.Stop();
@@ -1415,7 +1240,7 @@ idle() {
 
 //------------------------------------------------------------------------------
 static void
-callbackError(OpenSubdiv::OsdErrorType err, const char *message)
+callbackError(OpenSubdiv::Osd::ErrorType err, const char *message)
 {
     printf("OsdError: %d\n", err);
     printf("%s", message);
@@ -1425,11 +1250,9 @@ callbackError(OpenSubdiv::OsdErrorType err, const char *message)
 static void
 setGLCoreProfile()
 {
-#if GLFW_VERSION_MAJOR>=3
     #define glfwOpenWindowHint glfwWindowHint
     #define GLFW_OPENGL_VERSION_MAJOR GLFW_CONTEXT_VERSION_MAJOR
     #define GLFW_OPENGL_VERSION_MINOR GLFW_CONTEXT_VERSION_MINOR
-#endif
 
     glfwOpenWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 #if not defined(__APPLE__)
@@ -1464,12 +1287,12 @@ int main(int argc, char ** argv)
                 ss << ifs.rdbuf();
                 ifs.close();
                 str = ss.str();
-                g_defaultShapes.push_back(SimpleShape(str.c_str(), argv[1], kCatmark));
+                g_defaultShapes.push_back(ShapeDesc(argv[1], str.c_str(), kCatmark));
             }
         }
     }
-    initializeShapes();
-    OsdSetErrorCallback(callbackError);
+    initShapes();
+    OpenSubdiv::Osd::SetErrorCallback(callbackError);
 
     if (not glfwInit()) {
         printf("Failed to initialize GLFW\n");
@@ -1483,7 +1306,6 @@ int main(int argc, char ** argv)
     setGLCoreProfile();
 #endif
 
-#if GLFW_VERSION_MAJOR>=3
     if (not (g_window=glfwCreateWindow(g_width, g_height, windowTitle, NULL, NULL))) {
         printf("Failed to open window.\n");
         glfwTerminate();
@@ -1500,19 +1322,6 @@ int main(int argc, char ** argv)
     glfwSetCursorPosCallback(g_window, motion);
     glfwSetMouseButtonCallback(g_window, mouse);
     glfwSetWindowCloseCallback(g_window, windowClose);
-#else
-    if (glfwOpenWindow(g_width, g_height, 8, 8, 8, 8, 24, 8, GLFW_WINDOW) == GL_FALSE) {
-        printf("Failed to open window.\n");
-        glfwTerminate();
-        return 1;
-    }
-    glfwSetWindowTitle(windowTitle);
-    glfwSetKeyCallback(keyboard);
-    glfwSetMousePosCallback(motion);
-    glfwSetMouseButtonCallback(mouse);
-    glfwSetWindowSizeCallback(reshape);
-    glfwSetWindowCloseCallback(windowClose);
-#endif
 
 
 #if defined(OSD_USES_GLEW)
@@ -1538,6 +1347,7 @@ int main(int argc, char ** argv)
     rebuildOsdMesh();
 
     g_image.resize(g_width*g_height*4);
+    g_scene.SetShadeMode((Scene::ShadeMode)g_displayStyle);
 
     while (g_running) {
         idle();

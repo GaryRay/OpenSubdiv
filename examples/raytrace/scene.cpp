@@ -7,7 +7,6 @@
 #include <fstream>
 #include <sstream>
 
-#define NEED_HBR_FACE_INDEX
 #include "scene.h"
 #include "convert_bezier.h"
 #include "context.h"
@@ -23,6 +22,7 @@
 #include "osdutil/bezier.h"
 #include "osdutil/bezierIntersect.h"
 #include "osdutil/math.h"
+#include "../common/patchColors.h"
 
 #ifdef OPENSUBDIV_HAS_OPENCL
 #include "clTracer.h"
@@ -66,41 +66,6 @@ struct Bezier {
     OsdUtil::vec3f cp[4];
 };
 
-static float const *getAdaptivePatchColor(OpenSubdiv::FarPatchTables::Descriptor const & desc)
-{
-    static float _colors[4][5][4] = {{{1.0f,  1.0f,  1.0f,  1.0f},   // regular
-                                      {0.8f,  0.0f,  0.0f,  1.0f},   // boundary
-                                      {0.0f,  1.0f,  0.0f,  1.0f},   // corner
-                                      {1.0f,  1.0f,  0.0f,  1.0f},   // gregory
-                                      {1.0f,  0.5f,  0.0f,  1.0f}},  // gregory boundary
-
-                                     {{0.0f,  1.0f,  1.0f,  1.0f},   // regular pattern 0
-                                      {0.0f,  0.5f,  1.0f,  1.0f},   // regular pattern 1
-                                      {0.0f,  0.5f,  0.5f,  1.0f},   // regular pattern 2
-                                      {0.5f,  0.0f,  1.0f,  1.0f},   // regular pattern 3
-                                      {1.0f,  0.5f,  1.0f,  1.0f}},  // regular pattern 4
- 
-                                     {{0.0f,  0.0f,  0.75f, 1.0f},   // boundary pattern 0
-                                      {0.0f,  0.2f,  0.75f, 1.0f},   // boundary pattern 1
-                                      {0.0f,  0.4f,  0.75f, 1.0f},   // boundary pattern 2
-                                      {0.0f,  0.6f,  0.75f, 1.0f},   // boundary pattern 3
-                                      {0.0f,  0.8f,  0.75f, 1.0f}},  // boundary pattern 4
- 
-                                     {{0.25f, 0.25f, 0.25f, 1.0f},   // corner pattern 0
-                                      {0.25f, 0.25f, 0.25f, 1.0f},   // corner pattern 1
-                                      {0.25f, 0.25f, 0.25f, 1.0f},   // corner pattern 2
-                                      {0.25f, 0.25f, 0.25f, 1.0f},   // corner pattern 3
-                                      {0.25f, 0.25f, 0.25f, 1.0f}}}; // corner pattern 4
-
-    typedef OpenSubdiv::FarPatchTables FPT;
-
-    if (desc.GetPattern()==FPT::NON_TRANSITION) {
-        return _colors[0][(int)(desc.GetType()-FPT::REGULAR)];
-    } else {
-        return _colors[(int)(desc.GetType()-FPT::REGULAR)+1][(int)desc.GetPattern()-1];
-    }
-}
-
 std::string
 Scene::Config::Dump() const
 {
@@ -122,33 +87,27 @@ Scene::Scene() : _watertight(false), _vbo(0)
 #ifdef OPENSUBDIV_HAS_TBB
     static tbb::task_scheduler_init init;
 #endif
-#ifdef OPENSUBDIV_HAS_OPENCL
-    _clTracer = new CLTracer();
-#endif
 }
 
 Scene::~Scene()
 {
     if (_vbo) glDeleteBuffers(1, &_vbo);
-#ifdef OPENSUBDIV_HAS_OPENCL
-    delete _clTracer;
-#endif
 }
 
 void
 Scene::BezierConvert(float *inVertices, int numVertices,
-                     OpenSubdiv::FarPatchTables const *patchTables,
-                     std::vector<int> const &farToHbr,
-                     OsdHbrMesh *hbrMesh,
+                     OpenSubdiv::Far::PatchTables const *patchTables,
                      float displaceBound)
 {
     using namespace OpenSubdiv;
 
     // convert to mesh
-    FarPatchTables::PatchArrayVector const &patchArrays =
+    Far::PatchTables::PatchArrayVector const &patchArrays =
         patchTables->GetPatchArrayVector();
-    FarPatchTables::PatchParamTable const &patchParam =
+    Far::PatchTables::PatchParamTable const &srcPatchParam =
         patchTables->GetPatchParamTable();
+
+    Far::PatchTables::PatchParamTable patchParam;
 
     // centering/normalize vertices.
     std::vector<float> vertices;
@@ -192,33 +151,39 @@ Scene::BezierConvert(float *inVertices, int numVertices,
 
     int gregoryBegin = -1, gregoryEnd = 0;
     // iterate patch types.
-    for (FarPatchTables::PatchArrayVector::const_iterator it = patchArrays.begin();
+    for (Far::PatchTables::PatchArrayVector::const_iterator it = patchArrays.begin();
          it != patchArrays.end(); ++it) {
 
         int numPatches = 0;
-        FarPatchTables::Descriptor desc = it->GetDescriptor();
+        Far::PatchTables::Descriptor desc = it->GetDescriptor();
         VERBOSE("TransitionType = %d\n", desc.GetPattern());
 
         switch(desc.GetType()) {
-        case FarPatchTables::REGULAR:
+        case Far::PatchTables::REGULAR:
             numPatches = convertRegular(_mesh.bezierVertices,
                                         _mesh.bezierBounds,
                                         cpIndices,
                                         &vertices[0], patchTables, *it);
             break;
-        case FarPatchTables::BOUNDARY:
+        case Far::PatchTables::SINGLE_CREASE:
+            numPatches = convertSingleCrease(_mesh.bezierVertices,
+                                             _mesh.bezierBounds,
+                                             cpIndices,
+                                             &vertices[0], patchTables, *it);
+            break;
+        case Far::PatchTables::BOUNDARY:
             numPatches = convertBoundary(_mesh.bezierVertices,
                                          _mesh.bezierBounds,
                                          cpIndices,
                                          &vertices[0], patchTables, *it);
             break;
-        case FarPatchTables::CORNER:
+        case Far::PatchTables::CORNER:
             numPatches = convertCorner(_mesh.bezierVertices,
                                        _mesh.bezierBounds,
                                        cpIndices,
                                        &vertices[0], patchTables, *it);
             break;
-        case FarPatchTables::GREGORY:
+        case Far::PatchTables::GREGORY:
             numPatches = convertGregory(_mesh.bezierVertices,
                                         _mesh.bezierBounds,
                                         cpIndices,
@@ -226,7 +191,7 @@ Scene::BezierConvert(float *inVertices, int numVertices,
             gregoryBegin = numTotalPatches;
             gregoryEnd = numTotalPatches + numPatches;
             break;
-        case FarPatchTables::GREGORY_BOUNDARY:
+        case Far::PatchTables::GREGORY_BOUNDARY:
             numPatches = convertBoundaryGregory(_mesh.bezierVertices,
                                                 _mesh.bezierBounds,
                                                 cpIndices,
@@ -247,7 +212,21 @@ Scene::BezierConvert(float *inVertices, int numVertices,
                 _mesh.colors.push_back(color[2]);
             }
         }
+
+        if (desc.GetType() == Far::PatchTables::SINGLE_CREASE) {
+            for (int i = 0; i < numPatches; ++i) {
+                patchParam.push_back(srcPatchParam[it->GetPatchIndex() + i]);
+                patchParam.push_back(srcPatchParam[it->GetPatchIndex() + i]);
+            }
+        } else {
+            for (int i = 0; i < numPatches; ++i) {
+                patchParam.push_back(srcPatchParam[it->GetPatchIndex() + i]);
+            }
+        }
     }
+
+    printf("%d %d\n", (int)patchParam.size(),
+           (int)srcPatchParam.size());
 
     // for (int i = 0; i < hbrMesh->GetNumFaces(); ++i) {
     //     OsdHbrFace *f = hbrMesh->GetFace(i);
@@ -266,7 +245,7 @@ Scene::BezierConvert(float *inVertices, int numVertices,
         std::map<Edge, Bezier > edgeBeziers;
 
         for (int i = 0; i < numTotalPatches; ++i) {
-            VERBOSE("\n============ patch %d (HBR : %d)==============\n", i, hbrMesh->GetFace(pathcParam[i].hbrFaceIndex)->GetID());
+//            VERBOSE("\n============ patch %d (HBR : %d)==============\n", i, hbrMesh->GetFace(pathcParam[i].hbrFaceIndex)->GetID());
             int parentQuad[] = { 0, 2, 1, 3 };
 
             int edgeVerts[][4] = { {0, 1, 2, 3}, {0, 4, 8, 12}, {3, 7, 11, 15}, {12, 13, 14, 15} };
@@ -282,7 +261,7 @@ Scene::BezierConvert(float *inVertices, int numVertices,
                 if (parent < 0) continue;
                 // parent mapping
                 // parent = vertexParentIDs[parent];
-                parent = farToHbr[parent];
+                //NO_HBRparent = farToHbr[parent];
                 //VERBOSE("%d/%d  %d: %f %f %f\n", i, cornerQuad[j], parent, v[0], v[1], v[2]);
 
                 // for edge verts
@@ -295,8 +274,8 @@ Scene::BezierConvert(float *inVertices, int numVertices,
                 int ep1 = cpIndices[i*4 + edgeParents[j][1]];
                 //ep0 = vertexParentIDs[ep0];
                 //ep1 = vertexParentIDs[ep1];
-                ep0 = farToHbr[ep0];
-                ep1 = farToHbr[ep1];
+//NO_HBR                ep0 = farToHbr[ep0];
+//                ep1 = farToHbr[ep1];
                 Edge edge(ep0, ep1);
                 VERBOSE("(%d, %d) (%f, %f, %f)-(%f, %f, %f)\n", ep0, ep1,
                        e0[0], e0[1], e0[2],
@@ -322,6 +301,8 @@ Scene::BezierConvert(float *inVertices, int numVertices,
  +-------------+ +-------------+ +-------------+ +-------------+ +-------------+
 */
         // save wcp flags
+
+#if 0 // NO_HBR
         for (int i = 0; i < numTotalPatches; ++i) {
             int hbrFace = patchParam[i].hbrFaceIndex;
             OsdHbrFace *face = hbrMesh->GetFace(hbrFace);
@@ -343,7 +324,9 @@ Scene::BezierConvert(float *inVertices, int numVertices,
             }
             _mesh.wcpFlags[i] = wcpFlag;
         }
+#endif
 
+#if 0 //NO_HBR
         // different level subdivision
         // water-tight critical
         for (int i = 0; i < numTotalPatches; ++i) {
@@ -512,12 +495,13 @@ Scene::BezierConvert(float *inVertices, int numVertices,
                 }
             }
         }
+#endif
     }
 
 
     _mesh.numTriangles = 0;
     _mesh.numBezierPatches = numTotalPatches;
-    _mesh.patchParams = &(patchParam[0]);
+    _mesh.patchParams = patchParam;
 
     _mesh.displaceBound = displaceBound;
 
@@ -558,7 +542,7 @@ Scene::Tessellate(int level)
     std::vector<float> colors;
     for (size_t patchIndex = 0; patchIndex < _mesh.numBezierPatches; ++patchIndex) {
 
-        const OpenSubdiv::FarPatchParam &param = _mesh.patchParams[patchIndex];
+        const OpenSubdiv::Far::PatchParam &param = _mesh.patchParams[patchIndex];
         unsigned int bits = param.bitField.field;
         int patchLevel = (bits & 0xf);
         int div = 1 << std::max(0, level-patchLevel);
@@ -624,12 +608,6 @@ Scene::Build()
     printf("    # of leaf   nodes: %d\n", stats.numLeafNodes);
     printf("    # of branch nodes: %d\n", stats.numBranchNodes);
     printf("  Max tree depth   : %d\n", stats.maxTreeDepth);
-
-#ifdef OPENSUBDIV_HAS_OPENCL
-    _clTracer->SetBVH(_accel);
-    _clTracer->SetBezierVertices(&_mesh.bezierVertices[0],
-                                 _mesh.bezierVertices.size()*sizeof(float));
-#endif
 }
 
 void
@@ -800,34 +778,11 @@ Scene::SetConfig(Config const &config)
     _accel.SetUseRayDiffEpsilon(config.useRayDiffEpsilon);
     _accel.SetConservativeTest(config.conservativeTest);
     _accel.SetDirectBilinear(config.directBilinear);
-
-#ifdef OPENSUBDIV_HAS_OPENCL
-    if (_accel.IsGpuKernel()) {
-        _clTracer->SetImageSize(_width, _height);
-    }
-#endif
 }
 
 void
 Scene::Render(int stepIndex, int step)
 {
-    if (_accel.IsGpuKernel()) {
-
-#ifdef OPENSUBDIV_HAS_OPENCL
-        float u = 0.5f, v = 0.5f;
-        CLRay *rays = new CLRay[_width*_height/step];
-        CLRay *r = rays;
-        for (int y = stepIndex/step; y < _height; y += step) {
-            for (int x = stepIndex%step; x < _width; x += step) {
-                Ray ray = _camera.GenerateRay(x + u, y + v);
-                *r++ = CLRay(ray, y*_width+x);
-            }
-        }
-        _clTracer->Traverse(rays, step, _image);
-        delete[] rays;
-#endif
-
-    } else {
 #ifdef OPENSUBDIV_HAS_TBB
     tbb::blocked_range<int> range(0, _height/step, 1);
 
@@ -842,7 +797,6 @@ Scene::Render(int stepIndex, int step)
     _traverseTime += GetTraverseTime() * 1000;
     _intersectTime += GetIntersectTime() * 1000;
     _shadeTime += GetShadeTime() * 1000;
-    }
 }
 
 void
@@ -916,7 +870,7 @@ Scene::recordMetric(int id, std::ostream &out, Config const &config)
 void
 Scene::RenderReport()
 {
-    int iteration = 4;
+    int iteration = 10;
 
     _traverseTime = 0;
     _intersectTime = 0;
@@ -928,12 +882,12 @@ Scene::RenderReport()
         Render();
     }
     s.Stop();
-    float renderTime = s.GetElapsed() * 1000.0f; //ms
+    float renderTime = s.GetElapsed();
 
     std::cout << "["
-        << _traverseTime/iteration << ", "
-        << _intersectTime/iteration << ", "
-        << _shadeTime/iteration << ", "
+        << _traverseTime/1000.0/iteration << ", "
+        << _intersectTime/1000.0/iteration << ", "
+        << _shadeTime/1000.0/iteration << ", "
         << renderTime/iteration << "], \n";
 }
 
@@ -1019,10 +973,10 @@ Scene::MakeReport(const char *filename)
     }
 
 #if 1
-    for (int cropUV = 0; cropUV < sizeof(cropUVs)/sizeof(cropUVs[0]); ++cropUV) {
-        for (int bezierClip = 0; bezierClip < sizeof(bezierClips)/sizeof(bezierClips[0]); ++bezierClip) {
-            for (int eps = 0; eps < sizeof(epsLevels)/sizeof(epsLevels[0]); ++eps) {
-                for (int maxLevel = 0; maxLevel < sizeof(maxLevels)/sizeof(maxLevels[0]); ++maxLevel) {
+    for (size_t cropUV = 0; cropUV < sizeof(cropUVs)/sizeof(cropUVs[0]); ++cropUV) {
+        for (size_t bezierClip = 0; bezierClip < sizeof(bezierClips)/sizeof(bezierClips[0]); ++bezierClip) {
+            for (size_t eps = 0; eps < sizeof(epsLevels)/sizeof(epsLevels[0]); ++eps) {
+                for (size_t maxLevel = 0; maxLevel < sizeof(maxLevels)/sizeof(maxLevels[0]); ++maxLevel) {
                     Config config;
                     config.cropUV = cropUVs[cropUV];
                     config.bezierClip = bezierClips[bezierClip];

@@ -1186,7 +1186,7 @@ bool TestLeafNode(Intersection &isect, // [inout]
       const real *bv = &mesh->bezierVertices[faceIdx * 16 * 3];
       int wcpFlag = conservativeTest ? mesh->wcpFlags[faceIdx] : 0;
 
-      const OpenSubdiv::FarPatchParam &param = mesh->patchParams[faceIdx];
+      const OpenSubdiv::Far::PatchParam &param = mesh->patchParams[faceIdx];
       unsigned int bits = param.bitField.field;
       int level = (bits & 0xf);
 
@@ -1253,7 +1253,7 @@ void BuildIntersection(Intersection &isect, const Mesh *mesh, Ray &ray)
         // remap ptex index
 
 
-        const OpenSubdiv::FarPatchParam &param = mesh->patchParams[isect.faceID];
+        const OpenSubdiv::Far::PatchParam &param = mesh->patchParams[isect.faceID];
         unsigned int bits = param.bitField.field;
         isect.patchID = isect.faceID;
         isect.faceID = param.faceIndex;

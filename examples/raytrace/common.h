@@ -2,7 +2,7 @@
 #define __COMMON_H__
 
 #ifdef NDEBUG
-#define ENABLE_TRACE_PRINT (1)
+#define ENABLE_TRACE_PRINT (0)
 #define ENABLE_DEBUG_PRINT (0)
 #else
 #define ENABLE_TRACE_PRINT (1)

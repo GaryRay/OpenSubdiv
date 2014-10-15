@@ -3,17 +3,9 @@
 
 #include "bvh_accel.h"
 #include "camera.h"
-#include <far/meshFactory.h>
 #include <far/patchTables.h>
 #include <osd/opengl.h>
 #include <osd/vertex.h>
-
-class CLTracer;
-
-typedef OpenSubdiv::HbrMesh<OpenSubdiv::OsdVertex>     OsdHbrMesh;
-typedef OpenSubdiv::HbrVertex<OpenSubdiv::OsdVertex>   OsdHbrVertex;
-typedef OpenSubdiv::HbrFace<OpenSubdiv::OsdVertex>     OsdHbrFace;
-typedef OpenSubdiv::HbrHalfedge<OpenSubdiv::OsdVertex> OsdHbrHalfedge;
 
 class Scene
 {
@@ -58,9 +50,7 @@ public:
     ~Scene();
 
     void BezierConvert(float *vertices, int numVertices,
-                       OpenSubdiv::FarPatchTables const *patchTables,
-                       std::vector<int> const &farToHbr,
-                       OsdHbrMesh *hbrMesh,
+                       OpenSubdiv::Far::PatchTables const *patchTables,
                        float displaceBound);
 
     void Tessellate(int level);
@@ -143,7 +133,6 @@ private:
     int _width;
     int _height;
     float *_image;
-    CLTracer *_clTracer;
 };
 
 #endif  // SCENE_H
