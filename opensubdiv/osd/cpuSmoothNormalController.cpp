@@ -30,6 +30,8 @@
 namespace OpenSubdiv {
 namespace OPENSUBDIV_VERSION {
 
+namespace Osd {
+
 inline void
 cross(float *n, const float *p0, const float *p1, const float *p2) {
 
@@ -45,10 +47,10 @@ cross(float *n, const float *p0, const float *p1, const float *p2) {
     n[2] *= rn;
 }
 
-void OsdCpuSmoothNormalController::_smootheNormals(
-    OsdCpuSmoothNormalContext * context) {
+void CpuSmoothNormalController::_smootheNormals(
+    CpuSmoothNormalContext * context) {
 
-    OsdVertexBufferDescriptor const & iDesc = context->GetInputVertexDescriptor(),
+    VertexBufferDescriptor const & iDesc = context->GetInputVertexDescriptor(),
                                     & oDesc = context->GetOutputVertexDescriptor();
 
     assert(iDesc.length==3 and oDesc.length==3);
@@ -56,24 +58,24 @@ void OsdCpuSmoothNormalController::_smootheNormals(
     float const * iBuffer = context->GetCurrentInputVertexBuffer() + iDesc.offset;
     float * oBuffer = context->GetCurrentOutputVertexBuffer() + oDesc.offset;
 
-    std::vector<unsigned int> const & verts = context->GetControlVertices();
+    Far::PatchTables::PTable const & cvs = context->GetControlVertices();
 
-    FarPatchTables::PatchArrayVector const & parrays = context->GetPatchArrayVector();
+    Far::PatchTables::PatchArrayVector const & parrays = context->GetPatchArrayVector();
 
-    if (verts.empty() or parrays.empty() or (not iBuffer) or (not oBuffer)) {
+    if (cvs.empty() or parrays.empty() or (not iBuffer) or (not oBuffer)) {
         return;
     }
 
     for (int i=0; i<(int)parrays.size(); ++i) {
 
-        FarPatchTables::PatchArray const & pa = parrays[i];
+        Far::PatchTables::PatchArray const & pa = parrays[i];
 
-        FarPatchTables::Type type = pa.GetDescriptor().GetType();
+        Far::PatchTables::Type type = pa.GetDescriptor().GetType();
 
 
-        if (type==FarPatchTables::QUADS or type==FarPatchTables::TRIANGLES) {
+        if (type==Far::PatchTables::QUADS or type==Far::PatchTables::TRIANGLES) {
 
-            int nv = FarPatchTables::Descriptor::GetNumControlVertices(type);
+            int nv = Far::PatchTables::Descriptor::GetNumControlVertices(type);
 
             // if necessary, reset all normal values to 0
             if (context->GetResetMemory()) {
@@ -86,9 +88,9 @@ void OsdCpuSmoothNormalController::_smootheNormals(
             for (int j=0, idx=pa.GetVertIndex(); j<(int)pa.GetNumPatches(); ++j, idx+=nv) {
 
 
-                float const * p0 = iBuffer + verts[idx+0]*iDesc.stride,
-                            * p1 = iBuffer + verts[idx+1]*iDesc.stride,
-                            * p2 = iBuffer + verts[idx+2]*iDesc.stride;
+                float const * p0 = iBuffer + cvs[idx+0]*iDesc.stride,
+                            * p1 = iBuffer + cvs[idx+1]*iDesc.stride,
+                            * p2 = iBuffer + cvs[idx+2]*iDesc.stride;
 
                 // compute face normal
                 float n[3];
@@ -97,7 +99,7 @@ void OsdCpuSmoothNormalController::_smootheNormals(
                 // add normal to all vertices of the face
                 for (int k=0; k<nv; ++k) {
 
-                    float * dst = oBuffer + verts[idx+k]*oDesc.stride;
+                    float * dst = oBuffer + cvs[idx+k]*oDesc.stride;
 
                     dst[0] += n[0];
                     dst[1] += n[1];
@@ -109,15 +111,17 @@ void OsdCpuSmoothNormalController::_smootheNormals(
 
 }
 
-OsdCpuSmoothNormalController::OsdCpuSmoothNormalController() {
+CpuSmoothNormalController::CpuSmoothNormalController() {
 }
 
-OsdCpuSmoothNormalController::~OsdCpuSmoothNormalController() {
+CpuSmoothNormalController::~CpuSmoothNormalController() {
 }
 
 void
-OsdCpuSmoothNormalController::Synchronize() {
+CpuSmoothNormalController::Synchronize() {
 }
+
+}  // end namespace Osd
 
 }  // end namespace OPENSUBDIV_VERSION
 }  // end namespace OpenSubdiv

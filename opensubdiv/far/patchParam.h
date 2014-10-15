@@ -27,10 +27,14 @@
 
 #include "../version.h"
 
+#include "../far/types.h"
+
 #include <cassert>
 
 namespace OpenSubdiv {
 namespace OPENSUBDIV_VERSION {
+
+namespace Far {
 
 /// \brief Local patch parameterization descriptor
 ///
@@ -54,12 +58,8 @@ namespace OPENSUBDIV_VERSION {
 /// Note : the bitfield is not expanded in the struct due to differences in how
 ///        GPU & CPU compilers pack bit-fields and endian-ness.
 ///
-struct FarPatchParam {
-    unsigned int faceIndex:32; // Ptex face index
-
-#ifdef NEED_HBR_FACE_INDEX
-    unsigned int hbrFaceIndex;
-#endif
+struct PatchParam {
+    Index faceIndex:32; // Ptex face index
     
     struct BitField {
         unsigned int field:32;
@@ -135,7 +135,7 @@ struct FarPatchParam {
     /// @param depth subdivision level of the patch
     /// @param nonquad true if the root face is not a quad
     ///
-    void Set( unsigned int faceid, short u, short v, unsigned char rots, unsigned char depth, bool nonquad ) {
+    void Set( Index faceid, short u, short v, unsigned char rots, unsigned char depth, bool nonquad ) {
         faceIndex = faceid;
         bitField.Set(u,v,rots,depth,nonquad);
     }
@@ -148,7 +148,7 @@ struct FarPatchParam {
 };
 
 inline float 
-FarPatchParam::BitField::GetParamFraction( ) const {
+PatchParam::BitField::GetParamFraction( ) const {
     if (NonQuadRoot()) {
         return 1.0f / float( 1 << (GetDepth()-1) );
     } else {
@@ -157,7 +157,7 @@ FarPatchParam::BitField::GetParamFraction( ) const {
 }
 
 inline void
-FarPatchParam::BitField::Normalize( float & u, float & v ) const {
+PatchParam::BitField::Normalize( float & u, float & v ) const {
 
     float frac = GetParamFraction();
 
@@ -171,7 +171,7 @@ FarPatchParam::BitField::Normalize( float & u, float & v ) const {
 }
 
 inline void 
-FarPatchParam::BitField::Rotate( float & u, float & v ) const {
+PatchParam::BitField::Rotate( float & u, float & v ) const {
     switch( GetRotation() ) {
          case 0 : break;
          case 1 : { float tmp=v; v=1.0f-u; u=tmp; } break;
@@ -181,6 +181,8 @@ FarPatchParam::BitField::Rotate( float & u, float & v ) const {
              assert(0);
     }
 }
+
+} // end namespace Far
 
 } // end namespace OPENSUBDIV_VERSION
 using namespace OPENSUBDIV_VERSION;
