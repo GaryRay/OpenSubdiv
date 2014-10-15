@@ -734,6 +734,9 @@ display() {
         g_fpsTimer.Stop();
         double fps = 1.0/g_fpsTimer.GetElapsed();
         g_fpsTimer.Start();
+        double Mrps = g_width*g_height/g_renderTime/1000000.0;
+        if (g_displayStyle==Scene::AO) Mrps *= 16;
+
 
         g_hud.DrawString(10, -300, "# of patches      : %8d", g_scene.GetNumPatches());
         g_hud.DrawString(10, -280, "PreTess lv        : %d (+/-)", g_preTessLevel);
@@ -749,7 +752,8 @@ display() {
         g_hud.DrawString(10, -120, "Bezier to Tri     : %8.1f ms", g_tessellateTime);
         g_hud.DrawString(10,  -80, "BVH build         : %8.1f ms", g_bvhTime);
         if (g_renderTime > 0) {
-            g_hud.DrawString(10, -40,  "Render time       : %5.3f s", g_renderTime);
+            g_hud.DrawString(10, -40,  "Render time       : %5.3f s  (%3.1f Mrays/sec)",
+                             g_renderTime, Mrps);
         } else {
             g_hud.DrawString(10, -40,  1, 0, 0, "Render time       : %2.0f%%",
                              100*(1-g_stepIndex/float(g_step*g_step)));
