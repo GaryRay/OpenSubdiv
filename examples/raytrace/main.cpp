@@ -42,8 +42,6 @@
 GLFWwindow* g_window=0;
 GLFWmonitor* g_primary=0;
 
-#define NEED_HBR_FACE_INDEX
-
 #include <osd/error.h>
 #include <osd/vertex.h>
 #include <osd/glDrawContext.h>
@@ -62,7 +60,6 @@ GLFWmonitor* g_primary=0;
 #include "../common/gl_common.h"
 
 #include "scene.h"
-#include "common.h"
 #include "jpge.h" // SGA TB. To save framebuffer.
 
 #include <cfloat>
@@ -250,7 +247,7 @@ OpenSubdiv::Far::PatchTables *g_patchTables = NULL;
 int g_level = 2;
 int g_preTess = 0;
 int g_preTessLevel = 1;
-int g_intersectKernel = 1;
+int g_intersectKernel = 0;
 int g_watertight = 1;
 int g_cropUV = 0;
 int g_bezierClip = 1;
@@ -332,16 +329,6 @@ setup() {
 static void
 startRender() {
     setup();
-    g_stepIndex = g_step*g_step;
-    g_renderTimer.Start();
-}
-
-static void
-makeReport() {
-    setup();
-
-    g_scene.MakeReport("./report.html");
-
     g_stepIndex = g_step*g_step;
     g_renderTimer.Start();
 }
@@ -433,21 +420,21 @@ loadCamera()
 }
 
 inline unsigned char fclamp(float x) {
-  int i = x * 255.5;
-  if (i < 0)
-    return 0;
-  if (i > 255)
-    return 255;
-  return (unsigned char)i;
+    int i = x * 255.5;
+    if (i < 0)
+        return 0;
+    if (i > 255)
+        return 255;
+    return (unsigned char)i;
 }
 
 inline float gamma_correct(float x, float inv_gamma) {
-  return pow(x, inv_gamma);
+    return pow(x, inv_gamma);
 }
 
-
-void HDRToLDR(std::vector<unsigned char> &out, const std::vector<float> &in,
-              int width, int height, float gamma = 2.2) {
+static void
+HDRToLDR(std::vector<unsigned char> &out, const std::vector<float> &in,
+         int width, int height, float gamma = 2.2) {
   out.resize(width * height * 4);
   if ((int)(in.size()) != (width * height * 4)) {
     fprintf(stderr, "sz mismatch.\n");
@@ -481,9 +468,12 @@ saveImage()
   comp_params.m_quality = 100;
   bool ret = jpge::compress_image_to_jpeg_file(filename, g_width, g_height, 4,
                                                &ldr.at(0), comp_params);
-  assert(ret);
 
-  printf("Save %s\n", filename);
+  if (!ret) {
+      std::cout << "Error: Save failed " << filename << "\n";
+  } else {
+      std::cout << "Save " << filename << "\n";
+  }
 }
 
 static void
@@ -519,34 +509,33 @@ updateGeom() {
     s.Stop();
     g_subdivTime = s.GetElapsed() * 1000.0f;
 
-    g_scene.SetWatertight(g_watertight);
-
     s.Start();
     
-    g_scene.BezierConvert(g_cpuVertexBuffer->BindCpuBuffer(),
-                          g_cpuVertexBuffer->GetNumVertices(),
-                          g_patchTables,
-                          g_displaceScale/*bound*/);
+    g_scene.GetMesh().BezierConvert(g_cpuVertexBuffer->BindCpuBuffer(),
+                                    g_cpuVertexBuffer->GetNumVertices(),
+                                    g_patchTables,
+                                    g_watertight,
+                                    g_displaceScale/*bound*/);
     s.Stop();
     g_convertTime = s.GetElapsed() * 1000.0f;
 
     if (g_preTess) {
         s.Start();
-        g_scene.Tessellate(g_preTessLevel);
+        g_scene.GetMesh().Tessellate(g_preTessLevel);
         s.Stop();
         g_tessellateTime = s.GetElapsed() * 1000.0f;
     } else {
         g_tessellateTime = 0;
-        g_scene.Tessellate(0);
+        g_scene.GetMesh().Tessellate(0);
     }
 
     s.Start();
-    g_scene.Build();
+    g_scene.BuildBVH();
     s.Stop();
 
     g_bvhTime = s.GetElapsed() * 1000.0f;
 
-    g_scene.VBOBuild();
+    g_scene.BuildVBO();
 
     startRender();
 }
@@ -629,9 +618,9 @@ debugTrace(int x, int y) {
     g_selectedColor[1] = p[1];
     g_selectedColor[2] = p[2];
 
-    g_traceEnabled = true;
+    //g_traceEnabled = true;
     g_scene.DebugTrace(x + g_step/2.0f, y + g_step/2.0f);
-    g_traceEnabled = false;
+    //g_traceEnabled = false;
 }
 
 //------------------------------------------------------------------------------
@@ -734,15 +723,16 @@ display() {
         g_fpsTimer.Stop();
         double fps = 1.0/g_fpsTimer.GetElapsed();
         g_fpsTimer.Start();
-        double Mrps = g_width*g_height/g_renderTime/1000000.0;
-        if (g_displayStyle==Scene::AO) Mrps *= 16;
 
+        double rps = g_width*g_height/g_renderTime/1000.0/1000.0;
 
-        g_hud.DrawString(10, -300, "# of patches      : %8d", g_scene.GetNumPatches());
+        g_hud.DrawString(10, -300, "# of patches      : %8d", g_scene.GetMesh().GetNumPatches());
         g_hud.DrawString(10, -280, "PreTess lv        : %d (+/-)", g_preTessLevel);
-        g_hud.DrawString(10, -260, "# of tris         : %8d", g_scene.GetNumTriangles());
+        g_hud.DrawString(10, -260, "# of tris         : %8d", g_scene.GetMesh().GetNumTriangles());
 
-        g_hud.DrawString(10, -220, "Memory            : %8.1f MB", g_scene.GetMemoryUsage()/1024.0/1024.0);
+        g_hud.DrawString(10, -220, "Memory            : %8.1f MB (mesh), %8.1f MB (bvh)",
+                         g_scene.GetMesh().GetMemoryUsage()/1024.0/1024.0,
+                         g_scene.GetMemoryUsage()/1024.0/1024.0);
 
         g_hud.DrawString(10, -200, "Hbr time          : %8.1f ms", g_hbrTime);
         g_hud.DrawString(10, -180, "Far time          : %8.1f ms", g_farTime);
@@ -753,7 +743,7 @@ display() {
         g_hud.DrawString(10,  -80, "BVH build         : %8.1f ms", g_bvhTime);
         if (g_renderTime > 0) {
             g_hud.DrawString(10, -40,  "Render time       : %5.3f s  (%3.1f Mrays/sec)",
-                             g_renderTime, Mrps);
+                             g_renderTime, rps);
         } else {
             g_hud.DrawString(10, -40,  1, 0, 0, "Render time       : %2.0f%%",
                              100*(1-g_stepIndex/float(g_step*g_step)));
@@ -914,7 +904,6 @@ keyboardChar(GLFWwindow *, unsigned int codepoint)
             g_scene.SetBackgroudMode(g_backgroundType);
             startRender(); break;
           }
-        case '!': makeReport(); break;
         case '*': report(); break;
     }
 }
@@ -979,7 +968,7 @@ callbackIntersect(int b)
 {
     g_intersectKernel = b;
 
-    g_step = (g_intersectKernel == 4) ? 4 : 8;
+    g_step = 8;
 
     startRender();
 }
@@ -1120,10 +1109,9 @@ initHUD()
                     10, y, 20, false, callbackSlider, 2);y+=30;
 
     int kernel_pulldown = g_hud.AddPullDown("Intersect (I)", 400, 10, 200, callbackIntersect, 'i');
-    g_hud.AddPullDownButton(kernel_pulldown, "Original", 0, g_intersectKernel == 0);
-    g_hud.AddPullDownButton(kernel_pulldown, "Osd float", 1, g_intersectKernel == 1);
-    g_hud.AddPullDownButton(kernel_pulldown, "Osd sse", 2, g_intersectKernel == 2);
-    g_hud.AddPullDownButton(kernel_pulldown, "Osd double", 3, g_intersectKernel == 3);
+    g_hud.AddPullDownButton(kernel_pulldown, "Osd float", 0, g_intersectKernel == 0);
+    g_hud.AddPullDownButton(kernel_pulldown, "Osd sse", 1, g_intersectKernel == 1);
+    g_hud.AddPullDownButton(kernel_pulldown, "Osd double", 2, g_intersectKernel == 2);
 
     int shading_pulldown = g_hud.AddPullDown("Shading (W)", 200, 10, 250, callbackDisplayStyle, 'w');
     g_hud.AddPullDownButton(shading_pulldown, "Shaded", Scene::SHADED,
@@ -1132,8 +1120,8 @@ initHUD()
                             g_displayStyle==Scene::PTEX_COORD);
     g_hud.AddPullDownButton(shading_pulldown, "Patch color", Scene::PATCH_TYPE,
                             g_displayStyle==Scene::PATCH_TYPE);
-    g_hud.AddPullDownButton(shading_pulldown, "Clip level", Scene::CLIP_LEVEL,
-                            g_displayStyle==Scene::CLIP_LEVEL);
+    g_hud.AddPullDownButton(shading_pulldown, "Heat Map", Scene::HEAT_MAP,
+                            g_displayStyle==Scene::HEAT_MAP);
     g_hud.AddPullDownButton(shading_pulldown, "Quads", Scene::QUADS,
                             g_displayStyle==Scene::QUADS);
     g_hud.AddPullDownButton(shading_pulldown, "Ambient Occlusion", Scene::AO,

@@ -66,25 +66,16 @@ include_directories("${CMAKE_CURRENT_BINARY_DIR}")
 
 _add_glfw_executable(raytrace
     main.cpp
-    bezier.cpp
-    bezier_patch_intersection.cpp
-    bilinear_patch_intersection.cpp
+    mesh.cpp
     bvh_accel.cpp
     convert_bezier.cpp
     camera.cpp
     scene.cpp
-    raydiff.cpp
     jpge.cpp
-    "${CL_SOURCE_FILES}"
     "${SHADER_FILES}"
     "${INC_FILES}"
     $<TARGET_OBJECTS:regression_common_obj>
     $<TARGET_OBJECTS:examples_common_obj>
-)
-
-_add_executable(bezierTest
-        bezier.cpp
-    bezierTest.cpp
 )
 
 target_link_libraries(raytrace

@@ -1,3 +1,26 @@
+//
+//   Copyright 2014 Pixar
+//
+//   Licensed under the Apache License, Version 2.0 (the "Apache License")
+//   with the following modification; you may not use this file except in
+//   compliance with the Apache License and the following modification to it:
+//   Section 6. Trademarks. is deleted and replaced with:
+//
+//   6. Trademarks. This License does not grant permission to use the trade
+//      names, trademarks, service marks, or product names of the Licensor
+//      and its affiliates, except as required to comply with Section 4(c) of
+//      the License and to reproduce the content of the NOTICE file.
+//
+//   You may obtain a copy of the Apache License at
+//
+//       http://www.apache.org/licenses/LICENSE-2.0
+//
+//   Unless required by applicable law or agreed to in writing, software
+//   distributed under the Apache License with the above modification is
+//   distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+//   KIND, either express or implied. See the Apache License for the specific
+//   language governing permissions and limitations under the Apache License.
+//
 #ifndef SCENE_H
 #define SCENE_H
 
@@ -5,15 +28,13 @@
 #include "camera.h"
 #include <far/patchTables.h>
 #include <osd/opengl.h>
-#include <osd/vertex.h>
 
 class Scene
 {
 public:
-    struct Config
-    {
+    struct Config {
         Config() {
-            intersectKernel = BVHAccel::NEW_FLOAT;
+            intersectKernel = BVHAccel::OSD_FLOAT;
             uvMargin = 0.0f;
             cropUV = false;
             bezierClip = true;
@@ -42,21 +63,14 @@ public:
         float displaceScale;
         float displaceFreq;
 
-
         std::string Dump() const;
     };
 
     Scene();
     ~Scene();
 
-    void BezierConvert(float *vertices, int numVertices,
-                       OpenSubdiv::Far::PatchTables const *patchTables,
-                       float displaceBound);
-
-    void Tessellate(int level);
-
-    void Build();
-    void VBOBuild();
+    void BuildBVH();
+    void BuildVBO();
 
     void SetCamera(int width, int height, double fov,
                    std::vector<float> &image, // RGB
@@ -64,25 +78,23 @@ public:
 
     void SetConfig(Config const &config);
 
+    // render, debug
+
     void Render(int stepIndex, int step);
     void Render() { Render(0, 1); }
-
     void DebugTrace(float x, float y);
 
-    void RenderReport();
-    void MakeReport(const char *filename);
-
-
-    int GetNumPatches() const { return _mesh.numBezierPatches; }
-    int GetNumTriangles() const { return _mesh.numTriangles; }
+    // shading style
 
     void Shade(float rgba[4], const Intersection &isect, const Ray &ray, Context *context);
 
-    enum ShadeMode { SHADED, PTEX_COORD, PATCH_TYPE, CLIP_LEVEL, QUADS, AO, TRANSPARENT };
+    enum ShadeMode { SHADED, PTEX_COORD, PATCH_TYPE, HEAT_MAP, QUADS, AO, TRANSPARENT };
 
     void SetShadeMode(ShadeMode mode) {
         _mode = mode;
     }
+
+    // background style
 
     enum BackgroundMode { GRADATION, WHITE, BLACK };
 
@@ -93,29 +105,25 @@ public:
         return _backgroundMode;
     }
 
+    // mesh, vbo
+
+    Mesh &GetMesh() { return _mesh; }
+
     GLuint GetVBO() const { return _vbo; }
+
     int GetNumBVHNode() const { return (int)_accel.GetNodes().size(); }
 
-    void SetWatertight(bool flag) { _watertight = flag; }
+    // reporting
+
+    void RenderReport();
 
     size_t GetMemoryUsage() const {
         size_t mem = 0;
-        if (_mesh.IsBezierMesh()) {
-            mem += _mesh.bezierVertices.size() * sizeof(float);  // cp
-            mem += _mesh.numBezierPatches/2; // (4bit per patch);
-            //mem += _mesh.bezierBounds.size() * sizeof(float);   // bounds
-        } else {
-            mem += _mesh.triVertices.size() * sizeof(float); // verts
-            mem += _mesh.faces.size() * sizeof(unsigned int); // indices
-        }
         // bvh
         mem += _accel.GetNodes().size() * sizeof(BVHNode);
         mem += _accel.GetIndices().size() * sizeof(unsigned int);
         return mem;
     }
-
-protected:
-    void recordMetric(int id, std::ostream &out, Config const &config);
 
 private:
     Camera _camera;
@@ -123,7 +131,6 @@ private:
     BVHAccel _accel;
     ShadeMode _mode;
     BackgroundMode _backgroundMode;
-    bool _watertight;
 
     double _traverseTime;
     double _intersectTime;

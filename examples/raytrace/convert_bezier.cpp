@@ -1,13 +1,36 @@
+//
+//   Copyright 2014 Pixar
+//
+//   Licensed under the Apache License, Version 2.0 (the "Apache License")
+//   with the following modification; you may not use this file except in
+//   compliance with the Apache License and the following modification to it:
+//   Section 6. Trademarks. is deleted and replaced with:
+//
+//   6. Trademarks. This License does not grant permission to use the trade
+//      names, trademarks, service marks, or product names of the Licensor
+//      and its affiliates, except as required to comply with Section 4(c) of
+//      the License and to reproduce the content of the NOTICE file.
+//
+//   You may obtain a copy of the Apache License at
+//
+//       http://www.apache.org/licenses/LICENSE-2.0
+//
+//   Unless required by applicable law or agreed to in writing, software
+//   distributed under the Apache License with the above modification is
+//   distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+//   KIND, either express or implied. See the Apache License for the specific
+//   language governing permissions and limitations under the Apache License.
+//
 #include <cmath>
 #include <cstring>
 #include <cstdio>
 #include <cfloat>
 #include "convert_bezier.h"
 
-#include "osdutil/math.h"
-#include "osdutil/bezier.h"
+#include "bezier/math.h"
+#include "bezier/bezier.h"
 
-using namespace OsdUtil;
+using namespace OsdBezier;
 
 static float ef[27] = {
     0.812816f, 0.500000f, 0.363644f, 0.287514f,
@@ -29,14 +52,14 @@ csf(unsigned int n, unsigned int j)
     }
 }
 
-OsdUtil::matrix4t<float>
+OsdBezier::matrix4t<float>
 computeMatrixSimplified(float sharpness)
 {
     float s = pow(2.0f, sharpness);
     float s2 = s*s;
     float s3 = s2*s;
 
-    OsdUtil::matrix4t<float> m = OsdUtil::matrix4t<float>(
+    OsdBezier::matrix4t<float> m = OsdBezier::matrix4t<float>(
         0, s + 1 + 3*s2 - s3, 7*s - 2 - 6*s2 + 2*s3, (1-s)*(s-1)*(s-1),
         0,       (1+s)*(1+s),        6*s - 2 - 2*s2,       (s-1)*(s-1),
         0,               1+s,               6*s - 2,               1-s,
@@ -68,7 +91,7 @@ int convertRegular(std::vector<float> &bezierVertices,
         // 4   5   6   7
         // 8   9  10  11
         // 12  13  14  15
-        using namespace OsdUtil;
+        using namespace OsdBezier;
         vec3f P[16];
         for (int j = 0; j < 16; ++j) {
             P[j] = vec3f(&vertices[verts[j]*3]);
@@ -134,7 +157,7 @@ int convertSingleCrease(std::vector<float> &bezierVertices,
         // same watertight bezier conversion should be applied as regular patch.
 
         // Watertight Splinet to Bezier evaluation.
-        using namespace OsdUtil;
+        using namespace OsdBezier;
         vec3f P[16];
         for (int j = 0; j < 16; ++j) {
             P[j] = vec3f(&vertices[verts[j]*3]);
@@ -186,11 +209,11 @@ int convertSingleCrease(std::vector<float> &bezierVertices,
             }
         }
         // split patch
-        OsdUtilBezierPatch<vec3f, float, 4> patch0(cp0);
-        OsdUtilBezierPatch<vec3f, float, 4> patch1(cp1);
+        BezierPatch<vec3f, float, 4> patch0(cp0);
+        BezierPatch<vec3f, float, 4> patch1(cp1);
 
-        OsdUtilBezierPatch<vec3f, float, 4> patch0s[2];
-        OsdUtilBezierPatch<vec3f, float, 4> patch1s[2];
+        BezierPatch<vec3f, float, 4> patch0s[2];
+        BezierPatch<vec3f, float, 4> patch1s[2];
         float t = 1.0 - pow(2.0f, -sharpness);
         patch0.SplitU(patch0s, t);
         patch1.SplitU(patch1s, t);
