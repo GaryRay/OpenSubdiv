@@ -427,6 +427,7 @@ int convertGregory(std::vector<float> &bezierVertices,
     int length = 3;
     int stride = 3;
     int maxValence = patchTables->GetMaxValence();
+    printf("Max Valence = %d\n", maxValence);
     float *r = (float*)alloca((maxValence+2)*4*length*sizeof(float));
     float *f = (float*)alloca(maxValence*length*sizeof(float)),
         *pos = (float*)alloca(length*sizeof(float)),
@@ -503,7 +504,7 @@ int convertGregory(std::vector<float> &bezierVertices,
                 opos[vofs+k] /= valence;
             }
 
-            if (valence >= 3) {
+            if (valence >= 3 and valence < 30) {
                 for (int i=0; i<valence; ++i) {
                     int im = (i+valence-1)%valence;
                     for (int k=0; k<length; ++k) {
@@ -561,6 +562,7 @@ int convertGregory(std::vector<float> &bezierVertices,
 
                 Ep[ofs] = opos[ofs] + e0[ofs] * csf(n-3, 2*start) + e1[ofs]*csf(n-3, 2*start +1);
                 Em[ofs] = opos[ofs] + e0[ofs] * csf(n-3, 2*prev ) + e1[ofs]*csf(n-3, 2*prev + 1);
+
             }
 
             unsigned int np = valences[ip],
@@ -647,17 +649,17 @@ int convertGregory(std::vector<float> &bezierVertices,
         bezierBounds.push_back(max[2]);
 
         // save center quad indices
-#if 1
-        cpIndices.push_back(patchTables->GetPatchTable()[parray.GetVertIndex() + patchIndex*4 + 0]);
-        cpIndices.push_back(patchTables->GetPatchTable()[parray.GetVertIndex() + patchIndex*4 + 1]);
-        cpIndices.push_back(patchTables->GetPatchTable()[parray.GetVertIndex() + patchIndex*4 + 2]);
-        cpIndices.push_back(patchTables->GetPatchTable()[parray.GetVertIndex() + patchIndex*4 + 3]);
-#else
-        cpIndices.push_back(-1);
-        cpIndices.push_back(-1);
-        cpIndices.push_back(-1);
-        cpIndices.push_back(-1);
-#endif
+        if (!badPatch) {
+            cpIndices.push_back(patchTables->GetPatchTable()[parray.GetVertIndex() + patchIndex*4 + 0]);
+            cpIndices.push_back(patchTables->GetPatchTable()[parray.GetVertIndex() + patchIndex*4 + 1]);
+            cpIndices.push_back(patchTables->GetPatchTable()[parray.GetVertIndex() + patchIndex*4 + 2]);
+            cpIndices.push_back(patchTables->GetPatchTable()[parray.GetVertIndex() + patchIndex*4 + 3]);
+        } else {
+            cpIndices.push_back(-1);
+            cpIndices.push_back(-1);
+            cpIndices.push_back(-1);
+            cpIndices.push_back(-1);
+        }
     }
 
     return parray.GetNumPatches();
