@@ -487,6 +487,8 @@ PatchTablesFactory::computePatchParam(TopologyRefiner const & refiner,
 
     if (coord == NULL) return NULL;
 
+    coord->vtrFaceIndex = faceIndex;
+
     // Move up the hierarchy accumulating u,v indices to the coarse level:
     int childIndexInParent = 0,
         u = 0,

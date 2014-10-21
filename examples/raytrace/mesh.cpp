@@ -23,6 +23,7 @@
 //
 
 #include <cfloat>
+#include <set>
 #include "mesh.h"
 #include "convert_bezier.h"
 #include "bezier/math.h"
@@ -69,11 +70,13 @@ struct Bezier {
 
 void
 Mesh::BezierConvert(float *inVertices, int numVertices,
+                    OpenSubdiv::Far::TopologyRefiner const *refiner,
                     OpenSubdiv::Far::PatchTables const *patchTables,
                     bool watertight,
                     float displaceBound)
 {
     using namespace OpenSubdiv;
+    using namespace OsdBezier;
 
     // convert to mesh
     Far::PatchTables::PatchArrayVector const &patchArrays =
@@ -103,9 +106,9 @@ Mesh::BezierConvert(float *inVertices, int numVertices,
         for (int i = 0; i < numVertices; ++i) {
             float *v = inVertices + i*3;
 #if 1
+            // centering
             vertices.push_back((v[0]-center[0])/radius);
             vertices.push_back((v[1]-center[1])/radius);
-            //vertices.push_back(0);
             vertices.push_back((v[2]-center[2])/radius);
 #else
             vertices.push_back(v[0]);
@@ -123,7 +126,8 @@ Mesh::BezierConvert(float *inVertices, int numVertices,
 
     std::vector<int> cpIndices; // 16 * numPatches
 
-    int gregoryBegin = -1, gregoryEnd = 0;
+    std::vector<Far::PatchTables::Descriptor> patchDescs;
+
     // iterate patch types.
     for (Far::PatchTables::PatchArrayVector::const_iterator it = patchArrays.begin();
          it != patchArrays.end(); ++it) {
@@ -162,16 +166,12 @@ Mesh::BezierConvert(float *inVertices, int numVertices,
                                         _bezierBounds,
                                         cpIndices,
                                         &vertices[0], patchTables, *it);
-            gregoryBegin = numTotalPatches;
-            gregoryEnd = numTotalPatches + numPatches;
             break;
         case Far::PatchTables::GREGORY_BOUNDARY:
             numPatches = convertBoundaryGregory(_bezierVertices,
                                                 _bezierBounds,
                                                 cpIndices,
                                                 &vertices[0], patchTables, *it);
-            if (gregoryBegin == -1) gregoryBegin = numTotalPatches;
-            gregoryEnd = numTotalPatches + numPatches;
             break;
         default:
             break;
@@ -186,9 +186,16 @@ Mesh::BezierConvert(float *inVertices, int numVertices,
                 _colors.push_back(color[2]);
             }
         }
+        //descs
+        {
+            for (int i = 0; i < numPatches; ++i) {
+                patchDescs.push_back(desc);
+            }
+        }
 
         if (desc.GetType() == Far::PatchTables::SINGLE_CREASE) {
-            for (int i = 0; i < numPatches; ++i) {
+            // duplicate patchparam
+            for (int i = 0; i < numPatches/2; ++i) {
                 patchParam.push_back(srcPatchParam[it->GetPatchIndex() + i]);
                 patchParam.push_back(srcPatchParam[it->GetPatchIndex() + i]);
             }
@@ -199,43 +206,60 @@ Mesh::BezierConvert(float *inVertices, int numVertices,
         }
     }
 
-    printf("%d %d\n", (int)patchParam.size(), (int)srcPatchParam.size());
-
-    // for (int i = 0; i < hbrMesh->GetNumFaces(); ++i) {
-    //     OsdHbrFace *f = hbrMesh->GetFace(i);
-    //     bool out = ((f->isTransitionPatch() or f->_adaptiveFlags.patchType!=OsdHbrFace::kEnd) and
-    //                 (not f->_adaptiveFlags.isExtraordinary) and
-    //                 (f->_adaptiveFlags.bverts!=1));
-    //     VERBOSE("Patch %d out=%x\n", i, out);
-    // }
-
     _wcpFlags.resize(numTotalPatches);
 
     // vertex position verification pass
     if (watertight) {
-        using namespace OsdBezier;
+        std::map<Edge, Bezier> edgeBeziers;
 
-        std::map<Edge, Bezier > edgeBeziers;
+        // save wcp flags
+        for (int i = 0; i < numTotalPatches; ++i) {
+            int face = patchParam[i].faceIndex;
+            int wcpFlag = 0;
+            int rots = 0;//patchDescs[i].rotation??
+            //int rots = face->_adaptiveFlags.rots;
+
+            switch(patchDescs[i].GetPattern()) {
+            case Far::PatchTables::PATTERN0:
+                wcpFlag = 1 << rots; break;
+                break;
+            case Far::PatchTables::PATTERN1:
+                wcpFlag = (1 << rots) | (1 << ((rots+3)%4)); break;
+                break;
+            case Far::PatchTables::PATTERN2:
+                wcpFlag = (1 << ((rots+1)%4)) | (1 << ((rots+2)%4)) | (1 << ((rots+3)%4));
+                break;
+            case Far::PatchTables::PATTERN3:
+                wcpFlag = 0xf;
+                break;
+            case Far::PatchTables::PATTERN4:
+                wcpFlag = (1 << rots) | (1 << ((rots+2)%4)); break;
+                break;
+            }
+            _wcpFlags[i] = wcpFlag;
+        }
+
 
         for (int i = 0; i < numTotalPatches; ++i) {
-//            VERBOSE("\n============ patch %d (HBR : %d)==============\n", i, hbrMesh->GetFace(pathcParam[i].hbrFaceIndex)->GetID());
             int parentQuad[] = { 0, 2, 1, 3 };
 
             int edgeVerts[][4] = { {0, 1, 2, 3}, {0, 4, 8, 12}, {3, 7, 11, 15}, {12, 13, 14, 15} };
-//            int edgeVerts[][4] = { {0, 4, 8, 12},{12, 13, 14, 15}, {15, 11, 7, 3}, {3, 2, 1, 0} };
-
             int edgeParents[][2] = { {0, 2}, {0, 1}, {2, 3}, {1, 3} };
 
-            // store bezier edges (skip gregory)
-            if (gregoryBegin <= i && i < gregoryEnd) continue;
+            // store bezier edges (skip gregory, single-crease)
+            if (patchDescs[i].GetType() == Far::PatchTables::SINGLE_CREASE or
+                patchDescs[i].GetType() == Far::PatchTables::GREGORY or
+                patchDescs[i].GetType() == Far::PatchTables::GREGORY_BOUNDARY) continue;
+
+            VERBOSE("\n============ patch %d ==============\n", patchParam[i].faceIndex);
 
             for (int j = 0; j < 4; ++j) {
                 int parent = cpIndices[i*4+parentQuad[j]];
-                if (parent < 0) continue;
+                if (parent < 0) continue; // skip border, boundary (for now)
                 // parent mapping
                 // parent = vertexParentIDs[parent];
                 //NO_HBRparent = farToHbr[parent];
-                //VERBOSE("%d/%d  %d: %f %f %f\n", i, cornerQuad[j], parent, v[0], v[1], v[2]);
+                //VERBOSE("%d  %d: %f %f %f\n", i, parent, v[0], v[1], v[2]);
 
                 // for edge verts
                 vec3f e0(&_bezierVertices[(i*16 + edgeVerts[j][0]) * 3]);
@@ -245,10 +269,6 @@ Mesh::BezierConvert(float *inVertices, int numVertices,
 
                 int ep0 = cpIndices[i*4 + edgeParents[j][0]];
                 int ep1 = cpIndices[i*4 + edgeParents[j][1]];
-                //ep0 = vertexParentIDs[ep0];
-                //ep1 = vertexParentIDs[ep1];
-//NO_HBR                ep0 = farToHbr[ep0];
-//                ep1 = farToHbr[ep1];
                 Edge edge(ep0, ep1);
                 VERBOSE("(%d, %d) (%f, %f, %f)-(%f, %f, %f)\n", ep0, ep1,
                        e0[0], e0[1], e0[2],
@@ -262,7 +282,7 @@ Mesh::BezierConvert(float *inVertices, int numVertices,
                 }
             }
         }
-/*
+  /*
     pattern0        pattern1       pattern2        pattern3        pattern4
  +-------------+ +-------------+ +-------------+ +-------------+ +-------------+
  |     /\\     | | 0   /\\   2 | |             | |      |      | |      |      |
@@ -273,55 +293,38 @@ Mesh::BezierConvert(float *inVertices, int numVertices,
  |/          \\| |/ /          | | 1  \\ /   2 | |      |      | |      |      |
  +-------------+ +-------------+ +-------------+ +-------------+ +-------------+
 */
-        // save wcp flags
-
-#if 0 // NO_HBR
+        std::map<std::pair<int, int>, int> finalFaces;
         for (int i = 0; i < numTotalPatches; ++i) {
-            int hbrFace = patchParam[i].hbrFaceIndex;
-            OsdHbrFace *face = hbrMesh->GetFace(hbrFace);
-
-            int wcpFlag = 0;
-            int rots = face->_adaptiveFlags.rots;
-            switch(face->_adaptiveFlags.transitionType) {
-            case OsdHbrFace::kTransition0:
-                wcpFlag = 1 << rots; break;
-            case OsdHbrFace::kTransition1:
-                wcpFlag = (1 << rots) | (1 << ((rots+3)%4)); break;
-            case OsdHbrFace::kTransition2:
-                wcpFlag = (1 << ((rots+1)%4)) | (1 << ((rots+2)%4)) | (1 << ((rots+3)%4));
-            case OsdHbrFace::kTransition3:
-                wcpFlag = 0xf;
-            case OsdHbrFace::kTransition4:
-                wcpFlag = (1 << rots) | (1 << ((rots+2)%4)); break;
-                break;
-            }
-            wcpFlags[i] = wcpFlag;
+            int faceIndex = patchParam[i].vtrFaceIndex;
+            int level = patchParam[i].bitField.GetDepth();
+            finalFaces[std::make_pair(level, faceIndex)] = i; // what if single-crease?
         }
-#endif
 
-#if 0 //NO_HBR
         // different level subdivision
         // water-tight critical
         for (int i = 0; i < numTotalPatches; ++i) {
-            int hbrFace = patchParam[i].hbrFaceIndex;
-            OsdHbrFace *face = hbrMesh->GetFace(hbrFace);
+            //int hbrFace = patchParam[i].hbrFaceIndex;
+            //OsdHbrFace *face = hbrMesh->GetFace(hbrFace);
+            int faceIndex = patchParam[i].vtrFaceIndex;
 
+            if (patchDescs[i].GetType() == Far::PatchTables::SINGLE_CREASE) continue;
             // ---------------- gregory
-            if (gregoryBegin <= i && i < gregoryEnd) {
+            //   0-----3
+            //   |     |
+            //   |     |
+            //   1-----2
+            if (patchDescs[i].GetType() == Far::PatchTables::GREGORY or
+                patchDescs[i].GetType() == Far::PatchTables::GREGORY_BOUNDARY) {
+                int edgeParents[][2] = { {0, 1}, {1, 2}, {2, 3}, {3, 0} };
                 for (int j = 0; j < 4; ++j) {
-                    OsdHbrHalfedge *ed = face->GetEdge(j);
-                    // pick two vertices
-                    OsdHbrVertex *v0 = ed->GetVertex();
-                    OsdHbrVertex *v1 = ed->GetNext()->GetVertex();
-
-                    Edge e(v0->GetID(), v1->GetID());
-                    // lookup edge dictionary
+                    int v0 = cpIndices[i*4 + edgeParents[j][0]];
+                    int v1 = cpIndices[i*4 + edgeParents[j][1]];
+                    Edge e(v0, v1);
                     if (edgeBeziers.count(e) != 0) {
-                        Bezier edge = edgeBeziers[e];
-                        bool reverse = e._edges[0] != v0->GetID();
-
                         // overwrite
-                        vec3f *d = (vec3f*)(&bezierVertices[i*16*3]);
+                        Bezier edge = edgeBeziers[e];
+                        bool reverse = e._edges[0] != v0;
+                        vec3f *d = (vec3f*)(&_bezierVertices[i*16*3]);
                         if (j == 0) {
                             for (int k = 0; k < 4; ++k) {
                                 d[k*4+0] = reverse ? edge.cp[3-k] : edge.cp[k];
@@ -339,52 +342,109 @@ Mesh::BezierConvert(float *inVertices, int numVertices,
                                 d[k] = reverse ? edge.cp[k] : edge.cp[3-k];
                             }
                         }
-                    } else {
-                        // boundary of gregory-and-gregory.
                     }
                 }
                 continue;
             }
 
             // ---------------- non gregory
+            //if (_wcpFlags[i] == 0) continue;
+            VERBOSE("\n");
 
-            if (not face->_adaptiveFlags.isCritical) continue;
+            int level = patchParam[i].bitField.GetDepth()-1;
+            if (level < 0) continue;
+            int parentFace = refiner->GetChildFaceParentFace(level, faceIndex);
+            Vtr::IndexArray indices = refiner->GetFaceVertices(level, parentFace);
 
-            VERBOSE("Critical patch %d, %d----\n", i, hbrFace);
-            OsdHbrFace *parentFace = face->GetParent();
+            VERBOSE("Level %d : \e[32mPatch %d\e[0m, parent = %d (Flag=%d)----\n",
+                    level+1, faceIndex, parentFace, _wcpFlags[i]);
 
-            if (not parentFace) continue;
+            Vtr::IndexArray myEdges = refiner->GetFaceEdges(level+1, faceIndex);
+            VERBOSE("My edges verts:");
+            for (int i = 0; i < myEdges.size(); ++i) {
+                VERBOSE(" %d ", myEdges[i]);
+            }
+            VERBOSE("\n");
 
-            if (parentFace->GetNumVertices() != 4) {
-                VERBOSE("non-quad parent %d\n", parentFace->GetID());
+            VERBOSE("Parent verts: level(%d)= ", level);
+            for (int i = 0; i < indices.size(); ++i) {
+                VERBOSE(" %d ", indices[i]);
+            }
+            VERBOSE("\n");
+
+            if (indices.size() != 4) {
+                VERBOSE("non-quad parent (nverts=%d)\n", (int)indices.size());
                 continue;
             }
 
+            // locate which child this face is, in the parent face (within 0-3)
+
             int childIndex = -1;
             bool watertightEdges[4] = { false, false, false, false };
+            Vtr::IndexArray children = refiner->GetFaceChildFaces(level, parentFace);
+            Vtr::IndexArray edges = refiner->GetFaceEdges(level, parentFace);
+
             for (int j = 0; j < 4; ++j) {
-                OsdHbrHalfedge *edge = parentFace->GetEdge(j)->GetOpposite();
-                if (edge) {
-                    OsdHbrFace *f = edge->GetFace();
-                    
-                    bool out = ((f->isTransitionPatch() or f->_adaptiveFlags.patchType!=OsdHbrFace::kEnd) and
-                                (not f->_adaptiveFlags.isExtraordinary) and
-                                (f->_adaptiveFlags.bverts!=1));
-
-                    watertightEdges[j] = out;
-                    VERBOSE("[%d: face=%d end=%d] ", j, f->GetID(), out);
-                }
-                if(parentFace->GetChild(j) == face) childIndex = j;
+                if (children[j] == faceIndex) childIndex = j;
             }
-            VERBOSE(" CHILD=%d, rot=%d\n", childIndex, face->_adaptiveFlags.rots);
-
+            //int rot = patchDescs[i].GetRotation();
+            int rot = patchParam[i].bitField.GetRotation();
+            VERBOSE(" CHILD=%d, \e[31mrot=%d\e[0m\n", childIndex, rot);//face->_adaptiveFlags.rots);
             if (childIndex == -1) continue;
 
-            // childindex 0 -> edge 3, 0
-            // childindex 1 -> edge 0, 1
-            // childindex 2 -> edge 1, 2
-            // childindex 3 -> edge 2, 3
-            // for each edge
+            VERBOSE("Child faces: (childIndex = %d)", childIndex);
+            for (int i = 0; i < children.size(); ++i) {
+                VERBOSE(" %d ", children[i]);
+            }
+            VERBOSE("\n");
+
+            // check 2 edges.
+            for (int j = 0; j < 2; ++j) {
+                int edgeIndex = (j+3+childIndex)%4;
+
+                //edgeIndex = (edgeIndex + rot)%4;
+
+                if (patchDescs[i].GetType() == Far::PatchTables::BOUNDARY or
+                    patchDescs[i].GetType() == Far::PatchTables::CORNER) continue;
+
+                // if it's triangle head, skip
+                //if ((_wcpFlags[i] >> edgeIndex)&1 == 1) continue;
+                //if (_wcpFlags[i]) continue;
+                
+                Vtr::IndexArray faces = refiner->GetEdgeFaces(level, edges[edgeIndex]);
+                if (faces.size() != 2) continue;
+                int adjFace = (faces[0] == parentFace) ? faces[1] : faces[0];
+                VERBOSE("Adjacent face %d\n", adjFace);
+
+                // see if the adjacent face is final or not
+                if (finalFaces.count(std::make_pair(level, adjFace)) > 0) {
+                    VERBOSE("Critical Patch (level=%d, adjFace=%d exists)!\n", level, adjFace);
+                    watertightEdges[edgeIndex] = true;
+                } else {
+                    continue;
+                }
+
+                int patchIndex = finalFaces[std::make_pair(level, adjFace)];
+
+
+                // inefficient!
+                int levelVertsOffset = 0;
+                for (int k = 0; k < level; ++k){
+                    levelVertsOffset += refiner->GetNumVertices(k);
+                }
+                int v0 = indices[edgeIndex] + levelVertsOffset;
+                int v1 = indices[(edgeIndex+1)%4] + levelVertsOffset;
+                VERBOSE("Matching verts: (level %d), %d- %d,  edge = %d\n", level,
+                       v0, v1, edges[edgeIndex]);
+
+                Edge e(v0, v1);
+
+                //if (parentFace->_adaptiveFlags.bverts > 0) continue;
+                // childindex 0 -> edge 3, 0
+                // childindex 1 -> edge 0, 1
+                // childindex 2 -> edge 1, 2
+                // childindex 3 -> edge 2, 3
+                // for each edge
 
                     /*
                       <----------- v
@@ -401,31 +461,18 @@ Mesh::BezierConvert(float *inVertices, int numVertices,
                           edge 2
                      */
 
-            int edgeScan[4][2] = { {3, 0}, {0, 1}, {1, 2}, {2, 3} };
-            for (int j = 0; j < 2; ++j) {
-                int edge = edgeScan[childIndex][j];
-                if (not watertightEdges[edge]) continue;
-
-                // at this point, we know the parent edge is T-node
-
-                OsdHbrHalfedge *ed = parentFace->GetEdge(edge);
-
-                // pick two vertices of the parent face
-                OsdHbrVertex *v0 = ed->GetVertex();//parentFace->GetVertex(edge);
-                OsdHbrVertex *v1 = ed->GetNext()->GetVertex(); //parentFace->GetVertex((edge+1)%4);
-
-                Edge e(v0->GetID(), v1->GetID());
-                VERBOSE( " search %d-%d edge, face %d \n", v0->GetID(), v1->GetID(),
-                         parentFace->GetEdge(edge)->GetOpposite()->GetFace()->GetID());
-
-                if (parentFace->_adaptiveFlags.bverts > 0) continue;
-
                 if (edgeBeziers.count(e) != 0) {
-                    Bezier parentEdge = edgeBeziers[e];  // todo, lookup
-                    bool reverse = e._edges[0] != v0->GetID();
+                    Bezier parentEdge = edgeBeziers[e];  // todo, fix lookup
+                    bool reverse = e._edges[0] != v0;
                     if (reverse) {
                         parentEdge.Reverse();
                     }
+
+                    // apply rotation (for transition patches)
+                    int edge = edgeIndex;
+                    edge = (edge+(4-rot))%4;
+
+                    VERBOSE("Align edgeIndex = %d, edge = %d\n", edgeIndex, edge);
 
                     // find corresponding edge at patch[i]
                     // cut original bezier
@@ -436,41 +483,38 @@ Mesh::BezierConvert(float *inVertices, int numVertices,
                     VERBOSE("%f %f %f - ", tmp[1][0][0], tmp[1][0][1], tmp[1][0][2]);
                     VERBOSE("%f %f %f]]\n", tmp[1][3][0], tmp[1][3][1], tmp[1][3][2]);
 
-                    vec3f *d = (vec3f*)(&bezierVertices[i*16*3]);
+                    vec3f *d = (vec3f*)(&_bezierVertices[i*16*3]);
                     if (edge == 0) {
                         for (int k = 0; k < 4; ++k) {
                             d[k*4+0] = reverse
-                                ? tmp[childIndex==0?1:0][3-k]
-                                : tmp[childIndex==0?0:1][k];
+                                ? tmp[childIndex==edgeIndex?1:0][3-k]
+                                : tmp[childIndex==edgeIndex?0:1][k];
                         }
                     } else if (edge == 1) {
                         for (int k = 0; k < 4; ++k) {
                             d[12+k] = reverse
-                                ? tmp[childIndex==1?1:0][3-k]
-                                : tmp[childIndex==1?0:1][k];
+                                ? tmp[childIndex==edgeIndex?1:0][3-k]
+                                : tmp[childIndex==edgeIndex?0:1][k];
                         }
                     } else if (edge == 2) {
                         for (int k = 0; k < 4; ++k) {
                             d[k*4+3] = reverse
-                                ? tmp[childIndex==2?1:0][k]
-                                : tmp[childIndex==2?0:1][3-k];
+                                ? tmp[childIndex==edgeIndex?1:0][k]
+                                : tmp[childIndex==edgeIndex?0:1][3-k];
                         }
                     } else if (edge == 3) {
                         for (int k = 0; k < 4; ++k) {
                             d[k] = reverse
-                                ? tmp[childIndex==3?1:0][k]
-                                : tmp[childIndex==3?0:1][3-k];
+                                ? tmp[childIndex==edgeIndex?1:0][k]
+                                : tmp[childIndex==edgeIndex?0:1][3-k];
                         }
                     }
                 } else {
-                    printf("Topology error --- Not found hbr verts in edge dict%d,%d\n",
-                           v0->GetID(), v1->GetID());
+                    // not found in the edge dictionary.
                 }
             }
         }
-#endif
     }
-
 
     _numTriangles = 0;
     _numBezierPatches = numTotalPatches;

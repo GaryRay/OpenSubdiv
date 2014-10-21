@@ -26,6 +26,7 @@
 
 #include <cstdio>
 #include <vector>
+#include <far/topologyRefiner.h>
 #include <far/patchTables.h>
 
 struct Mesh {
@@ -35,6 +36,7 @@ struct Mesh {
     }
 
     void BezierConvert(float *vertices, int numVertices,
+                       OpenSubdiv::Far::TopologyRefiner const *refiner,
                        OpenSubdiv::Far::PatchTables const *patchTables,
                        bool watertight,
                        float displaceBound);

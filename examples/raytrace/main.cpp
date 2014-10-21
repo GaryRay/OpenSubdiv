@@ -242,6 +242,7 @@ OpenSubdiv::Osd::CpuVertexBuffer *g_cpuVertexBuffer = NULL;
 OpenSubdiv::Osd::CpuComputeContext *g_computeContext = NULL;
 OpenSubdiv::Far::KernelBatchVector g_kernelBatches;
 OpenSubdiv::Far::PatchTables *g_patchTables = NULL;
+OpenSubdiv::Far::TopologyRefiner * g_topologyRefiner = NULL;
 
 
 int g_level = 2;
@@ -513,6 +514,7 @@ updateGeom() {
     
     g_scene.GetMesh().BezierConvert(g_cpuVertexBuffer->BindCpuBuffer(),
                                     g_cpuVertexBuffer->GetNumVertices(),
+                                    g_topologyRefiner,
                                     g_patchTables,
                                     g_watertight,
                                     g_displaceScale/*bound*/);
@@ -552,18 +554,19 @@ createOsdMesh( const std::string &shapeStr, int level ){
     // create refiner
 
     Shape * shape = Shape::parseObj(shapeStr.c_str(), kCatmark);
-    OpenSubdiv::Far::TopologyRefiner * refiner = 0;
+    if (g_topologyRefiner) delete g_topologyRefiner;
+
     {
         OpenSubdiv::Sdc::Type type = GetSdcType(*shape);
         OpenSubdiv::Sdc::Options options = GetSdcOptions(*shape);
 
-        refiner = OpenSubdiv::Far::TopologyRefinerFactory<Shape>::Create(type, options, *shape);
+        g_topologyRefiner = OpenSubdiv::Far::TopologyRefinerFactory<Shape>::Create(type, options, *shape);
 
-        assert(refiner);
+        assert(g_topologyRefiner);
     }
 
     // refine
-    refiner->RefineAdaptive(level, /*fullTopollogy=*/false, /*useSingleCrease=*/g_useSingleCreasePatch);
+    g_topologyRefiner->RefineAdaptive(level, /*fullTopollogy=*/false, /*useSingleCrease=*/g_useSingleCreasePatch);
 
     OpenSubdiv::Far::StencilTables const * vertexStencils=0;
     {
@@ -571,7 +574,7 @@ createOsdMesh( const std::string &shapeStr, int level ){
         options.generateOffsets = true;
         options.generateAllLevels = true;
 
-        vertexStencils = OpenSubdiv::Far::StencilTablesFactory::Create(*refiner, options);
+        vertexStencils = OpenSubdiv::Far::StencilTablesFactory::Create(*g_topologyRefiner, options);
         assert(vertexStencils);
     }
 
@@ -583,7 +586,7 @@ createOsdMesh( const std::string &shapeStr, int level ){
     OpenSubdiv::Far::PatchTablesFactory::Options options;
     options.useSingleCreasePatch = g_useSingleCreasePatch;
     options.maxIsolationLevel = level;
-    g_patchTables = OpenSubdiv::Far::PatchTablesFactory::Create(*refiner, options);
+    g_patchTables = OpenSubdiv::Far::PatchTablesFactory::Create(*g_topologyRefiner, options);
 
     int numVerts = vertexStencils->GetNumStencils() + vertexStencils->GetNumControlVertices();
     g_cpuVertexBuffer = OpenSubdiv::Osd::CpuVertexBuffer::Create(3, numVerts);

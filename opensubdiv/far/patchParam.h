@@ -60,6 +60,8 @@ namespace Far {
 ///
 struct PatchParam {
     Index faceIndex:32; // Ptex face index
+
+    Index vtrFaceIndex; 
     
     struct BitField {
         unsigned int field:32;

@@ -256,6 +256,7 @@ int convertSingleCrease(std::vector<float> &bezierVertices,
         bezierBounds.push_back(max[1]);
         bezierBounds.push_back(max[2]);
 
+#if 0
         // save center quad indices
         cpIndices.push_back(patchTables->GetPatchTable()[parray.GetVertIndex() + i*16 + 5]);
         cpIndices.push_back(patchTables->GetPatchTable()[parray.GetVertIndex() + i*16 + 6]);
@@ -266,6 +267,10 @@ int convertSingleCrease(std::vector<float> &bezierVertices,
         cpIndices.push_back(patchTables->GetPatchTable()[parray.GetVertIndex() + i*16 + 6]);
         cpIndices.push_back(patchTables->GetPatchTable()[parray.GetVertIndex() + i*16 + 9]);
         cpIndices.push_back(patchTables->GetPatchTable()[parray.GetVertIndex() + i*16 + 10]);
+#endif
+        for (int j = 0; j < 8; ++j) {
+            cpIndices.push_back(-1);
+        }
 
     }
     return numPatches*2;
@@ -642,7 +647,7 @@ int convertGregory(std::vector<float> &bezierVertices,
         bezierBounds.push_back(max[2]);
 
         // save center quad indices
-#if 0
+#if 1
         cpIndices.push_back(patchTables->GetPatchTable()[parray.GetVertIndex() + patchIndex*4 + 0]);
         cpIndices.push_back(patchTables->GetPatchTable()[parray.GetVertIndex() + patchIndex*4 + 1]);
         cpIndices.push_back(patchTables->GetPatchTable()[parray.GetVertIndex() + patchIndex*4 + 2]);
