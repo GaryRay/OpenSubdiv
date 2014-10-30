@@ -304,7 +304,7 @@ int convertBoundary(std::vector<float> &bezierVertices,
             for (int k = 0; k < 4; k++) {
                 vec3f H[3];
                 for (int l = 0; l < 3; l++) {
-                    H[3] = vec3f(0.0f);
+                    H[l] = vec3f(0.0f);
                     for (int m = 0; m < 4; m++) {
                         int vert = patchTables->GetPatchTable()[parray.GetVertIndex() + i*12 + l*4 + m];
                         H[l] += Q[j][m] * vec3f(vertices[vert*3+0],
@@ -647,6 +647,7 @@ int convertGregory(std::vector<float> &bezierVertices,
         bezierBounds.push_back(max[0]);
         bezierBounds.push_back(max[1]);
         bezierBounds.push_back(max[2]);
+
 
         // save center quad indices
         if (!badPatch) {
