@@ -741,6 +741,7 @@ drawCageEdges() {
         }
     }
 
+ glLineWidth(4.0f);
     glBindVertexArray(g_cageEdgeVAO);
 
     glBindBuffer(GL_ARRAY_BUFFER, g_cageEdgeVBO);
@@ -1133,6 +1134,7 @@ display() {
     rotate(g_transformData.ModelViewMatrix, -90, 1, 0, 0);
     translate(g_transformData.ModelViewMatrix,
               -g_center[0], -g_center[1], -g_center[2]);
+    scale(g_transformData.ModelViewMatrix, 100, 100, 100);
     perspective(g_transformData.ProjectionMatrix,
                 45.0f, (float)aspect, 1.0f, 500.0f);
     multMatrix(g_transformData.ModelViewProjectionMatrix,
@@ -1205,7 +1207,7 @@ display() {
             float const * color = getAdaptivePatchColor( desc );
             glProgramUniform4f(program, diffuseColor, color[0], color[1], color[2], color[3]);
         } else {
-            glProgramUniform4f(program, diffuseColor, 0.4f, 0.4f, 0.8f, 1);
+            glProgramUniform4f(program, diffuseColor, 0.8f, 0.8f, 0.8f, 1);
         }
 
         GLuint uniformGregoryQuadOffsetBase =
@@ -1787,7 +1789,7 @@ int main(int argc, char ** argv)
 
     static const char windowTitle[] = "OpenSubdiv glViewer " OPENSUBDIV_VERSION_STRING;
 
-#define CORE_PROFILE
+//#define CORE_PROFILE
 #ifdef CORE_PROFILE
     setGLCoreProfile();
 #endif
