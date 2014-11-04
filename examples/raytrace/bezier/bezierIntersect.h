@@ -37,7 +37,7 @@
 #include <cfloat>
 
 #define USE_COARSESORT 1
-#define USE_MINMAX_FAILFLAG 0
+#define USE_MINMAX_FAILFLAG 1
 
 #if ENABLE_TRACE_PRINT
 #define trace(...) { printf(__VA_ARGS__); }
@@ -140,6 +140,8 @@ public:
 
         _uRange[0] = _vRange[0] = 0;
         _uRange[1] = _vRange[1] = 1;
+
+        _count = 0;
 
         patch.GetMinMax(_min, _max, Real(1e-3));
     }
@@ -307,10 +309,12 @@ protected:
                 trace("hit t = %f, uv = (%f, %f)\n", t, u, v);
             }
         }
+        if (_count > 1000) return false;
         return bRet;
     }
     bool testBezierPatch(UVT* info, PatchType const & patch, Real zmin, Real zmax, Real eps) NO_INLINE {
         ValueType min, max;
+
         patch.GetMinMax(min, max, eps*1e-3);
 
         if (0 < min[0] || max[0] < 0) return false;//x
@@ -580,6 +584,10 @@ protected:
         PatchType tpatch(patch);
         rotateU(tpatch);
 
+        if (++_count > 1000 || u0 > u1 || v0 > v1) {
+            return false;
+        }
+
         trace("testBezierClipU (%f, %f) - (%f, %f) z:%f, %f  level=%d\n",
               u0, u1, v0, v1, zmin, zmax, level);
 
@@ -589,11 +597,17 @@ protected:
             0 < min[1] || max[1] < 0 || // y
             max[2] < zmin || zmax < min[2]) { // z
 #if USE_MINMAX_FAILFLAG
-            int failFlag = ((u0 == Real(0)) << 0)
-                      | ((u1 == Real(1)) << 1)
-                      | ((v0 == Real(0)) << 2)
-                      | ((v1 == Real(1)) << 3);
-            info->failFlag |= failFlag;
+            // set failFlag only if it's very close
+            if (fabs(min[0]) < eps ||
+                fabs(max[0]) < eps ||
+                fabs(min[1]) < eps ||
+                fabs(max[1]) < eps) {
+                int failFlag = ((u0 == Real(0)) << 0)
+                    | ((u1 == Real(1)) << 1)
+                    | ((v0 == Real(0)) << 2)
+                    | ((v1 == Real(1)) << 3);
+                info->failFlag |= failFlag;
+            }
 #endif
             return false;
         }
@@ -624,6 +638,8 @@ protected:
                 int order[2]={0,1};
                 coarseSort(order, tmp);
                 bool bRet = false;
+                if (ut[0] > ut[1]) std::swap(ut[0], ut[1]);
+                if (ut[2] > ut[3]) std::swap(ut[2], ut[3]);
                 for (int i = 0; i < 2; ++i) {
                     if (testBezierClipV(info, tmp[order[i]], ut[2*order[i]], ut[2*order[i]+1],
                                         v0, v1, zmin, zmax, level+1, max_level, eps)){
@@ -651,6 +667,10 @@ protected:
         PatchType tpatch(patch);
         rotateV(tpatch);
 
+        if (++_count > 1000 || u0 > u1 || v0 > v1) {
+            return false;
+        }
+
         trace("testBezierClipV (%f, %f) - (%f, %f) z:%f, %f  level=%d\n",
               u0, u1, v0, v1, zmin, zmax, level);
 
@@ -660,11 +680,17 @@ protected:
             0 < min[1] || max[1] < 0 || // y
             max[2] < zmin || zmax < min[2]) { // z
 #if USE_MINMAX_FAILFLAG
-            int failFlag = ((u0 == Real(0)) << 0)
-                      | ((u1 == Real(1)) << 1)
-                      | ((v0 == Real(0)) << 2)
+            // set failFlag only if it's very close
+            if (fabs(min[0]) < eps ||
+                fabs(max[0]) < eps ||
+                fabs(min[1]) < eps ||
+                fabs(max[1]) < eps) {
+                int failFlag = ((u0 == Real(0)) << 0)
+                    | ((u1 == Real(1)) << 1)
+                    | ((v0 == Real(0)) << 2)
                       | ((v1 == Real(1)) << 3);
-            info->failFlag |= failFlag;
+                info->failFlag |= failFlag;
+            }
 #endif      
             return false;
         }
@@ -695,6 +721,8 @@ protected:
                 int order[2]={0,1};
                 coarseSort(order, tmp);
                 bool bRet = false;
+                if (vt[0] > vt[1]) std::swap(vt[0], vt[1]);
+                if (vt[2] > vt[3]) std::swap(vt[2], vt[3]);
                 for (int i = 0; i < 2; ++i) {
                     if (testBezierClipU(info, tmp[order[i]], u0, u1,
                                         vt[2*order[i]], vt[2*order[i]+1],
@@ -1024,6 +1052,8 @@ protected:
     bool _useTriangle;
     bool _directBilinear;
     int _wcpFlag;
+
+    int _count;
 };
 
 }   // end OsdBezier

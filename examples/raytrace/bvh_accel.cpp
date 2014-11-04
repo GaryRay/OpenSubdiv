@@ -49,6 +49,7 @@ typedef OsdBezier::vec3f real3;
 bool g_traceEnabled = false;
 
 #if ENABLE_TRACE_PRINT
+//#if 1
 #define trace(...)                              \
     {                                           \
             printf(__VA_ARGS__);                \
@@ -382,6 +383,7 @@ static void ComputeBoundingBox(real3 &bmin, real3 &bmax,
     bmax[0] += kEPS + displaceBound;
     bmax[1] += kEPS + displaceBound;
     bmax[2] += kEPS + displaceBound;
+
 }
 
 static void ComputeBoundingBox(real3 &bmin, real3 &bmax,
@@ -486,8 +488,9 @@ size_t BVHAccel::BuildTree(const Mesh *mesh, unsigned int leftIdx,
     FindCutFromBinBuffer(cutPos, minCutAxis, &bins, bmin, bmax, n,
                          _options.costTaabb);
 
-    debug("depth: %d, cutPos: (%f, %f, %f), cutAxis: %d\n", depth, cutPos[0],
-          cutPos[1], cutPos[2], minCutAxis);
+    debug("depth: %d, cutPos: (%f, %f, %f), cutAxis: %d, l = %d, r = %d\n",
+          depth, cutPos[0],
+          cutPos[1], cutPos[2], minCutAxis, leftIdx, rightIdx);
 
     // Try all 3 axis until good cut position avaiable.
     unsigned int midIdx;
@@ -523,7 +526,6 @@ size_t BVHAccel::BuildTree(const Mesh *mesh, unsigned int leftIdx,
             break;
         }
     }
-
     BVHNode node;
     node.axis = cutAxis;
     node.flag = 0; // 0 = branch
@@ -553,7 +555,7 @@ bool BVHAccel::Build(const Mesh *mesh, const BVHBuildOptions &options) {
     assert(mesh);
 
     size_t n = mesh->IsBezierMesh() ? mesh->_numBezierPatches : mesh->_numTriangles;
-    trace("[BVHAccel] Input # of bezier patches = %lu\n", mesh->numBezierPatches);
+    trace("[BVHAccel] Input # of bezier patches = %lu\n", mesh->GetNumPatches());
 
     //
     // 1. Create triangle indices(this will be permutated in BuildTree)
@@ -582,8 +584,6 @@ bool BVHAccel::Build(const Mesh *mesh, const BVHBuildOptions &options) {
 }
 
 namespace {
-
-const int kMaxStackDepth = 5120;
 
 bool IntersectRayAABB(real &tminOut, // [out]
                       real &tmaxOut, // [out]
@@ -679,7 +679,8 @@ inline bool TriangleIsect(real &tInOut, real &uOut, real &vOut, const real3 &v0,
 }
 
 template<typename T>
-bool PatchIsect(Intersection &isect,
+bool PatchIsect(int patchIndex,
+    Intersection &isect,
                 const real *bezierVerts,
                 int wcpFlag,
                 const Ray &ray,
@@ -1047,6 +1048,18 @@ bool TestLeafNode(Intersection &isect, // [inout]
                   bool useTriangle,
                   bool useRayDiffEpsilon,
                   bool conservativeTest,
+                  bool directBilinear) __attribute__((noinline));
+
+bool TestLeafNode(Intersection &isect, // [inout]
+                  const BVHNode &node, const std::vector<unsigned int> &indices,
+                  const Mesh *mesh, const Ray &ray, int intersectKernel,
+                  float uvMargin, bool cropUV, bool bezierClip,
+                  float displaceScale, float displaceFreq,
+                  double eps,
+                  int maxLevel,
+                  bool useTriangle,
+                  bool useRayDiffEpsilon,
+                  bool conservativeTest,
                   bool directBilinear) {
     bool hit = false;
 
@@ -1071,20 +1084,20 @@ bool TestLeafNode(Intersection &isect, // [inout]
             const real *bv = &mesh->_bezierVertices[faceIdx * 16 * 3];
             int wcpFlag = conservativeTest ? mesh->_wcpFlags[faceIdx] : 0;
 
-            trace("TestLeafNode(%d/%d) patch = %d\n", i, numPrimitives, faceIdx);
+//            trace("TestLeafNode(%d/%d) patch = %d\n", i, numPrimitives, faceIdx);
 
             if (displaceScale == 0) {
                 bool r = false;
                 if (intersectKernel == BVHAccel::OSD_FLOAT) {
-                    r = PatchIsect<OsdBezier::vec3f>(isect, bv, wcpFlag, tr, uvMargin,
+                    r = PatchIsect<OsdBezier::vec3f>(faceIdx, isect, bv, wcpFlag, tr, uvMargin,
                                                      cropUV, bezierClip, eps, maxLevel, useTriangle,
                                                      useRayDiffEpsilon, directBilinear);
                 } else if (intersectKernel == BVHAccel::OSD_SSE) {
-                    r = PatchIsect<OsdBezier::vec3sse>(isect, bv, wcpFlag, tr, uvMargin,
+                    r = PatchIsect<OsdBezier::vec3sse>(faceIdx, isect, bv, wcpFlag, tr, uvMargin,
                                                        cropUV, bezierClip, eps, maxLevel, useTriangle,
                                                        useRayDiffEpsilon, directBilinear);
                 } else if (intersectKernel == BVHAccel::OSD_DOUBLE) {
-                    r = PatchIsect<OsdBezier::vec3d>(isect, bv, wcpFlag, tr, uvMargin,
+                    r = PatchIsect<OsdBezier::vec3d>(faceIdx, isect, bv, wcpFlag, tr, uvMargin,
                                                      cropUV, bezierClip, eps, maxLevel, useTriangle,
                                                      useRayDiffEpsilon, directBilinear);
                 }
@@ -1201,6 +1214,8 @@ void BuildIntersection(Intersection &isect, const Mesh *mesh, Ray &ray)
 
 } // namespace
 
+#define kMaxStackDepth    512
+
 bool BVHAccel::Traverse(Intersection &isect, const Mesh *mesh, Ray &ray, Context *context) {
 
     if (context) context->BeginTraverse();
@@ -1208,7 +1223,7 @@ bool BVHAccel::Traverse(Intersection &isect, const Mesh *mesh, Ray &ray, Context
     real hitT = std::numeric_limits<real>::max(); // far = no hit.
 
     int nodeStackIndex = 0;
-    int nodeStack[512];
+    int nodeStack[kMaxStackDepth+1];
     nodeStack[0] = 0;
 
     // Init isect info as no hit

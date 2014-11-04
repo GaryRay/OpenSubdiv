@@ -69,7 +69,7 @@ public:
     Scene();
     ~Scene();
 
-    void BuildBVH();
+    void BuildBVH(int minLeafPrimitives);
     void BuildVBO();
 
     void SetCamera(int width, int height, double fov,

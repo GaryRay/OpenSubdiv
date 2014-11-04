@@ -248,7 +248,7 @@ OpenSubdiv::Far::TopologyRefiner * g_topologyRefiner = NULL;
 int g_level = 2;
 int g_preTess = 0;
 int g_preTessLevel = 1;
-int g_intersectKernel = 0;
+int g_intersectKernel = 1;
 int g_watertight = 1;
 int g_cropUV = 0;
 int g_bezierClip = 1;
@@ -261,6 +261,7 @@ float g_displaceFreq = 100.0f;
 
 int g_epsLevel = 4;//4->16
 int g_maxLevel = 16;//10->32
+int g_minLeafPrimitives = 2;
 int g_useTriangle = 0;
 
 int g_useRayDiffEpsilon = 1;
@@ -532,7 +533,7 @@ updateGeom() {
     }
 
     s.Start();
-    g_scene.BuildBVH();
+    g_scene.BuildBVH(g_minLeafPrimitives);
     s.Stop();
 
     g_bvhTime = s.GetElapsed() * 1000.0f;
@@ -941,6 +942,7 @@ static void
 callbackLevel(int l)
 {
     g_level = l;
+    g_preTessLevel = l;
     rebuildOsdMesh();
 }
 
@@ -994,6 +996,11 @@ callbackSlider(float value, int data)
     } else if (data == 2) {
         g_displaceFreq = value;
         startRender();
+    } else if (data == 3) {
+        if (g_minLeafPrimitives != value) {
+            g_minLeafPrimitives = value;
+            updateGeom();
+        }
     }
 }
 
@@ -1102,6 +1109,8 @@ initHUD()
                     10, y, 20, true, callbackSlider, -2);y+=30;
     g_hud.AddSlider("Max Level", 0, 16, g_maxLevel,
                     10, y, 20, true, callbackSlider, -1);y+=30;
+    g_hud.AddSlider("# of leaf", 2, 16, g_minLeafPrimitives,
+                    10, y, 20, true, callbackSlider, 3);y+=30;
 
     g_hud.AddSlider("UV Margin", 0, 0.01, g_uvMargin,
                     10, y, 20, false, callbackSlider, 0);y+=30;
@@ -1333,6 +1342,8 @@ int main(int argc, char ** argv)
     glGetError();
 #endif
 #endif
+
+    //loadCamera();
 
     initGL();
 

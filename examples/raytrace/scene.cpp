@@ -74,9 +74,11 @@ Scene::~Scene()
 }
 
 void
-Scene::BuildBVH()
+Scene::BuildBVH(int minLeafPrimitives)
 {
     BVHBuildOptions options; // Use default option
+
+    options.minLeafPrimitives = minLeafPrimitives;
 
     printf("  BVH build option:\n");
     printf("    # of leaf primitives: %d\n", options.minLeafPrimitives);
@@ -164,15 +166,15 @@ public:
 #endif
             int y = rr*_step + _stepIndex/_step;
             for (int x = _stepIndex%_step; x < _width; x += _step) {
-
                 float u = 0.5;
                 float v = 0.5;
 
-                Ray ray = _camera->GenerateRay(x + u + _step / 2.0f, y + v + _step / 2.0f);
+                float offset = 10.0f;//0; // _step + 2.0f;
+                Ray ray = _camera->GenerateRay(x + u + offset, y + v + offset);
                 if(useRayDiff){
-                    Ray rayO  = _camera->GenerateRay(x + _step / 2.0f, y + _step / 2.0f);
-                    Ray rayDX = _camera->GenerateRay(x + 1 + _step / 2.0f, y + _step / 2.0f);
-                    Ray rayDY = _camera->GenerateRay(x + _step / 2.0f, y + 1 + _step / 2.0f);
+                    Ray rayO  = _camera->GenerateRay(x + offset, y + offset);
+                    Ray rayDX = _camera->GenerateRay(x + 1 + offset, y + offset);
+                    Ray rayDY = _camera->GenerateRay(x + offset, y + 1 + offset);
                     ray.dDdx = rayDX.dir-rayO.dir;
                     ray.dDdy = rayDY.dir-rayO.dir;
                     ray.hasDifferential = true;
@@ -324,10 +326,10 @@ Scene::RenderReport()
     float renderTime = s.GetElapsed();
 
     std::cout << "["
-        << _traverseTime/1000.0/iteration << ", "
-        << _intersectTime/1000.0/iteration << ", "
-        << _shadeTime/1000.0/iteration << ", "
-        << renderTime/iteration << "], \n";
+              << "Traverse = " << _traverseTime/1000.0/iteration << ", "
+              << "Intersect = " << _intersectTime/1000.0/iteration << ", "
+              << "Shade = " << _shadeTime/1000.0/iteration << ", "
+              << "Total = " << renderTime/iteration << "], \n";
 }
 
 inline float
@@ -369,17 +371,22 @@ Scene::Shade(float rgba[4], const Intersection &isect, const Ray &ray, Context *
 
     // No zero in d to distinguish crack pixel color(dark background color)
     float d = std::max(real(0.2), dot(I, isect.normal));
+    float s = 0;//pow(std::max(0.0f, -dot(I - 2*d*isect.normal, I)), 64);
 
     OsdBezier::vec3f color;
     if (_mode == SHADED) {
-        //        real3 reflect = I - 2 * d * isect.normal;
-        real s = 0;//pow(std::max(0.0f, -vdot(ray.dir, reflect)), 32);
         color = d * OsdBezier::vec3f(0.8, 0.8, 0.8) + s * OsdBezier::vec3f(1, 1, 1);
         //color = ray.org + ray.dir * isect.t;
         //color[2] = color[2]  * 10;
         //color = isect.normal * 0.5 + real3(0.5, 0.5, 0.5);
     } else if (_mode == PTEX_COORD) {
-        color = OsdBezier::vec3f(isect.u, isect.v, 1);
+        color = d * OsdBezier::vec3f(isect.u, isect.v, 1) + s * OsdBezier::vec3f(1.0f);
+        // float m = 0.01;
+        // float d = 1-std::max(std::max(fabs(m-isect.u), fabs((1-m)-isect.u)),
+        //                      std::max(fabs(m-isect.v), fabs((1-m)-isect.v)));
+        // d = d * dot(ray.dir, isect.normal);
+        // if (d > 0.1f) d = 1.0f;
+        // color = OsdBezier::vec3f(d);
     } else if (_mode == PATCH_TYPE) {
         float l = isect.level * 0.05;
         color = d * (OsdBezier::vec3f(&_mesh._colors[isect.patchID*3])

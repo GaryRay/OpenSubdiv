@@ -73,6 +73,7 @@ struct Mesh {
 
     OpenSubdiv::Far::PatchTables::PatchParamTable _patchParams;       /// [FarPatchParam] * numBezierPatches
     std::vector<float> _colors;                     /// [rgb] * numBezierPatches;
+    std::vector<float> _sharpnesses;                /// sharpness * numBezierPatches (for single-crease patch)
 
     std::vector<int> _wcpFlags; 
 

@@ -122,6 +122,7 @@ Mesh::BezierConvert(float *inVertices, int numVertices,
     _bezierVertices.clear();
     _bezierBounds.clear();
     _colors.clear();
+    _sharpnesses.clear();
     _wcpFlags.clear();
 
     std::vector<int> cpIndices; // 16 * numPatches
@@ -198,10 +199,15 @@ Mesh::BezierConvert(float *inVertices, int numVertices,
             for (int i = 0; i < numPatches/2; ++i) {
                 patchParam.push_back(srcPatchParam[it->GetPatchIndex() + i]);
                 patchParam.push_back(srcPatchParam[it->GetPatchIndex() + i]);
+                int sharpid = patchTables->GetSharpnessIndexTable()[it->GetPatchIndex() + i];
+                float sharpness = patchTables->GetSharpnessValues()[sharpid];
+                _sharpnesses.push_back(sharpness);
+                _sharpnesses.push_back(-sharpness);
             }
         } else {
             for (int i = 0; i < numPatches; ++i) {
                 patchParam.push_back(srcPatchParam[it->GetPatchIndex() + i]);
+                _sharpnesses.push_back(0);
             }
         }
     }
@@ -545,8 +551,15 @@ Mesh::Tessellate(int level)
     _triVertices.clear();
     _triNormals.clear();
     _faces.clear();
-    _colors.clear();
+    //_colors.clear();
     _numTriangles = 0;
+
+    // _triVertices.reserve(120000000*3*3);
+    // _triNormals.reserve(120000000*3*3);
+    // _faces.reserve(120000000*3*2);
+
+    std::vector<float> colors;
+    //colors.reserve(120000000*3*2);
 
     if (level == 0) {
         return;
@@ -556,18 +569,27 @@ Mesh::Tessellate(int level)
     int vindex = 0;
     int numTriangles = 0;
 
-    std::vector<float> colors;
     for (size_t patchIndex = 0; patchIndex < _numBezierPatches; ++patchIndex) {
 
         const OpenSubdiv::Far::PatchParam &param = _patchParams[patchIndex];
         unsigned int bits = param.bitField.field;
         int patchLevel = (bits & 0xf);
         int div = 1 << std::max(0, level-patchLevel);
+        int udiv = div;
+        int vdiv = div;
+
+        float sharp = _sharpnesses[patchIndex];
+        if (sharp > 0) {
+            udiv = 1 << std::max(0, level-patchLevel-int(sharp));
+        } else if (sharp < 0) {
+            udiv = div - (1 << std::max(0, level-patchLevel+int(sharp)));
+            udiv = std::max(1, udiv);
+        }
 
         float p[3], n[3];
-        for (int u = 0; u <= div; ++u) {
-            for (int v = 0; v <= div; ++v) {
-                evalBezier(p, n, u/float(div), v/float(div), cp);
+        for (int u = 0; u <= udiv; ++u) {
+            for (int v = 0; v <= vdiv; ++v) {
+                evalBezier(p, n, u/float(udiv), v/float(vdiv), cp);
                 _triVertices.push_back(p[0]);
                 _triVertices.push_back(p[1]);
                 _triVertices.push_back(p[2]);
@@ -575,14 +597,14 @@ Mesh::Tessellate(int level)
                 _triNormals.push_back(n[1]);
                 _triNormals.push_back(n[2]);
 
-                if (u < div and v < div) {
+                if (u < udiv and v < vdiv) {
                     _faces.push_back(vindex);
                     _faces.push_back(vindex+1);
-                    _faces.push_back(vindex+div+1);
+                    _faces.push_back(vindex+vdiv+1);
 
-                    _faces.push_back(vindex+div+1);
+                    _faces.push_back(vindex+vdiv+1);
                     _faces.push_back(vindex+1);
-                    _faces.push_back(vindex+div+2);
+                    _faces.push_back(vindex+vdiv+2);
 
                     colors.push_back(_colors[patchIndex*3+0]);
                     colors.push_back(_colors[patchIndex*3+1]);
