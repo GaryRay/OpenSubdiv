@@ -560,6 +560,7 @@ createOsdMesh( const std::string &shapeStr, int level ){
     {
         OpenSubdiv::Sdc::Type type = GetSdcType(*shape);
         OpenSubdiv::Sdc::Options options = GetSdcOptions(*shape);
+        options.SetVVarBoundaryInterpolation(OpenSubdiv::Sdc::Options::VVAR_BOUNDARY_EDGE_AND_CORNER);
 
         g_topologyRefiner = OpenSubdiv::Far::TopologyRefinerFactory<Shape>::Create(type, options, *shape);
 
