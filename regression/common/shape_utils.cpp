@@ -62,7 +62,7 @@ Shape * Shape::parseObj(char const * shapestr, Scheme shapescheme, int axis ) {
 
     s->scheme = shapescheme;
 
-    char * str=const_cast<char *>(shapestr), line[256];
+    char * str=const_cast<char *>(shapestr), line[1024];
     bool done = false;
     while( not done )
     {   done = sgets(line, sizeof(line), &str)==0;
