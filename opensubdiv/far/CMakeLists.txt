@@ -25,17 +25,29 @@
 #-------------------------------------------------------------------------------
 # source & headers
 set(SOURCE_FILES
-     patchMap.cpp
-     patchTables.cpp
-     patchTablesFactory.cpp
-     stencilTablesFactory.cpp
-     topologyRefiner.cpp
-     topologyRefinerFactory.cpp
+    error.cpp
+    gregoryBasis.cpp
+    interpolate.cpp
+    patchDescriptor.cpp
+    patchMap.cpp
+    patchTables.cpp
+    patchTablesFactory.cpp
+    stencilTablesFactory.cpp
+    topologyRefiner.cpp
+    topologyRefinerFactory.cpp
+)
+
+set(PRIVATE_HEADER_FILES
+    protoStencil.h
 )
 
 set(PUBLIC_HEADER_FILES
+    error.h
+    gregoryBasis.h
+    interpolate.h
     kernelBatch.h
     kernelBatchDispatcher.h
+    patchDescriptor.h
     patchParam.h
     patchMap.h
     patchTables.h

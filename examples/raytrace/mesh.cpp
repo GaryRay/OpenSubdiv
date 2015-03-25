@@ -31,7 +31,7 @@
 #include "../common/patchColors.h"
 
 #define VERBOSE(x, ...)
-//#define VERBOSE(x, ...) printf(x, __VA_ARGS__)
+//#define VERBOSE printf
 
 struct Edge {
     Edge(int a, int b) {
@@ -79,13 +79,6 @@ Mesh::BezierConvert(float *inVertices, int numVertices,
     using namespace OsdBezier;
 
     // convert to mesh
-    Far::PatchTables::PatchArrayVector const &patchArrays =
-        patchTables->GetPatchArrayVector();
-    Far::PatchTables::PatchParamTable const &srcPatchParam =
-        patchTables->GetPatchParamTable();
-
-    Far::PatchTables::PatchParamTable patchParam;
-
     // centering/normalize vertices.
     std::vector<float> vertices;
     vertices.reserve(numVertices*3);
@@ -105,7 +98,7 @@ Mesh::BezierConvert(float *inVertices, int numVertices,
         float radius = std::max(std::max(max[0]-min[0], max[1]-min[1]), max[2]-min[2]);
         for (int i = 0; i < numVertices; ++i) {
             float *v = inVertices + i*3;
-#if 1
+#if 0
             // centering
             vertices.push_back((v[0]-center[0])/radius);
             vertices.push_back((v[1]-center[1])/radius);
@@ -127,52 +120,56 @@ Mesh::BezierConvert(float *inVertices, int numVertices,
 
     std::vector<int> cpIndices; // 16 * numPatches
 
-    std::vector<Far::PatchTables::Descriptor> patchDescs;
+    std::vector<Far::PatchDescriptor> patchDescs;
+
+    Far::PatchParamTable const &srcPatchParam =
+        patchTables->GetPatchParamTable();
+
+    Far::PatchParamTable patchParam;
 
     // iterate patch types.
-    for (Far::PatchTables::PatchArrayVector::const_iterator it = patchArrays.begin();
-         it != patchArrays.end(); ++it) {
+    for (int array=0; array < patchTables->GetNumPatchArrays(); ++array) {
 
         int numPatches = 0;
-        Far::PatchTables::Descriptor desc = it->GetDescriptor();
+        Far::PatchDescriptor desc = patchTables->GetPatchArrayDescriptor(array);
         VERBOSE("TransitionType = %d\n", desc.GetPattern());
 
         switch(desc.GetType()) {
-        case Far::PatchTables::REGULAR:
+        case Far::PatchDescriptor::REGULAR:
             numPatches = convertRegular(_bezierVertices,
                                         _bezierBounds,
                                         cpIndices,
-                                        &vertices[0], patchTables, *it);
+                                        &vertices[0], patchTables, array);
             break;
-        case Far::PatchTables::SINGLE_CREASE:
+        case Far::PatchDescriptor::SINGLE_CREASE:
             numPatches = convertSingleCrease(_bezierVertices,
                                              _bezierBounds,
                                              cpIndices,
-                                             &vertices[0], patchTables, *it);
+                                             &vertices[0], patchTables, array);
             break;
-        case Far::PatchTables::BOUNDARY:
+        case Far::PatchDescriptor::BOUNDARY:
             numPatches = convertBoundary(_bezierVertices,
                                          _bezierBounds,
                                          cpIndices,
-                                         &vertices[0], patchTables, *it);
+                                         &vertices[0], patchTables, array);
             break;
-        case Far::PatchTables::CORNER:
+        case Far::PatchDescriptor::CORNER:
             numPatches = convertCorner(_bezierVertices,
                                        _bezierBounds,
                                        cpIndices,
-                                       &vertices[0], patchTables, *it);
+                                       &vertices[0], patchTables, array);
             break;
-        case Far::PatchTables::GREGORY:
+        case Far::PatchDescriptor::GREGORY:
             numPatches = convertGregory(_bezierVertices,
                                         _bezierBounds,
                                         cpIndices,
-                                        &vertices[0], patchTables, *it);
+                                        &vertices[0], patchTables, array);
             break;
-        case Far::PatchTables::GREGORY_BOUNDARY:
+        case Far::PatchDescriptor::GREGORY_BOUNDARY:
             numPatches = convertBoundaryGregory(_bezierVertices,
                                                 _bezierBounds,
                                                 cpIndices,
-                                                &vertices[0], patchTables, *it);
+                                                &vertices[0], patchTables, array);
             break;
         default:
             break;
@@ -182,9 +179,15 @@ Mesh::BezierConvert(float *inVertices, int numVertices,
         {
             const float *color = getAdaptivePatchColor(desc);
             for (int i = 0; i < numPatches; ++i) {
-                _colors.push_back(color[0]);
-                _colors.push_back(color[1]);
-                _colors.push_back(color[2]);
+                float r = color[0];
+                float g = color[1];
+                float b = color[2];
+                if (desc.GetType() == Far::PatchDescriptor::SINGLE_CREASE) {
+                    if (i%2==0) g = 1.0;
+                }
+                _colors.push_back(r);
+                _colors.push_back(g);
+                _colors.push_back(b);
             }
         }
         //descs
@@ -194,19 +197,22 @@ Mesh::BezierConvert(float *inVertices, int numVertices,
             }
         }
 
-        if (desc.GetType() == Far::PatchTables::SINGLE_CREASE) {
+        if (desc.GetType() == Far::PatchDescriptor::SINGLE_CREASE) {
             // duplicate patchparam
+            Far::ConstPatchParamArray srcPatchParam = patchTables->GetPatchParams(array);
             for (int i = 0; i < numPatches/2; ++i) {
-                patchParam.push_back(srcPatchParam[it->GetPatchIndex() + i]);
-                patchParam.push_back(srcPatchParam[it->GetPatchIndex() + i]);
-                int sharpid = patchTables->GetSharpnessIndexTable()[it->GetPatchIndex() + i];
+                patchParam.push_back(srcPatchParam[i]);
+                patchParam.push_back(srcPatchParam[i]);
+                //int sharpid = patchTables->GetSharpnessIndexTable()[it->GetPatchIndex() + i];
+                int sharpid = patchTables->GetSharpnessIndices(array)[i];
                 float sharpness = patchTables->GetSharpnessValues()[sharpid];
                 _sharpnesses.push_back(sharpness);
                 _sharpnesses.push_back(-sharpness);
             }
         } else {
+            Far::ConstPatchParamArray srcPatchParam = patchTables->GetPatchParams(array);
             for (int i = 0; i < numPatches; ++i) {
-                patchParam.push_back(srcPatchParam[it->GetPatchIndex() + i]);
+                patchParam.push_back(srcPatchParam[i]);
                 _sharpnesses.push_back(0);
             }
         }
@@ -226,20 +232,22 @@ Mesh::BezierConvert(float *inVertices, int numVertices,
             //int rots = face->_adaptiveFlags.rots;
 
             switch(patchDescs[i].GetPattern()) {
-            case Far::PatchTables::PATTERN0:
+            case Far::PatchDescriptor::PATTERN0:
                 wcpFlag = 1 << rots; break;
                 break;
-            case Far::PatchTables::PATTERN1:
+            case Far::PatchDescriptor::PATTERN1:
                 wcpFlag = (1 << rots) | (1 << ((rots+3)%4)); break;
                 break;
-            case Far::PatchTables::PATTERN2:
+            case Far::PatchDescriptor::PATTERN2:
                 wcpFlag = (1 << ((rots+1)%4)) | (1 << ((rots+2)%4)) | (1 << ((rots+3)%4));
                 break;
-            case Far::PatchTables::PATTERN3:
+            case Far::PatchDescriptor::PATTERN3:
                 wcpFlag = 0xf;
                 break;
-            case Far::PatchTables::PATTERN4:
+            case Far::PatchDescriptor::PATTERN4:
                 wcpFlag = (1 << rots) | (1 << ((rots+2)%4)); break;
+                break;
+            default:
                 break;
             }
             _wcpFlags[i] = wcpFlag;
@@ -253,9 +261,9 @@ Mesh::BezierConvert(float *inVertices, int numVertices,
             int edgeParents[][2] = { {0, 2}, {0, 1}, {2, 3}, {1, 3} };
 
             // store bezier edges (skip gregory, single-crease)
-            if (patchDescs[i].GetType() == Far::PatchTables::SINGLE_CREASE or
-                patchDescs[i].GetType() == Far::PatchTables::GREGORY or
-                patchDescs[i].GetType() == Far::PatchTables::GREGORY_BOUNDARY) continue;
+            if (patchDescs[i].GetType() == Far::PatchDescriptor::SINGLE_CREASE or
+                patchDescs[i].GetType() == Far::PatchDescriptor::GREGORY or
+                patchDescs[i].GetType() == Far::PatchDescriptor::GREGORY_BOUNDARY) continue;
 
             VERBOSE("\n============ patch %d ==============\n", patchParam[i].faceIndex);
 
@@ -313,14 +321,14 @@ Mesh::BezierConvert(float *inVertices, int numVertices,
             //OsdHbrFace *face = hbrMesh->GetFace(hbrFace);
             int faceIndex = patchParam[i].vtrFaceIndex;
 
-            if (patchDescs[i].GetType() == Far::PatchTables::SINGLE_CREASE) continue;
+            if (patchDescs[i].GetType() == Far::PatchDescriptor::SINGLE_CREASE) continue;
             // ---------------- gregory
             //   0-----3
             //   |     |
             //   |     |
             //   1-----2
-            if (patchDescs[i].GetType() == Far::PatchTables::GREGORY or
-                patchDescs[i].GetType() == Far::PatchTables::GREGORY_BOUNDARY) {
+            if (patchDescs[i].GetType() == Far::PatchDescriptor::GREGORY or
+                patchDescs[i].GetType() == Far::PatchDescriptor::GREGORY_BOUNDARY) {
                 int edgeParents[][2] = { {0, 1}, {1, 2}, {2, 3}, {3, 0} };
                 for (int j = 0; j < 4; ++j) {
                     int v0 = cpIndices[i*4 + edgeParents[j][0]];
@@ -360,12 +368,12 @@ Mesh::BezierConvert(float *inVertices, int numVertices,
             int level = patchParam[i].bitField.GetDepth()-1;
             if (level < 0) continue;
             int parentFace = refiner->GetChildFaceParentFace(level, faceIndex);
-            Vtr::IndexArray indices = refiner->GetFaceVertices(level, parentFace);
+            Vtr::ConstIndexArray indices = refiner->GetFaceVertices(level, parentFace);
 
             VERBOSE("Level %d : \e[32mPatch %d\e[0m, parent = %d (Flag=%d)----\n",
                     level+1, faceIndex, parentFace, _wcpFlags[i]);
 
-            Vtr::IndexArray myEdges = refiner->GetFaceEdges(level+1, faceIndex);
+            Vtr::ConstIndexArray myEdges = refiner->GetFaceEdges(level+1, faceIndex);
             VERBOSE("My edges verts:");
             for (int i = 0; i < myEdges.size(); ++i) {
                 VERBOSE(" %d ", myEdges[i]);
@@ -387,8 +395,8 @@ Mesh::BezierConvert(float *inVertices, int numVertices,
 
             int childIndex = -1;
             bool watertightEdges[4] = { false, false, false, false };
-            Vtr::IndexArray children = refiner->GetFaceChildFaces(level, parentFace);
-            Vtr::IndexArray edges = refiner->GetFaceEdges(level, parentFace);
+            Vtr::ConstIndexArray children = refiner->GetFaceChildFaces(level, parentFace);
+            Vtr::ConstIndexArray edges = refiner->GetFaceEdges(level, parentFace);
 
             for (int j = 0; j < 4; ++j) {
                 if (children[j] == faceIndex) childIndex = j;
@@ -410,14 +418,14 @@ Mesh::BezierConvert(float *inVertices, int numVertices,
 
                 //edgeIndex = (edgeIndex + rot)%4;
 
-                if (patchDescs[i].GetType() == Far::PatchTables::BOUNDARY or
-                    patchDescs[i].GetType() == Far::PatchTables::CORNER) continue;
+                if (patchDescs[i].GetType() == Far::PatchDescriptor::BOUNDARY or
+                    patchDescs[i].GetType() == Far::PatchDescriptor::CORNER) continue;
 
                 // if it's triangle head, skip
                 //if ((_wcpFlags[i] >> edgeIndex)&1 == 1) continue;
                 //if (_wcpFlags[i]) continue;
-                
-                Vtr::IndexArray faces = refiner->GetEdgeFaces(level, edges[edgeIndex]);
+
+                Vtr::ConstIndexArray faces = refiner->GetEdgeFaces(level, edges[edgeIndex]);
                 if (faces.size() != 2) continue;
                 int adjFace = (faces[0] == parentFace) ? faces[1] : faces[0];
                 VERBOSE("Adjacent face %d\n", adjFace);
@@ -517,6 +525,7 @@ Mesh::BezierConvert(float *inVertices, int numVertices,
                     }
                 } else {
                     // not found in the edge dictionary.
+                    printf("not found. patch %d\n", i);
                 }
             }
         }

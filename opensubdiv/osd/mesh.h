@@ -33,7 +33,6 @@
 #include "../far/stencilTables.h"
 #include "../far/stencilTablesFactory.h"
 
-#include "../osd/error.h"
 #include "../osd/vertex.h"
 #include "../osd/vertexDescriptor.h"
 
@@ -102,9 +101,14 @@ protected:
         bool fullTopologyInLastLevel = refiner.GetNumFVarChannels()>0;
 
         if (adaptive) {
-            refiner.RefineAdaptive(level, fullTopologyInLastLevel, singleCreasePatch);
+            Far::TopologyRefiner::AdaptiveOptions options(level);
+            options.fullTopologyInLastLevel = fullTopologyInLastLevel;
+            options.useSingleCreasePatch = singleCreasePatch;
+            refiner.RefineAdaptive(options);
         } else {
-            refiner.RefineUniform(level, fullTopologyInLastLevel);
+            Far::TopologyRefiner::UniformOptions options(level);
+            options.fullTopologyInLastLevel = fullTopologyInLastLevel;
+            refiner.RefineUniform(options);
         }
     }
 };
@@ -225,7 +229,7 @@ private:
 
         Far::StencilTablesFactory::Options options;
         options.generateOffsets=true;
-        options.generateAllLevels=_refiner->IsUniform() ? false : true;
+        options.generateIntermediateLevels=_refiner->IsUniform() ? false : true;
 
         Far::StencilTables const * vertexStencils=0, * varyingStencils=0;
 

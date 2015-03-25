@@ -72,6 +72,7 @@ _add_glfw_executable(raytrace
     camera.cpp
     scene.cpp
     jpge.cpp
+    texture.cpp
     "${SHADER_FILES}"
     "${INC_FILES}"
     $<TARGET_OBJECTS:regression_common_obj>

@@ -42,10 +42,10 @@
 GLFWwindow* g_window = 0;
 GLFWmonitor* g_primary = 0;
 
-#include <osd/error.h>
 #include <osd/vertex.h>
 #include <osd/glDrawContext.h>
 #include <osd/glDrawRegistry.h>
+#include <far/error.h>
 
 #include <osd/cpuGLVertexBuffer.h>
 #include <osd/cpuComputeContext.h>
@@ -235,7 +235,7 @@ static void
 calcNormals(OpenSubdiv::Far::TopologyRefiner const & refiner,
     std::vector<float> const & pos, std::vector<float> & normals) {
 
-    typedef OpenSubdiv::Far::IndexArray IndexArray;
+    typedef OpenSubdiv::Far::ConstIndexArray IndexArray;
 
     // calc normal vectors
     int nverts = (int)pos.size()/3;
@@ -308,18 +308,19 @@ updateGeom() {
 static void
 createOsdMesh(ShapeDesc const & shapeDesc, int level, Scheme scheme = kCatmark) {
 
-    typedef OpenSubdiv::Far::IndexArray IndexArray;
+    typedef OpenSubdiv::Far::ConstIndexArray IndexArray;
 
     Shape * shape = Shape::parseObj(shapeDesc.data.c_str(), shapeDesc.scheme);
 
     // create Vtr mesh (topology)
-    OpenSubdiv::Sdc::Type       sdctype = GetSdcType(*shape);
+    OpenSubdiv::Sdc::SchemeType sdctype = GetSdcType(*shape);
     OpenSubdiv::Sdc::Options sdcoptions = GetSdcOptions(*shape);
 
     sdcoptions.SetFVarLinearInterpolation(g_fvarBoundary);
 
     OpenSubdiv::Far::TopologyRefiner * refiner =
-        OpenSubdiv::Far::TopologyRefinerFactory<Shape>::Create(sdctype, sdcoptions, *shape);
+        OpenSubdiv::Far::TopologyRefinerFactory<Shape>::Create(*shape,
+            OpenSubdiv::Far::TopologyRefinerFactory<Shape>::Options(sdctype, sdcoptions));
 
     // save coarse topology (used for coarse mesh drawing)
     int nedges = refiner->GetNumEdges(0),
@@ -564,8 +565,10 @@ EffectDrawRegistry::_CreateDrawSourceConfig(DescType const & desc) {
     const char *glslVersion = "#version 330\n";
 #endif
 
-    if (desc.first.GetType() == OpenSubdiv::Far::PatchTables::QUADS or
-        desc.first.GetType() == OpenSubdiv::Far::PatchTables::TRIANGLES) {
+    typedef OpenSubdiv::Far::PatchDescriptor Descriptor;
+
+    if (desc.first.GetType() == Descriptor::QUADS or
+        desc.first.GetType() == Descriptor::TRIANGLES) {
         sconfig->vertexShader.source = shaderSource;
         sconfig->vertexShader.version = glslVersion;
         sconfig->vertexShader.AddDefine("VERTEX_SHADER");
@@ -584,12 +587,12 @@ EffectDrawRegistry::_CreateDrawSourceConfig(DescType const & desc) {
     sconfig->commonShader.AddDefine("OSD_FVAR_WIDTH", "2");
 
 
-    if (desc.first.GetType() == OpenSubdiv::Far::PatchTables::QUADS) {
+    if (desc.first.GetType() == Descriptor::QUADS) {
         // uniform catmark, bilinear
         sconfig->geometryShader.AddDefine("PRIM_QUAD");
         sconfig->fragmentShader.AddDefine("PRIM_QUAD");
         sconfig->commonShader.AddDefine("UNIFORM_SUBDIVISION");
-    } else if (desc.first.GetType() == OpenSubdiv::Far::PatchTables::TRIANGLES) {
+    } else if (desc.first.GetType() == Descriptor::TRIANGLES) {
         // uniform loop
         sconfig->geometryShader.AddDefine("PRIM_TRI");
         sconfig->fragmentShader.AddDefine("PRIM_TRI");
@@ -820,15 +823,15 @@ display() {
         OpenSubdiv::Osd::DrawContext::PatchArray const & patch = patches[i];
 
         OpenSubdiv::Osd::DrawContext::PatchDescriptor desc = patch.GetDescriptor();
-        OpenSubdiv::Far::PatchTables::Type patchType = desc.GetType();
+        OpenSubdiv::Far::PatchDescriptor::Type patchType = desc.GetType();
 
         GLenum primType;
 
         switch (patchType) {
-        case OpenSubdiv::Far::PatchTables::QUADS:
+        case OpenSubdiv::Far::PatchDescriptor::QUADS:
             primType = GL_LINES_ADJACENCY;
             break;
-        case OpenSubdiv::Far::PatchTables::TRIANGLES:
+        case OpenSubdiv::Far::PatchDescriptor::TRIANGLES:
             primType = GL_TRIANGLES;
             break;
         default:
@@ -887,15 +890,15 @@ display() {
         OpenSubdiv::Osd::DrawContext::PatchArray const & patch = patches[i];
 
         OpenSubdiv::Osd::DrawContext::PatchDescriptor desc = patch.GetDescriptor();
-        OpenSubdiv::Far::PatchTables::Type patchType = desc.GetType();
+        OpenSubdiv::Far::PatchDescriptor::Type patchType = desc.GetType();
 
         GLenum primType;
 
         switch (patchType) {
-        case OpenSubdiv::Far::PatchTables::QUADS:
+        case OpenSubdiv::Far::PatchDescriptor::QUADS:
             primType = GL_LINES_ADJACENCY;
             break;
-        case OpenSubdiv::Far::PatchTables::TRIANGLES:
+        case OpenSubdiv::Far::PatchDescriptor::TRIANGLES:
             primType = GL_TRIANGLES;
             break;
         default:
@@ -1022,7 +1025,7 @@ reshape(GLFWwindow *, int width, int height) {
     // window size might not match framebuffer size on a high DPI display
     glfwGetWindowSize(g_window, &windowWidth, &windowHeight);
 
-    g_hud.Rebuild(windowWidth, windowHeight);
+    g_hud.Rebuild(windowWidth, windowHeight, width, height);
 }
 
 //------------------------------------------------------------------------------
@@ -1171,7 +1174,7 @@ initHUD() {
         g_hud.AddPullDownButton(pulldown_handle, g_defaultShapes[i].name.c_str(),i);
     }
 
-    g_hud.Rebuild(g_width, g_height);
+    g_hud.Rebuild(windowWidth, windowHeight, frameBufferWidth, frameBufferHeight);
 }
 
 //------------------------------------------------------------------------------
@@ -1206,12 +1209,16 @@ idle() {
 
 //------------------------------------------------------------------------------
 static void
-callbackError(OpenSubdiv::Osd::ErrorType err, const char *message) {
-
-    printf("OsdError: %d\n", err);
+callbackError(OpenSubdiv::Far::ErrorType err, const char *message) {
+    printf("Error: %d\n", err);
     printf("%s", message);
 }
 
+//------------------------------------------------------------------------------
+static void
+callbackErrorGLFW(int error, const char* description) {
+    fprintf(stderr, "GLFW Error (%d) : %s\n", error, description);
+}
 //------------------------------------------------------------------------------
 static void
 setGLCoreProfile() {
@@ -1257,8 +1264,9 @@ int main(int argc, char ** argv) {
 
     initShapes();
 
-    OpenSubdiv::Osd::SetErrorCallback(callbackError);
+    OpenSubdiv::Far::SetErrorCallback(callbackError);
 
+    glfwSetErrorCallback(callbackErrorGLFW);
     if (not glfwInit()) {
         printf("Failed to initialize GLFW\n");
         return 1;

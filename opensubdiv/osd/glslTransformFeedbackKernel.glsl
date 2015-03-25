@@ -22,8 +22,6 @@
 //   language governing permissions and limitations under the Apache License.
 //
 
-#version 420
-
 subroutine void computeKernelType();
 subroutine uniform computeKernelType computeKernel;
 
@@ -33,7 +31,7 @@ uniform samplerBuffer vertexBuffer;
 
 out float outVertexBuffer[LENGTH];
 
-uniform isamplerBuffer sizes;
+uniform usamplerBuffer sizes;
 uniform isamplerBuffer offsets;
 uniform isamplerBuffer indices;
 uniform samplerBuffer  weights;
@@ -56,16 +54,16 @@ void clear(out Vertex v) {
 }
 
 void addWithWeight(inout Vertex v, Vertex src, float weight) {
-    for(int i = 0; i < LENGTH; i++) {
-        v.vertexData[i] += weight * src.vertexData[i];
+    for(int j = 0; j < LENGTH; j++) {
+        v.vertexData[j] += weight * src.vertexData[j];
     }
 }
 
 Vertex readVertex(int index) {
     Vertex v;
     int vertexIndex = primvarOffset + index * STRIDE;
-    for(int i = 0; i < LENGTH; i++) {
-        v.vertexData[i] = texelFetch(vertexBuffer, vertexIndex+i).x;
+    for(int j = 0; j < LENGTH; j++) {
+        v.vertexData[j] = texelFetch(vertexBuffer, vertexIndex+j).x;
     }
     return v;
 }
@@ -88,15 +86,15 @@ void computeStencil() {
 
     int current = gl_VertexID + batchStart;
 
-    if (current>batchEnd) {
+    if (current>=batchEnd) {
         return;
     }
 
     Vertex dst;
     clear(dst);
 
-    int offset = texelFetch(offsets, current).x,
-        size = texelFetch(sizes, current).x;
+    int offset = texelFetch(offsets, current).x;
+    uint size = texelFetch(sizes, current).x;
 
     for (int i=0; i<size; ++i) {
         int index = texelFetch(indices, offset+i).x;

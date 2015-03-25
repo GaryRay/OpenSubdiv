@@ -22,8 +22,6 @@
 //   language governing permissions and limitations under the Apache License.
 //
 
-#version 430
-
 subroutine void computeKernelType();
 subroutine uniform computeKernelType computeKernel;
 
@@ -83,7 +81,7 @@ void computeStencil() {
 
     int current = int(gl_GlobalInvocationID.x) + batchStart;
 
-    if (current>batchEnd) {
+    if (current>=batchEnd) {
         return;
     }
 

@@ -246,7 +246,7 @@ public:
         __m128 xyzw = _mm_andnot_ps(sign, rayDir.v);
         __m128 yzxw = _mm_shuffle_ps(xyzw, xyzw, _MM_SHUFFLE(3, 0, 2, 1));
         __m128 zxyw = _mm_shuffle_ps(xyzw, xyzw, _MM_SHUFFLE(3, 1, 0, 2));
-        __m128 flag = _mm_and_ps(_mm_and_ps(_mm_cmpgt_ps(xyzw, yzxw), _mm_cmpgt_ps(xyzw, zxyw)),
+        __m128 flag = _mm_and_ps(_mm_and_ps(_mm_cmpge_ps(xyzw, yzxw), _mm_cmpge_ps(xyzw, zxyw)),
                                  _mm_set1_ps(1));
         vec3sse x(flag);
 

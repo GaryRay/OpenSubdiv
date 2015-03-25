@@ -28,34 +28,44 @@
 #include "../version.h"
 
 #include "../osd/vertexDescriptor.h"
+#include "../far/patchParam.h"
 
 #include "../far/types.h"
 
 namespace OpenSubdiv {
 namespace OPENSUBDIV_VERSION {
 
+namespace Far {
+    class StencilTables;
+}
+
 namespace Osd {
 
 void
-evalBilinear(float u, float v,
+evalBilinear(Far::PatchParam::BitField bits,
+             float u, float v,
              Far::Index const * vertexIndices,
              VertexBufferDescriptor const & inDesc,
              float const * inQ,
              VertexBufferDescriptor const & outDesc,
-             float * outQ);
+             float * outQ,
+             float * outDQU,
+             float * outDQV);
 
 void
-evalBSpline(float u, float v, 
+evalBSpline(Far::PatchParam::BitField bits,
+            float u, float v,
             Far::Index const * vertexIndices,
             VertexBufferDescriptor const & inDesc,
-            float const * inQ, 
+            float const * inQ,
             VertexBufferDescriptor const & outDesc,
-            float * outQ, 
+            float * outQ,
             float * outDQU,
             float * outDQV );
 
 void
-evalBoundary(float u, float v, 
+evalBoundary(Far::PatchParam::BitField bits,
+             float u, float v,
              Far::Index const * vertexIndices,
              VertexBufferDescriptor const & inDesc,
              float const * inQ,
@@ -65,7 +75,8 @@ evalBoundary(float u, float v,
              float * outDQV );
 
 void
-evalCorner(float u, float v, 
+evalCorner(Far::PatchParam::BitField bits,
+           float u, float v,
            Far::Index const * vertexIndices,
            VertexBufferDescriptor const & inDesc,
            float const * inQ,
@@ -75,23 +86,34 @@ evalCorner(float u, float v,
            float * outDQV );
 
 void
-evalGregory(float u, float v,
+evalGregoryBasis(Far::PatchParam::BitField bits, float u, float v,
+                 Far::StencilTables const & basisStencils,
+                 int stencilIndex,
+                 VertexBufferDescriptor const & inDesc,
+                 float const * inQ,
+                 VertexBufferDescriptor const & outDesc,
+                 float * outQ,
+                 float * outDQU,
+                 float * outDQV );
+
+void
+evalGregory(Far::PatchParam::BitField bits, float u, float v,
             Far::Index const * vertexIndices,
             Far::Index const * vertexValenceBuffer,
-            Far::Index const * quadOffsetBuffer,
+            unsigned int const * quadOffsetBuffer,
             int maxValence,
             VertexBufferDescriptor const & inDesc,
-            float const * inQ, 
+            float const * inQ,
             VertexBufferDescriptor const & outDesc,
-            float * outQ, 
+            float * outQ,
             float * outDQU,
             float * outDQV );
 
 void
-evalGregoryBoundary(float u, float v,
+evalGregoryBoundary(Far::PatchParam::BitField bits, float u, float v,
                     Far::Index const * vertexIndices,
                     Far::Index const * vertexValenceBuffer,
-                    Far::Index const * quadOffsetBuffer,
+                    unsigned int const * quadOffsetBuffer,
                     int maxValence,
                     VertexBufferDescriptor const & inDesc,
                     float const * inQ,

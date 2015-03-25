@@ -34,6 +34,7 @@ struct Ray {
     real3 dir;
     real3 invDir;
     int dirSign[3];
+    int depth;
 
     bool hasDifferential;
 

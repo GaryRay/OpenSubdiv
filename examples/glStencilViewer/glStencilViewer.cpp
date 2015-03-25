@@ -281,19 +281,20 @@ updateGeom() {
 //------------------------------------------------------------------------------
 
 static void
-createMesh(ShapeDesc const & shapeDesc, int isolationLevel) {
+createMesh(ShapeDesc const & shapeDesc, int level) {
 
-    typedef Far::IndexArray IndexArray;
+    typedef Far::ConstIndexArray IndexArray;
     typedef Far::LimitStencilTablesFactory::LocationArray LocationArray;
 
     Shape const * shape = Shape::parseObj(shapeDesc.data.c_str(), shapeDesc.scheme);
 
     // create Vtr mesh (topology)
-    OpenSubdiv::Sdc::Type       sdctype = GetSdcType(*shape);
+    OpenSubdiv::Sdc::SchemeType sdctype = GetSdcType(*shape);
     OpenSubdiv::Sdc::Options sdcoptions = GetSdcOptions(*shape);
 
     OpenSubdiv::Far::TopologyRefiner * refiner =
-        OpenSubdiv::Far::TopologyRefinerFactory<Shape>::Create(sdctype, sdcoptions, *shape);
+        OpenSubdiv::Far::TopologyRefinerFactory<Shape>::Create(*shape,
+            OpenSubdiv::Far::TopologyRefinerFactory<Shape>::Options(sdctype, sdcoptions));
 
     // save coarse topology (used for coarse mesh drawing)
     int nedges = refiner->GetNumEdges(0),
@@ -317,9 +318,14 @@ createMesh(ShapeDesc const & shapeDesc, int isolationLevel) {
     g_orgPositions=shape->verts;
 
     if (g_bilinear) {
-        refiner->RefineUniform(isolationLevel, /*full topo*/ true);
+        Far::TopologyRefiner::UniformOptions options(level);
+        options.fullTopologyInLastLevel = true;
+        refiner->RefineUniform(options);
     } else {
-        refiner->RefineAdaptive(isolationLevel, /*full topo*/ false);
+        Far::TopologyRefiner::AdaptiveOptions options(level);
+        options.fullTopologyInLastLevel = false;
+        options.useSingleCreasePatch = false;
+        refiner->RefineAdaptive(options);
     }
 
     int nfaces = refiner->GetNumPtexFaces();
@@ -797,7 +803,7 @@ reshape(GLFWwindow *, int width, int height) {
     // window size might not match framebuffer size on a high DPI display
     glfwGetWindowSize(g_window, &windowWidth, &windowHeight);
 
-    g_hud.Rebuild(windowWidth, windowHeight);
+    g_hud.Rebuild(windowWidth, windowHeight, width, height);
 }
 
 //------------------------------------------------------------------------------
@@ -982,6 +988,11 @@ uninitGL() {
 
 //------------------------------------------------------------------------------
 static void
+callbackErrorGLFW(int error, const char* description) {
+    fprintf(stderr, "GLFW Error (%d) : %s\n", error, description);
+}
+//------------------------------------------------------------------------------
+static void
 setGLCoreProfile() {
 
     #define glfwOpenWindowHint glfwWindowHint
@@ -1024,6 +1035,7 @@ int main(int argc, char **argv) {
 
     initShapes();
 
+    glfwSetErrorCallback(callbackErrorGLFW);
     if (not glfwInit()) {
         printf("Failed to initialize GLFW\n");
         return 1;

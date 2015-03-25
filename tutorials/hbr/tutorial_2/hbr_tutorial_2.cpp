@@ -36,8 +36,8 @@
 // is then dumped to the terminal in Wavefront OBJ format for inspection.
 // 
 
-#include <hbr/mesh.h>
-#include <hbr/catmark.h>
+#include <opensubdiv/hbr/mesh.h>
+#include <opensubdiv/hbr/catmark.h>
 
 #include <cassert>
 #include <cstdio>
@@ -62,7 +62,7 @@ struct Vertex {
     Vertex(Vertex const & src) {
         _position[0] = src._position[0];
         _position[1] = src._position[1];
-        _position[1] = src._position[1];
+        _position[2] = src._position[2];
     }
 
     void Clear( void * =0 ) {

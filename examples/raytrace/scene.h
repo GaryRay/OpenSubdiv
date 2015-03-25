@@ -26,6 +26,7 @@
 
 #include "bvh_accel.h"
 #include "camera.h"
+#include "texture.h"
 #include <far/patchTables.h>
 #include <osd/opengl.h>
 
@@ -78,6 +79,9 @@ public:
 
     void SetConfig(Config const &config);
 
+    bool LoadEnvMap(const std::string &filename);
+    void PBS(float rgba[4], const Intersection &isect, const Ray &ray,
+             Context *context);
     // render, debug
 
     void Render(int stepIndex, int step);
@@ -85,6 +89,7 @@ public:
     void DebugTrace(float x, float y);
 
     // shading style
+    void EnvCol(float rgba[4], const OsdBezier::vec3f & dir);
 
     void Shade(float rgba[4], const Intersection &isect, const Ray &ray, Context *context);
 
@@ -131,6 +136,8 @@ private:
     BVHAccel _accel;
     ShadeMode _mode;
     BackgroundMode _backgroundMode;
+
+    Texture _envMap;
 
     double _traverseTime;
     double _intersectTime;

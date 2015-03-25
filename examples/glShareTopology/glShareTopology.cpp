@@ -42,11 +42,11 @@
 GLFWwindow* g_window=0;
 GLFWmonitor* g_primary=0;
 
-#include <osd/error.h>
 #include <osd/vertex.h>
 #include <osd/glDrawContext.h>
 #include <osd/glDrawRegistry.h>
 #include <osd/glMesh.h>
+#include <far/error.h>
 
 #include <osd/cpuGLVertexBuffer.h>
 #include <osd/cpuComputeContext.h>
@@ -572,10 +572,11 @@ createOsdMesh( const std::string &shapeStr, int level, Scheme scheme=kCatmark ) 
 
     Far::TopologyRefiner * refiner = 0;
     {
-        Sdc::Type type = GetSdcType(*shape);
+        Sdc::SchemeType type = GetSdcType(*shape);
         Sdc::Options options = GetSdcOptions(*shape);
 
-        refiner = Far::TopologyRefinerFactory<Shape>::Create(type, options, *shape);
+        refiner = Far::TopologyRefinerFactory<Shape>::Create(*shape,
+                    Far::TopologyRefinerFactory<Shape>::Options(type, options));
 
         assert(refiner);
     }
@@ -601,7 +602,7 @@ createOsdMesh( const std::string &shapeStr, int level, Scheme scheme=kCatmark ) 
         for (int face=0; face < numFaces; ++face) {
 
             ptexIndexToFaceMapping[ptexIndex++] = face;
-            Far::IndexArray fverts = refiner->GetFaceVertices(0, face);
+            Far::ConstIndexArray fverts = refiner->GetFaceVertices(0, face);
             if ( (scheme==kCatmark or scheme==kBilinear) and fverts.size() != 4 ) {
                 for (int j = 0; j < (fverts.size()-1); ++j) {
                     ptexIndexToFaceMapping[ptexIndex++] = face;
@@ -619,16 +620,18 @@ createOsdMesh( const std::string &shapeStr, int level, Scheme scheme=kCatmark ) 
     bool doAdaptive = (g_adaptive!=0 and scheme==kCatmark);
 
     if (doAdaptive) {
-        refiner->RefineAdaptive(level);
+        refiner->RefineAdaptive(Far::TopologyRefiner::AdaptiveOptions(level));
     } else {
-        refiner->RefineUniform(level);
+        Far::TopologyRefiner::UniformOptions options(level);
+        options.fullTopologyInLastLevel = true;
+        refiner->RefineUniform(options);
     }
 
     Far::StencilTables const * vertexStencils=0, * varyingStencils=0;
     {
         Far::StencilTablesFactory::Options options;
         options.generateOffsets = true;
-        options.generateAllLevels = doAdaptive ? true : false;
+        options.generateIntermediateLevels = doAdaptive ? true : false;
 
         vertexStencils = Far::StencilTablesFactory::Create(*refiner, options);
 
@@ -764,8 +767,8 @@ EffectDrawRegistry::_CreateDrawSourceConfig(DescType const & desc) {
     const char *glslVersion = "#version 330\n";
 #endif
 
-    if (desc.first.GetType() == Far::PatchTables::QUADS or
-        desc.first.GetType() == Far::PatchTables::TRIANGLES) {
+    if (desc.first.GetType() == Far::PatchDescriptor::QUADS or
+        desc.first.GetType() == Far::PatchDescriptor::TRIANGLES) {
         sconfig->vertexShader.source = shaderSource;
         sconfig->vertexShader.version = glslVersion;
         sconfig->vertexShader.AddDefine("VERTEX_SHADER");
@@ -781,12 +784,12 @@ EffectDrawRegistry::_CreateDrawSourceConfig(DescType const & desc) {
     sconfig->fragmentShader.version = glslVersion;
     sconfig->fragmentShader.AddDefine("FRAGMENT_SHADER");
 
-    if (desc.first.GetType() == Far::PatchTables::QUADS) {
+    if (desc.first.GetType() == Far::PatchDescriptor::QUADS) {
         // uniform catmark, bilinear
         sconfig->geometryShader.AddDefine("PRIM_QUAD");
         sconfig->fragmentShader.AddDefine("PRIM_QUAD");
         sconfig->commonShader.AddDefine("UNIFORM_SUBDIVISION");
-    } else if (desc.first.GetType() == Far::PatchTables::TRIANGLES) {
+    } else if (desc.first.GetType() == Far::PatchDescriptor::TRIANGLES) {
         // uniform loop
         sconfig->geometryShader.AddDefine("PRIM_TRI");
         sconfig->fragmentShader.AddDefine("PRIM_TRI");
@@ -1020,15 +1023,15 @@ drawPatches(Osd::DrawContext::PatchArrayVector const &patches,
         Osd::DrawContext::PatchArray const & patch = patches[i];
 
         Osd::DrawContext::PatchDescriptor desc = patch.GetDescriptor();
-        Far::PatchTables::Type patchType = desc.GetType();
+        Far::PatchDescriptor::Type patchType = desc.GetType();
 
         GLenum primType;
 
         switch(patchType) {
-        case Far::PatchTables::QUADS:
+        case Far::PatchDescriptor::QUADS:
             primType = GL_LINES_ADJACENCY;
             break;
-        case Far::PatchTables::TRIANGLES:
+        case Far::PatchDescriptor::TRIANGLES:
             primType = GL_TRIANGLES;
             break;
         default:
@@ -1276,7 +1279,7 @@ reshape(GLFWwindow *, int width, int height) {
     // window size might not match framebuffer size on a high DPI display
     glfwGetWindowSize(g_window, &windowWidth, &windowHeight);
 
-    g_hud.Rebuild(windowWidth, windowHeight);
+    g_hud.Rebuild(windowWidth, windowHeight, width, height);
 }
 
 //------------------------------------------------------------------------------
@@ -1432,7 +1435,7 @@ initHUD() {
     glfwGetWindowSize(g_window, &windowWidth, &windowHeight);
     glfwGetFramebufferSize(g_window, &frameBufferWidth, &frameBufferHeight);
 
-    g_hud.Init(windowWidth, windowHeight);
+    g_hud.Init(windowWidth, windowHeight, frameBufferWidth, frameBufferHeight);
 
     g_hud.SetFrameBuffer(new GLFrameBuffer);
 
@@ -1484,7 +1487,7 @@ initHUD() {
         g_hud.AddRadioButton(3, level, i==2, 10, 210+i*20, callbackLevel, i, '0'+(i%10));
     }
 
-    g_hud.Rebuild(g_width, g_height);
+    g_hud.Rebuild(windowWidth, windowHeight, frameBufferWidth, frameBufferHeight);
 }
 
 //------------------------------------------------------------------------------
@@ -1514,12 +1517,16 @@ idle() {
 
 //------------------------------------------------------------------------------
 static void
-callbackError(Osd::ErrorType err, const char *message) {
-
-    printf("OsdError: %d\n", err);
+callbackError(Far::ErrorType err, const char *message) {
+    printf("Error: %d\n", err);
     printf("%s", message);
 }
 
+//------------------------------------------------------------------------------
+static void
+callbackErrorGLFW(int error, const char* description) {
+    fprintf(stderr, "GLFW Error (%d) : %s\n", error, description);
+}
 //------------------------------------------------------------------------------
 static void
 setGLCoreProfile() {
@@ -1553,8 +1560,9 @@ int main(int argc, char ** argv) {
             g_level = atoi(argv[++i]);
         }
     }
-    Osd::SetErrorCallback(callbackError);
+    Far::SetErrorCallback(callbackError);
 
+    glfwSetErrorCallback(callbackErrorGLFW);
     if (not glfwInit()) {
         printf("Failed to initialize GLFW\n");
         return 1;

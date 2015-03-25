@@ -48,10 +48,10 @@ GLFWmonitor* g_primary=0;
 #include <osd/cpuEvalLimitController.h>
 #include <osd/cpuVertexBuffer.h>
 #include <osd/cpuGLVertexBuffer.h>
-#include <osd/error.h>
 #include <osd/drawContext.h>
 #include <osd/mesh.h>
 #include <osd/vertex.h>
+#include <far/error.h>
 
 #include <common/vtr_utils.h>
 #include "../common/stopwatch.h"
@@ -131,8 +131,9 @@ Stopwatch g_fpsTimer;
 //------------------------------------------------------------------------------
 int g_nparticles=0,
     g_nsamples=101,
-    g_nsamplesFound=0,
-    g_randomStart=1;
+    g_nsamplesFound=0;
+
+bool g_randomStart=true;
 
 GLuint g_cageEdgeVAO = 0,
        g_cageEdgeVBO = 0,
@@ -160,7 +161,7 @@ createRandomColors(int nverts, int stride, float * colors) {
 static void
 createCoarseMesh(OpenSubdiv::Far::TopologyRefiner const & refiner) {
 
-    typedef OpenSubdiv::Far::IndexArray IndexArray;
+    typedef OpenSubdiv::Far::ConstIndexArray IndexArray;
 
     // save coarse topology (used for coarse mesh drawing)
     int nedges = refiner.GetNumEdges(0),
@@ -294,7 +295,7 @@ updateGeom() {
                              color[2] = coord.t; } break;
 
                 case kRANDOM : // no update needed
-                case kVARYING : 
+                case kVARYING :
                 case kFACEVARYING : break;
 
                 default : break;
@@ -327,12 +328,13 @@ createOsdMesh(ShapeDesc const & shapeDesc, int level) {
     Shape * shape = Shape::parseObj(shapeDesc.data.c_str(), shapeDesc.scheme);
 
     // create Vtr mesh (topology)
-    OpenSubdiv::Sdc::Type       sdctype = GetSdcType(*shape);
+    OpenSubdiv::Sdc::SchemeType sdctype = GetSdcType(*shape);
     OpenSubdiv::Sdc::Options sdcoptions = GetSdcOptions(*shape);
 
     delete g_topologyRefiner;
     OpenSubdiv::Far::TopologyRefiner * g_topologyRefiner =
-        OpenSubdiv::Far::TopologyRefinerFactory<Shape>::Create(sdctype, sdcoptions, *shape);
+        OpenSubdiv::Far::TopologyRefinerFactory<Shape>::Create(*shape,
+            OpenSubdiv::Far::TopologyRefinerFactory<Shape>::Options(sdctype, sdcoptions));
 
     g_orgPositions=shape->verts;
     g_positions.resize(g_orgPositions.size(), 0.0f);
@@ -355,23 +357,24 @@ createOsdMesh(ShapeDesc const & shapeDesc, int level) {
     {
         // Apply feature adaptive refinement to the mesh so that we can use the
         // limit evaluation API features.
-        g_topologyRefiner->RefineAdaptive(level);
+        Far::TopologyRefiner::AdaptiveOptions options(level);
+        g_topologyRefiner->RefineAdaptive(options);
 
         nverts = g_topologyRefiner->GetNumVerticesTotal();
 
         // Generate stencil tables to update the bi-cubic patches control
         // vertices after they have been re-posed (both for vertex & varying
         // interpolation)
-        Far::StencilTablesFactory::Options options;
-        options.generateOffsets=true;
-        options.generateAllLevels=true;
+        Far::StencilTablesFactory::Options soptions;
+        soptions.generateOffsets=true;
+        soptions.generateIntermediateLevels=true;
 
         Far::StencilTables const * vertexStencils =
-            Far::StencilTablesFactory::Create(*g_topologyRefiner, options);
+            Far::StencilTablesFactory::Create(*g_topologyRefiner, soptions);
 
-        options.interpolationMode = Far::StencilTablesFactory::INTERPOLATE_VARYING;
+        soptions.interpolationMode = Far::StencilTablesFactory::INTERPOLATE_VARYING;
         Far::StencilTables const * varyingStencils =
-            Far::StencilTablesFactory::Create(*g_topologyRefiner, options);
+            Far::StencilTablesFactory::Create(*g_topologyRefiner, soptions);
 
         g_kernelBatches.clear();
         g_kernelBatches.push_back(Far::StencilTablesFactory::Create(*vertexStencils));
@@ -383,8 +386,12 @@ createOsdMesh(ShapeDesc const & shapeDesc, int level) {
 
 
         // Generate bi-cubic patch tables for the limit surface
+        Far::PatchTablesFactory::Options poptions;
+        // optional : pass the vertex stencils so that the factory can generate gregory basis
+        // stencils (faster evaluation)
+        poptions.adaptiveStencilTables = vertexStencils; 
         Far::PatchTables const * patchTables =
-             Far::PatchTablesFactory::Create(*g_topologyRefiner);
+             Far::PatchTablesFactory::Create(*g_topologyRefiner, poptions);
 
         // Create a limit Eval context with the patch tables
         delete g_evalCtx;
@@ -412,12 +419,12 @@ createOsdMesh(ShapeDesc const & shapeDesc, int level) {
         }
 
         delete g_dQs;
-        g_dQs = Osd::CpuGLVertexBuffer::Create(6,g_nparticles);
-        memset( g_dQs->BindCpuBuffer(), 0, g_nparticles*6*sizeof(float));
+        g_dQs = Osd::CpuGLVertexBuffer::Create(3,g_nparticles);
+        memset( g_dQs->BindCpuBuffer(), 0, g_nparticles*3*sizeof(float));
 
         delete g_dQt;
-        g_dQt = Osd::CpuGLVertexBuffer::Create(6,g_nparticles);
-        memset( g_dQt->BindCpuBuffer(), 0, g_nparticles*6*sizeof(float));
+        g_dQt = Osd::CpuGLVertexBuffer::Create(3,g_nparticles);
+        memset( g_dQt->BindCpuBuffer(), 0, g_nparticles*3*sizeof(float));
     }
 
     updateGeom();
@@ -436,8 +443,7 @@ createOsdMesh(ShapeDesc const & shapeDesc, int level) {
 }
 
 //------------------------------------------------------------------------------
-struct Program
-{
+struct Program {
     GLuint program;
     GLuint uniformModelViewProjectionMatrix;
     GLuint attrPosition;
@@ -446,8 +452,7 @@ struct Program
 
 //------------------------------------------------------------------------------
 static void
-checkGLErrors(std::string const & where = "")
-{
+checkGLErrors(std::string const & where = "") {
     GLuint err;
     while ((err = glGetError()) != GL_NO_ERROR) {
 
@@ -459,8 +464,7 @@ checkGLErrors(std::string const & where = "")
 
 //------------------------------------------------------------------------------
 static GLuint
-compileShader(GLenum shaderType, const char *source)
-{
+compileShader(GLenum shaderType, const char *source) {
     GLuint shader = glCreateShader(shaderType);
     glShaderSource(shader, 1, &source, NULL);
     glCompileShader(shader);
@@ -470,8 +474,8 @@ compileShader(GLenum shaderType, const char *source)
 
 //------------------------------------------------------------------------------
 static bool
-linkDefaultProgram()
-{
+linkDefaultProgram() {
+
 #if defined(GL_ARB_tessellation_shader) || defined(GL_VERSION_4_0)
     #define GLSL_VERSION_DEFINE "#version 400\n"
 #else
@@ -534,8 +538,7 @@ linkDefaultProgram()
 
 //------------------------------------------------------------------------------
 static inline void
-setSharpnessColor(float s, float *r, float *g, float *b)
-{
+setSharpnessColor(float s, float *r, float *g, float *b) {
     //  0.0       2.0       4.0
     // green --- yellow --- red
     *r = std::min(1.0f, s * 0.5f);
@@ -721,8 +724,8 @@ display() {
         g_hud.DrawString(10, -40,  "CPU Draw   : %.3f ms", drawCpuTime);
         g_hud.DrawString(10, -20,  "FPS        : %3.1f", fps);
 
-        if (g_drawMode==kFACEVARYING and g_evalCtx->GetFVarData().empty()) {
-            static char msg[21] = "No Face-Varying Data";
+        if (g_drawMode==kFACEVARYING) {
+            static char msg[] = "Face-varying interpolation not implemented yet";
             g_hud.DrawString(g_width/2-20/2*8, g_height/2, msg);
         }
 
@@ -796,7 +799,7 @@ reshape(GLFWwindow *, int width, int height) {
     // window size might not match framebuffer size on a high DPI display
     glfwGetWindowSize(g_window, &windowWidth, &windowHeight);
 
-    g_hud.Rebuild(windowWidth, windowHeight);
+    g_hud.Rebuild(windowWidth, windowHeight, width, height);
 }
 
 //------------------------------------------------------------------------------
@@ -828,10 +831,10 @@ keyboard(GLFWwindow *, int key, int /* scancode */, int event, int /* mods */) {
 
         case '-': setSamples(false); break;
 
-        case '[': if (g_particles) { 
+        case '[': if (g_particles) {
                       g_particles->SetSpeed(g_particles->GetSpeed()-0.1f);
                   } break;
-        case ']': if (g_particles) { 
+        case ']': if (g_particles) {
                       g_particles->SetSpeed(g_particles->GetSpeed()+0.1f);
                   } break;
 
@@ -841,8 +844,8 @@ keyboard(GLFWwindow *, int key, int /* scancode */, int event, int /* mods */) {
 
 //------------------------------------------------------------------------------
 static void
-callbackError(OpenSubdiv::Osd::ErrorType err, const char *message) {
-    printf("OsdError: %d\n", err);
+callbackError(OpenSubdiv::Far::ErrorType err, const char *message) {
+    printf("Error: %d\n", err);
     printf("%s", message);
 }
 
@@ -915,7 +918,7 @@ initHUD() {
     glfwGetWindowSize(g_window, &windowWidth, &windowHeight);
     glfwGetFramebufferSize(g_window, &frameBufferWidth, &frameBufferHeight);
 
-    g_hud.Init(windowWidth, windowHeight);
+    g_hud.Init(windowWidth, windowHeight, frameBufferWidth, frameBufferHeight);
 
     g_hud.SetFrameBuffer(new GLFrameBuffer);
 
@@ -943,7 +946,7 @@ initHUD() {
         g_hud.AddPullDownButton(pulldown_handle, g_defaultShapes[i].name.c_str(),i);
     }
 
-    g_hud.Rebuild(g_width, g_height);
+    g_hud.Rebuild(windowWidth, windowHeight, frameBufferWidth, frameBufferHeight);
 }
 
 //------------------------------------------------------------------------------
@@ -972,6 +975,12 @@ uninitGL() {
     glDeleteVertexArrays(1, &g_cageVertexVAO);
     glDeleteVertexArrays(1, &g_cageEdgeVAO);
     glDeleteVertexArrays(1, &g_samplesVAO);
+}
+
+//------------------------------------------------------------------------------
+static void
+callbackErrorGLFW(int error, const char* description) {
+    fprintf(stderr, "GLFW Error (%d) : %s\n", error, description);
 }
 
 //------------------------------------------------------------------------------
@@ -1014,11 +1023,11 @@ int main(int argc, char **argv) {
         }
     }
 
-    Osd::SetErrorCallback(callbackError);
-
+    Far::SetErrorCallback(callbackError);
 
     initShapes();
 
+    glfwSetErrorCallback(callbackErrorGLFW);
     if (not glfwInit()) {
         printf("Failed to initialize GLFW\n");
         return 1;

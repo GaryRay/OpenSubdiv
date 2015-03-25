@@ -337,8 +337,8 @@ lighting(vec4 diffuse, vec3 Peye, vec3 Neye)
         float s = pow(max(0.0, dot(n, h)), 500.0f);
 
         color += lightSource[i].ambient * ambientColor
-            + d * lightSource[i].diffuse * diffuse;
-    //        + s * lightSource[i].specular;
+            + d * lightSource[i].diffuse * diffuse
+            + s * lightSource[i].specular;
     }
 
     color.a = 1;

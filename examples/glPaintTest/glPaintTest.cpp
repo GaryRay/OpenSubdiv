@@ -42,10 +42,10 @@
 GLFWwindow* g_window=0;
 GLFWmonitor* g_primary=0;
 
-#include <osd/error.h>
 #include <osd/vertex.h>
 #include <osd/glDrawContext.h>
 #include <osd/glDrawRegistry.h>
+#include <far/error.h>
 
 #include <osd/cpuGLVertexBuffer.h>
 #include <osd/cpuComputeContext.h>
@@ -221,11 +221,12 @@ createOsdMesh() {
     g_orgPositions=shape->verts;
 
     // create Vtr mesh (topology)
-    OpenSubdiv::Sdc::Type       sdctype = GetSdcType(*shape);
+    OpenSubdiv::Sdc::SchemeType sdctype = GetSdcType(*shape);
     OpenSubdiv::Sdc::Options sdcoptions = GetSdcOptions(*shape);
 
     OpenSubdiv::Far::TopologyRefiner * refiner =
-        OpenSubdiv::Far::TopologyRefinerFactory<Shape>::Create(sdctype, sdcoptions, *shape);
+        OpenSubdiv::Far::TopologyRefinerFactory<Shape>::Create(*shape,
+            OpenSubdiv::Far::TopologyRefinerFactory<Shape>::Options(sdctype, sdcoptions));
 
     // count ptex face id
     int numPtexFaces = refiner->GetNumPtexFaces();
@@ -917,7 +918,7 @@ reshape(GLFWwindow *, int width, int height) {
     // window size might not match framebuffer size on a high DPI display
     glfwGetWindowSize(g_window, &windowWidth, &windowHeight);
 
-    g_hud.Rebuild(windowWidth, windowHeight);
+    g_hud.Rebuild(windowWidth, windowHeight, width, height);
 
     // prepare depth texture
     if (g_depthTexture == 0) glGenTextures(1, &g_depthTexture);
@@ -1010,7 +1011,7 @@ initHUD() {
     glfwGetWindowSize(g_window, &windowWidth, &windowHeight);
     glfwGetFramebufferSize(g_window, &frameBufferWidth, &frameBufferHeight);
 
-    g_hud.Init(windowWidth, windowHeight);
+    g_hud.Init(windowWidth, windowHeight, frameBufferWidth, frameBufferHeight);
 
     g_hud.SetFrameBuffer(new GLFrameBuffer);
 
@@ -1033,7 +1034,7 @@ initHUD() {
         g_hud.AddPullDownButton(pulldown_handle, g_defaultShapes[i].name.c_str(),i);
     }
 
-    g_hud.Rebuild(g_width, g_height);
+    g_hud.Rebuild(g_width, g_height, frameBufferWidth, frameBufferHeight);
 }
 
 //------------------------------------------------------------------------------
@@ -1105,12 +1106,16 @@ idle() {
 
 //------------------------------------------------------------------------------
 static void
-callbackError(OpenSubdiv::Osd::ErrorType err, const char *message) {
-
-    printf("OsdError: %d\n", err);
+callbackError(OpenSubdiv::Far::ErrorType err, const char *message) {
+    printf("Error: %d\n", err);
     printf("%s", message);
 }
 
+//------------------------------------------------------------------------------
+static void
+callbackErrorGLFW(int error, const char* description) {
+    fprintf(stderr, "GLFW Error (%d) : %s\n", error, description);
+}
 //------------------------------------------------------------------------------
 static void
 setGLCoreProfile() {
@@ -1153,8 +1158,9 @@ int main(int argc, char ** argv) {
         }
     }
     initShapes();
-    OpenSubdiv::Osd::SetErrorCallback(callbackError);
+    OpenSubdiv::Far::SetErrorCallback(callbackError);
 
+    glfwSetErrorCallback(callbackErrorGLFW);
     if (not glfwInit()) {
         printf("Failed to initialize GLFW\n");
         return 1;

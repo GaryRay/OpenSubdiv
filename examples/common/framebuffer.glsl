@@ -57,7 +57,6 @@ void main()
     
     //background color as a vertical grey ramp
     vec4 bgColor = vec4(mix(0.1, 0.5, sin(outUV.y*3.14159)));
-    bgColor = vec4(1);
 
     outColor = mix(bgColor, colorSample, colorSample.a);
 }

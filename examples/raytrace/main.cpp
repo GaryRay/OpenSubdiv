@@ -42,7 +42,6 @@
 GLFWwindow* g_window=0;
 GLFWmonitor* g_primary=0;
 
-#include <osd/error.h>
 #include <osd/vertex.h>
 #include <osd/glDrawContext.h>
 #include <osd/glDrawRegistry.h>
@@ -88,11 +87,15 @@ static const char *s_FS =
     "  vec4 c0 = texelFetch(tex, ivec2(texUV.x & ~7, texUV.y & ~7), 0);\n"
     "  vec4 c1 = texelFetch(tex, ivec2(texUV.x & ~3, texUV.y & ~3), 0);\n"
     "  vec4 c2 = texelFetch(tex, ivec2(texUV.x & ~1, texUV.y & ~1), 0);\n"
+    "  c0.a = min(1, c0.a); \n"
+    "  c1.a = min(1, c1.a); \n"
+    "  c2.a = min(1, c2.a); \n"
     "  c = mix(c, c0, c0.a);\n"
     "  c = mix(c, c1, c1.a);\n"
     "  c = mix(c, c2, c2.a);\n"
-    "  c = mix(c, cs, cs.a);\n"
+    "  c = mix(c, cs, min(1, cs.a));\n"
     "  outColor = c;\n"
+    "  outColor.rgb = pow(outColor.rgb/max(1, cs.a), vec3(0.5454));\n"
     "}\n";
 static const char *s0_FS =
     "#version 410\n"
@@ -105,6 +108,7 @@ static const char *s0_FS =
     "  vec4 c = vec4(0.1, 0.1, 0.1, 0);\n"
     "  vec4 cs = texelFetch(tex, ivec2(texUV), 0);\n"
     "  outColor = mix(c, cs, cs.a);\n"
+    "  outColor.rgb = pow(outColor.rgb/outColor.a, vec3(0.5454));\n"
     "}\n";
 
 static const char *s_VS_BVH =
@@ -194,7 +198,7 @@ static void setCamera();
 int g_currentShape = 0;
 
 // GUI variables
-int   g_displayStyle = Scene::PATCH_TYPE,
+int   g_displayStyle = Scene::SHADED, //Scene::PATCH_TYPE,
       g_drawBVH = false,
       g_blockFill = true,
       g_mbutton[3] = {0, 0, 0},
@@ -245,7 +249,7 @@ OpenSubdiv::Far::PatchTables *g_patchTables = NULL;
 OpenSubdiv::Far::TopologyRefiner * g_topologyRefiner = NULL;
 
 
-int g_level = 2;
+int g_level = 6;
 int g_preTess = 0;
 int g_preTessLevel = 1;
 int g_intersectKernel = 1;
@@ -494,9 +498,12 @@ updateGeom() {
         float z = pp[2];
         float ct = cos(y * r);
         float st = sin(y * r);
-        vertex.push_back(x + ct + z * st);
+        // vertex.push_back(x * ct + z * st);
+        // vertex.push_back(y);
+        // vertex.push_back(- x * st + z * ct);
+        vertex.push_back(x);
         vertex.push_back(y);
-        vertex.push_back(- x * st + z * ct);
+        vertex.push_back(z);
         pp += 3;
     }
 
@@ -555,26 +562,34 @@ createOsdMesh( const std::string &shapeStr, int level ){
     // create refiner
 
     Shape * shape = Shape::parseObj(shapeStr.c_str(), kCatmark);
+    shape->addGroundPlane(5.0f, -0.5f);
     if (g_topologyRefiner) delete g_topologyRefiner;
 
     {
-        OpenSubdiv::Sdc::Type type = GetSdcType(*shape);
+        OpenSubdiv::Sdc::SchemeType type = GetSdcType(*shape);
         OpenSubdiv::Sdc::Options options = GetSdcOptions(*shape);
-        options.SetVVarBoundaryInterpolation(OpenSubdiv::Sdc::Options::VVAR_BOUNDARY_EDGE_AND_CORNER);
 
-        g_topologyRefiner = OpenSubdiv::Far::TopologyRefinerFactory<Shape>::Create(type, options, *shape);
+        OpenSubdiv::Far::TopologyRefinerFactory<Shape>::Options opt(type, options);
+
+        g_topologyRefiner = OpenSubdiv::Far::TopologyRefinerFactory<Shape>::Create(
+            *shape, opt);
 
         assert(g_topologyRefiner);
     }
 
     // refine
-    g_topologyRefiner->RefineAdaptive(level, /*fullTopollogy=*/false, /*useSingleCrease=*/g_useSingleCreasePatch);
+    {
+        OpenSubdiv::Far::TopologyRefiner::AdaptiveOptions options(level);
+        options.fullTopologyInLastLevel = false;
+        options.useSingleCreasePatch = g_useSingleCreasePatch;
+        g_topologyRefiner->RefineAdaptive(options);
+    }
 
     OpenSubdiv::Far::StencilTables const * vertexStencils=0;
     {
         OpenSubdiv::Far::StencilTablesFactory::Options options;
         options.generateOffsets = true;
-        options.generateAllLevels = true;
+        options.generateIntermediateLevels = true;
 
         vertexStencils = OpenSubdiv::Far::StencilTablesFactory::Create(*g_topologyRefiner, options);
         assert(vertexStencils);
@@ -598,7 +613,7 @@ createOsdMesh( const std::string &shapeStr, int level ){
     // compute model bounding
     float min[3] = { FLT_MAX,  FLT_MAX,  FLT_MAX};
     float max[3] = {-FLT_MAX, -FLT_MAX, -FLT_MAX};
-    for (size_t i=0; i <g_orgPositions.size()/3; ++i) {
+    for (size_t i=0; i <g_orgPositions.size()/3-4; ++i) {
         for(int j=0; j<3; ++j) {
             float v = g_orgPositions[i*3+j];
             min[j] = std::min(min[j], v);
@@ -610,6 +625,17 @@ createOsdMesh( const std::string &shapeStr, int level ){
         g_size += (max[j]-min[j])*(max[j]-min[j]);
     }
     g_size = sqrtf(g_size);
+
+    printf("%f, %f, %f\n", g_center[0], g_center[1], g_center[2]);
+    for (size_t i=0; i <g_orgPositions.size()/3-4; ++i) {
+        for (int j=0; j<3; ++j) {
+            g_orgPositions[i*3+j] =
+                (g_orgPositions[i*3+j] - g_center[j])/(0.333*g_size);
+        }
+    }
+    g_center[0] = g_center[1] = g_center[2] = 0;
+    g_size = 1.0f;
+
 
     setCamera();
     updateGeom();
@@ -689,7 +715,7 @@ display() {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA,
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F,
                  g_width, g_height,
                  0, GL_RGBA, GL_FLOAT, &g_image[0]);
 
@@ -868,7 +894,7 @@ reshape(GLFWwindow *, int width, int height) {
 
     // window size might not match framebuffer size on a high DPI display
     glfwGetWindowSize(g_window, &g_width, &g_height);
-    g_hud.Rebuild(g_width, g_height);
+    g_hud.Rebuild(g_width, g_height, g_frameBufferWidth, g_frameBufferHeight);
 
     setCamera();
     startRender();
@@ -1067,7 +1093,7 @@ initHUD()
 {
     // window size might not match framebuffer size on a high DPI display
     glfwGetWindowSize(g_window, &g_width, &g_height);
-    g_hud.Init(g_width, g_height);
+    g_hud.Init(g_width, g_height, g_frameBufferWidth, g_frameBufferHeight);
 
     int y = 10;
     g_hud.AddCheckBox("Show BVH (B)", g_drawBVH != 0,
@@ -1235,21 +1261,27 @@ idle() {
         g_stepIndex = 0;
     }
 
-    if (g_stepIndex == 0) {
-        g_renderTimer.Stop();
-        g_renderTime = g_renderTimer.GetElapsed();
+    if (g_displayStyle == Scene::SHADED) {
+        if (g_stepIndex == 0) {
+            g_stepIndex = g_step*g_step;
+        }
+    } else {
+        if (g_stepIndex == 0) {
+            g_renderTimer.Stop();
+            g_renderTime = g_renderTimer.GetElapsed();
+        }
     }
 
     display();
 }
 
 //------------------------------------------------------------------------------
-static void
-callbackError(OpenSubdiv::Osd::ErrorType err, const char *message)
-{
-    printf("OsdError: %d\n", err);
-    printf("%s", message);
-}
+// static void
+// callbackError(OpenSubdiv::Osd::ErrorType err, const char *message)
+// {
+//     printf("OsdError: %d\n", err);
+//     printf("%s", message);
+// }
 
 //------------------------------------------------------------------------------
 static void
@@ -1275,17 +1307,19 @@ setGLCoreProfile()
     glfwOpenWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
 }
 
-//------------------------------------------------------------------------------
+//--------------------------------------------------------------------------
 int main(int argc, char ** argv)
 {
     std::string str;
+    std::string envmapFile;
     for (int i = 1; i < argc; ++i) {
         if (!strcmp(argv[i], "-d"))
             g_level = atoi(argv[++i]);
         else if(!strcmp(argv[i], "-H")) {
             g_intersectKernel = 1;
-        }
-        else {
+        } else if(!strcmp(argv[i], "-e")) {
+            envmapFile = argv[++i];
+        } else {
             std::ifstream ifs(argv[1]);
             if (ifs) {
                 std::stringstream ss;
@@ -1297,7 +1331,7 @@ int main(int argc, char ** argv)
         }
     }
     initShapes();
-    OpenSubdiv::Osd::SetErrorCallback(callbackError);
+    //OpenSubdiv::Osd::SetErrorCallback(callbackError);
 
     if (not glfwInit()) {
         printf("Failed to initialize GLFW\n");
@@ -1355,6 +1389,8 @@ int main(int argc, char ** argv)
 
     g_image.resize(g_width*g_height*4);
     g_scene.SetShadeMode((Scene::ShadeMode)g_displayStyle);
+
+    if (envmapFile.size()) g_scene.LoadEnvMap(envmapFile);
 
     while (g_running) {
         idle();

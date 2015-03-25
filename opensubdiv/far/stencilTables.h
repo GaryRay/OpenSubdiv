@@ -100,6 +100,7 @@ public:
     }
 
 protected:
+    friend class GregoryBasisFactory;
     friend class StencilTablesFactory;
     friend class LimitStencilTablesFactory;
 
@@ -135,7 +136,7 @@ public:
     }
 
     /// \brief Returns a Stencil at index i in the tables
-    Stencil GetStencil(int i) const;
+    Stencil GetStencil(Index i) const;
 
     /// \brief Returns the number of control vertices of each stencil in the table
     std::vector<unsigned char> const & GetSizes() const {
@@ -158,12 +159,12 @@ public:
     }
 
     /// \brief Returns the stencil at index i in the tables
-    Stencil operator[] (int index) const;
+    Stencil operator[] (Index index) const;
 
     /// \brief Updates point values based on the control values
     ///
-    /// \note The destination buffers ('uderivs' & 'vderivs') are assumed to
-    ///       have allocated at least \c GetNumStencils() elements.
+    /// \note The destination buffers are assumed to have allocated at least
+    ///       \c GetNumStencils() elements.
     ///
     /// @param controlValues  Buffer with primvar data for the control vertices
     ///
@@ -175,9 +176,9 @@ public:
     /// @param end            Index of last value to update
     ///
     template <class T>
-    void UpdateValues(T const *controlValues, T *values, int start=-1, int end=-1) const {
+    void UpdateValues(T const *controlValues, T *values, Index start=-1, Index end=-1) const {
 
-        _Update(controlValues, values, _weights, start, end);
+        update(controlValues, values, _weights, start, end);
     }
 
     /// \brief Clears the stencils from the table
@@ -191,13 +192,20 @@ public:
 
 protected:
 
-    // Update values by appling cached stencil weights to new control values
-    template <class T> void _Update( T const *controlValues, T *values,
-        std::vector<float> const & valueWeights, int start, int end) const;
+    // Update values by applying cached stencil weights to new control values
+    template <class T> void update( T const *controlValues, T *values,
+        std::vector<float> const & valueWeights, Index start, Index end) const;
+
+    // Populate the offsets table from the stencil sizes in _sizes (factory helper)
+    void generateOffsets();
+
+    // Resize the table arrays (factory helper)
+    void resize(int nstencils, int nelems);
 
 protected:
 
     friend class StencilTablesFactory;
+    friend class GregoryBasisFactory;
 
     int _numControlVertices;              // number of control vertices
 
@@ -303,8 +311,8 @@ public:
     void UpdateDerivs(T const *controlValues, T *uderivs, T *vderivs,
         int start=-1, int end=-1) const {
 
-        _Update(controlValues, uderivs, _duWeights, start, end);
-        _Update(controlValues, vderivs, _dvWeights, start, end);
+        update(controlValues, uderivs, _duWeights, start, end);
+        update(controlValues, vderivs, _dvWeights, start, end);
     }
 
     /// \brief Clears the stencils from the table
@@ -317,6 +325,10 @@ public:
 private:
     friend class LimitStencilTablesFactory;
 
+    // Resize the table arrays (factory helper)
+    void resize(int nstencils, int nelems);
+
+private:
     std::vector<float>  _duWeights,  // u derivative limit stencil weights
                         _dvWeights;  // v derivative limit stencil weights
 };
@@ -324,14 +336,16 @@ private:
 
 // Update values by appling cached stencil weights to new control values
 template <class T> void
-StencilTables::_Update(T const *controlValues, T *values,
-    std::vector<float> const &valueWeights, int start, int end) const {
+StencilTables::update(T const *controlValues, T *values,
+    std::vector<float> const &valueWeights, Index start, Index end) const {
 
+    unsigned char const * sizes = &_sizes.at(0);
     Index const * indices = &_indices.at(0);
     float const * weights = &valueWeights.at(0);
 
     if (start>0) {
         assert(start<(Index)_offsets.size());
+        sizes += start;
         indices += _offsets[start];
         weights += _offsets[start];
         values += start;
@@ -342,21 +356,40 @@ StencilTables::_Update(T const *controlValues, T *values,
     }
 
     int nstencils = end - std::max(0, start);
-    for (int i=0; i<nstencils; ++i) {
+    for (int i=0; i<nstencils; ++i, ++sizes) {
 
         // Zero out the result accumulators
         values[i].Clear();
 
         // For each element in the array, add the coefs contribution
-        for (int j=0; j<_sizes[i]; ++j, ++indices, ++weights) {
+        for (int j=0; j<*sizes; ++j, ++indices, ++weights) {
             values[i].AddWithWeight( controlValues[*indices], *weights );
         }
     }
 }
 
+inline void
+StencilTables::generateOffsets() {
+    Index offset=0;
+    int noffsets = (int)_sizes.size();
+    _offsets.resize(noffsets);
+    for (int i=0; i<(int)_sizes.size(); ++i ) {
+        _offsets[i]=offset;
+        offset+=_sizes[i];
+    }
+}
+
+inline void
+StencilTables::resize(int nstencils, int nelems) {
+
+    _sizes.resize(nstencils);
+    _indices.resize(nelems);
+    _weights.resize(nelems);
+}
+
 // Returns a Stencil at index i in the table
 inline Stencil
-StencilTables::GetStencil(int i) const {
+StencilTables::GetStencil(Index i) const {
 
     assert((not _offsets.empty()) and i<(int)_offsets.size());
 
@@ -368,10 +401,18 @@ StencilTables::GetStencil(int i) const {
 }
 
 inline Stencil
-StencilTables::operator[] (int index) const {
-
+StencilTables::operator[] (Index index) const {
     return GetStencil(index);
 }
+
+inline void
+LimitStencilTables::resize(int nstencils, int nelems) {
+
+    StencilTables::resize(nstencils, nelems);
+    _duWeights.resize(nelems);
+    _dvWeights.resize(nelems);
+}
+
 
 } // end namespace Far
 

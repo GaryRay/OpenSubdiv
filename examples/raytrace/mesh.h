@@ -71,7 +71,7 @@ struct Mesh {
     std::vector<float> _bezierVertices;              /// [xyz] * 16 * numBezierPatches
     std::vector<float> _bezierBounds;                /// [xyz] * [min, max] * numBezierPatches
 
-    OpenSubdiv::Far::PatchTables::PatchParamTable _patchParams;       /// [FarPatchParam] * numBezierPatches
+    OpenSubdiv::Far::PatchParamTable _patchParams;       /// [FarPatchParam] * numBezierPatches
     std::vector<float> _colors;                     /// [rgb] * numBezierPatches;
     std::vector<float> _sharpnesses;                /// sharpness * numBezierPatches (for single-crease patch)
 

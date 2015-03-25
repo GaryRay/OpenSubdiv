@@ -85,6 +85,7 @@ Ray Camera::GenerateRay(double u, double v) const {
     Ray ray;
     ray.org = org;
     ray.dir = dir;
+    ray.depth = 0;
 
     return ray;
 }

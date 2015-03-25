@@ -34,9 +34,10 @@ find_path( GLFW_INCLUDE_DIR
     NAMES
         GL/glfw.h
         GLFW/glfw3.h
-    PATHS
+    HINTS
         "${GLFW_LOCATION}/include"
         "$ENV{GLFW_LOCATION}/include"
+    PATHS
         "$ENV{PROGRAMFILES}/GLFW/include"
         "${OPENGL_INCLUDE_DIR}"
         /usr/openwin/share/include
@@ -57,10 +58,11 @@ if (WIN32)
         find_library( GLFW_glfw_LIBRARY 
             NAMES
                 glfw32
-            PATHS
+            HINTS
                 "${GLFW_LOCATION}/lib"
                 "${GLFW_LOCATION}/lib/x64"
                 "$ENV{GLFW_LOCATION}/lib"
+            PATHS
                 "${OPENGL_LIBRARY_DIR}"
                 /usr/lib
                 /usr/lib/w32api
@@ -76,15 +78,16 @@ if (WIN32)
                 glfw32s 
                 glfw
                 glfw3
-            PATHS
+            HINTS
                 "${GLFW_LOCATION}/lib"
                 "${GLFW_LOCATION}/lib/x64"
                 "${GLFW_LOCATION}/lib-msvc110"
+                "${GLFW_LOCATION}/lib-vc2012"
                 "$ENV{GLFW_LOCATION}/lib"
                 "$ENV{GLFW_LOCATION}/lib/x64"
                 "$ENV{GLFW_LOCATION}/lib-msvc110"
-                "${PROJECT_SOURCE_DIR}/extern/glfw/bin"
-                "${PROJECT_SOURCE_DIR}/extern/glfw/lib"
+                "$ENV{GLFW_LOCATION}/lib-vc2012"
+            PATHS
                 "$ENV{PROGRAMFILES}/GLFW/lib"
                 "${OPENGL_LIBRARY_DIR}"
             DOC 
@@ -97,11 +100,12 @@ else ()
             NAMES 
                 glfw
                 glfw3
-            PATHS
+            HINTS
                 "${GLFW_LOCATION}/lib"
                 "${GLFW_LOCATION}/lib/cocoa"
                 "$ENV{GLFW_LOCATION}/lib"
                 "$ENV{GLFW_LOCATION}/lib/cocoa"
+            PATHS
                 /usr/local/lib
         )
         set(GLFW_cocoa_LIBRARY "-framework Cocoa" CACHE STRING "Cocoa framework for OSX")
@@ -132,11 +136,12 @@ else ()
             NAMES 
                 glfw
                 glfw3
-            PATHS
+            HINTS
                 "${GLFW_LOCATION}/lib"
                 "$ENV{GLFW_LOCATION}/lib"
                 "${GLFW_LOCATION}/lib/x11"
                 "$ENV{GLFW_LOCATION}/lib/x11"
+            PATHS
                 /usr/lib64
                 /usr/lib
                 /usr/lib/${CMAKE_LIBRARY_ARCHITECTURE}

@@ -175,9 +175,7 @@ Hud::MouseClick(int x, int y)
         if (hitTest(*it, x, y)) {
             int bx = 0, by = 0;
             getWindowPos(*it, &bx, &by);
-            float v = ((x-bx-FONT_CHAR_WIDTH/2)/float(it->w))*(it->max - it->min) + it->min;
-            if (it->intStep) v = (int)(v+0.5);
-            it->SetValue(v);
+            it->SetValue(((x-bx-FONT_CHAR_WIDTH/2)/float(it->w))*(it->max - it->min) + it->min);
             it->callback(it->value, it->callbackData);
             _capturedSlider = (int)(it - _sliders.begin());
             _requiresRebuildStatic = true;
@@ -219,9 +217,7 @@ Hud::MouseMotion(int x, int /* y */)
         std::vector<Slider>::iterator it = _sliders.begin() + _capturedSlider;
 
         int bx = it->x > 0 ? it->x : _windowWidth + it->x;
-        float v = ((x-bx-FONT_CHAR_WIDTH/2)/float(it->w))*(it->max - it->min) + it->min;
-        if (it->intStep) v = (int)(v+0.5);
-        it->SetValue(v);
+        it->SetValue(((x-bx-FONT_CHAR_WIDTH/2)/float(it->w))*(it->max - it->min) + it->min);
         it->callback(it->value, it->callbackData);
         _requiresRebuildStatic = true;
     }
@@ -514,11 +510,11 @@ Hud::Rebuild(int width, int height, int framebufferWidth, int framebufferHeight)
         getWindowPos(*it, &x, &y);
         int sx = x;
         x = drawString(_staticVboSource, x, y, 1, 1, 1, it->label.c_str());
-        char value[20];
+        char value[16];
         if (it->intStep) {
-            snprintf(value, 20, " : %d", (int)it->value);
+            snprintf(value, 16, " : %d", (int)it->value);
         } else {
-            snprintf(value, 20, " : %.3f", it->value);
+            snprintf(value, 16, " : %.2f", it->value);
         }
         drawString(_staticVboSource, x, y, 1, 1, 1, value);
 
@@ -532,7 +528,7 @@ Hud::Rebuild(int width, int height, int framebufferWidth, int framebufferHeight)
             x = drawChar(_staticVboSource, x, y, 1, 1, 1, FONT_SLIDER_MIDDLE);
         }
         drawChar(_staticVboSource, x, y, 1, 1, 1, FONT_SLIDER_RIGHT);
-        int pos = (int)(((it->value-it->min)/float(it->max-it->min))*it->w);
+        int pos = (int)((it->value/float(it->max-it->min))*it->w);
         drawChar(_staticVboSource, sx+pos, y, 1, 1, 0, FONT_SLIDER_CURSOR);
     }
     // draw pulldowns

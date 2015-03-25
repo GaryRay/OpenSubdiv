@@ -1159,7 +1159,7 @@ void BuildIntersection(Intersection &isect, const Mesh *mesh, Ray &ray)
         isect.patchID = isect.faceID;
         isect.faceID = param.faceIndex;
         isect.level = (bits & 0xf);
-
+        isect.position = ray.org + isect.t * ray.dir;
 #if 0
         // remap ptex index (if neccessary)
         int level = 1 << ((bits & 0xf) - ((bits >> 4) &1));

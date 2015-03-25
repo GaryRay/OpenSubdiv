@@ -78,13 +78,14 @@ int convertRegular(std::vector<float> &bezierVertices,
                    std::vector<int> &cpIndices,
                    float const *vertices,
                    OpenSubdiv::Far::PatchTables const *patchTables,
-                   OpenSubdiv::Far::PatchTables::PatchArray const &parray)
+                   int array)
 {
-    int numPatches = parray.GetNumPatches();
+    int numPatches = patchTables->GetNumPatches(array);
 
     // regular to bezier
     for (int i = 0; i < numPatches; i++) {
-        const int *verts = &patchTables->GetPatchTable()[parray.GetVertIndex() + i*16];
+        const int *verts = &patchTables->GetPatchArrayVertices(array)[i*16];
+        //const int *verts = &patchTables->GetPatchTable()[parray.GetVertIndex() + i*16];
 
         // Watertight evaluation.
         // 0   1   2   3
@@ -133,10 +134,10 @@ int convertRegular(std::vector<float> &bezierVertices,
         bezierBounds.push_back(max[2]);
 
         // save center quad indices
-        cpIndices.push_back(patchTables->GetPatchTable()[parray.GetVertIndex() + i*16 + 5]);
-        cpIndices.push_back(patchTables->GetPatchTable()[parray.GetVertIndex() + i*16 + 6]);
-        cpIndices.push_back(patchTables->GetPatchTable()[parray.GetVertIndex() + i*16 + 9]);
-        cpIndices.push_back(patchTables->GetPatchTable()[parray.GetVertIndex() + i*16 + 10]);
+        cpIndices.push_back(patchTables->GetPatchArrayVertices(array)[i*16 + 5]);
+        cpIndices.push_back(patchTables->GetPatchArrayVertices(array)[i*16 + 6]);
+        cpIndices.push_back(patchTables->GetPatchArrayVertices(array)[i*16 + 9]);
+        cpIndices.push_back(patchTables->GetPatchArrayVertices(array)[i*16 + 10]);
     }
     return numPatches;
 }
@@ -146,24 +147,22 @@ int convertSingleCrease(std::vector<float> &bezierVertices,
                         std::vector<int> &cpIndices,
                         float const *vertices,
                         OpenSubdiv::Far::PatchTables const *patchTables,
-                        OpenSubdiv::Far::PatchTables::PatchArray const &parray)
+                        int array)
 {
-    int numPatches = parray.GetNumPatches();
+    int numPatches = patchTables->GetNumPatches(array);
 
     // single-crease to bezier.
     for (int i = 0; i < numPatches; i++) {
-        const int *verts = &patchTables->GetPatchTable()[parray.GetVertIndex() + i*16];
+        const int *verts = &patchTables->GetPatchArrayVertices(array)[i*16];
+        //const int *verts = &patchTables->GetPatchTable()[parray.GetVertIndex() + i*16];
 
         // same watertight bezier conversion should be applied as regular patch.
 
         // Watertight Splinet to Bezier evaluation.
-        using namespace OsdBezier;
-        vec3f P[16];
-        for (int j = 0; j < 16; ++j) {
-            P[j] = vec3f(&vertices[verts[j]*3]);
-        }
+
         // sharpness matrix
-        int index = patchTables->GetSharpnessIndexTable()[parray.GetPatchIndex() + i];
+        int index = patchTables->GetSharpnessIndices(array)[i];
+        //int index = patchTables->GetSharpnessIndexTable()[parray.GetPatchIndex() + i];
         float sharpness = patchTables->GetSharpnessValues()[index];
         //float Sf = floor(sharpness);
         //float Sc = ceil(sharpness);
@@ -173,7 +172,119 @@ int convertSingleCrease(std::vector<float> &bezierVertices,
         //matrix4t<float> Mj = (1-Sr) * Mf + Sr * Mi;
 
         matrix4t<float> Ms = computeMatrixSimplified(sharpness);
+        vec3f cp0[16], cp1[16];
 
+        using namespace OsdBezier;
+        vec3f P[16];
+        for (int j = 0; j < 16; ++j) {
+            P[j] = vec3f(&vertices[verts[j]*3]);
+        }
+
+        vec3f BP[16];
+
+        /*
+          m0 m1 m2 m3
+             m5 m6 m7
+             m9 m10 m11
+             m13 m14 m15
+         */
+        float m0 = Ms[0][0];
+        float m1 = Ms[0][1];
+        float m2 = Ms[0][2];
+        float m3 = Ms[0][3];
+        float m4 = Ms[1][0];
+        float m5 = Ms[1][1];
+        float m6 = Ms[1][2];
+        float m7 = Ms[1][3];
+        float m8 = Ms[2][0];
+        float m9 = Ms[2][1];
+        float m10 = Ms[2][2];
+        float m11 = Ms[2][3];
+        float m12 = Ms[3][0];
+        float m13 = Ms[3][1];
+        float m14 = Ms[3][2];
+        float m15 = Ms[3][3];
+        vec3f P0 = P[0];
+        vec3f P1 = P[4];
+        vec3f P2 = P[8];
+        vec3f P3 = P[12];
+        vec3f P4 = P[1];
+        vec3f P5 = P[5];
+        vec3f P6 = P[9];
+        vec3f P7 = P[13];
+        vec3f P8 = P[2];
+        vec3f P9 = P[6];
+        vec3f P10 = P[10];
+        vec3f P11 = P[14];
+        vec3f P12 = P[3];
+        vec3f P13 = P[7];
+        vec3f P14 = P[11];
+        vec3f P15 = P[15];
+
+        // reversal invariant
+        // 0   1   2   3 |
+        // 4   5   6   7 |(crease)
+        // 8   9  10  11 |
+        // 12  13  14  15|
+        cp0[0]  = m2 * (P10 + P2) + 4*m2*P6  + m3* (P11 + P3) + 4*m3*P7  + m0* (P0 + P8) + 4*m0*P4 + m1*(P1 + P9) + 4*m1*P5;
+        cp0[12] = m2 * (P14 + P6) + 4*m2*P10 + m3* (P15 + P7) + 4*m3*P11 + m0* (P12 + P4) + 4*m0*P8 + m1* (P13 + P5) + 4*m1*P9;
+
+        cp0[1]  = m6 * (P10 + P2) + 4*m6*P6 + m7* (P11 + P3) + 4*m7*P7 + m5* (P1 + P9) + 4*m5*P5;
+        cp0[13] = m6 * (P14 + P6) + 4*m6*P10 + m7* (P15 + P7) + 4*m7*P11 + m5* (P13 + P5) + 4*m5*P9;
+
+        cp0[2]  = m10 * (P10 + P2) + 4*m10*P6 + m11* (P11 + P3) + 4*m11*P7 + m9* (P1+P9) + 4*m9*P5;
+        cp0[14] = m10 * (P14 + P6) + 4*m10*P10 + m11* (P15 + P7) + 4*m11*P11 + m9* (P13+P5) + 4*m9*P9;
+
+        cp0[6]  = m10 * (2* P10 + 4* P6) + m11 * (2* P11 + 4* P7) + m9* (4* P5 + 2* P9);
+        cp0[10] = m10 * (4* P10 + 2* P6) + m11 * (4* P11 + 2* P7) + m9* (2* P5 + 4* P9);
+
+        cp0[4]  = m2  * (2* P10 + 4* P6) + m3 * (2* P11 + 4* P7) + m0* (4* P4 + 2* P8) + m1* (4* P5 + 2* P9);
+        cp0[8]  = m2  * (4* P10 + 2* P6) + m3 * (4* P11 + 2* P7) + m0* (2* P4 + 4* P8) + m1* (2* P5 + 4* P9);
+
+        cp0[5]  = m6  * (2* P10 + 4* P6) + m7* (2* P11 + 4* P7) + m5* (4* P5 + 2* P9);
+        cp0[9]  = m6  * (4* P10 + 2* P6) + m7* (4* P11 + 2* P7) + m5* (2* P5 + 4* P9);
+
+        cp0[7]  = m14 * (2* P10 + 4* P6) + m15* (2* P11 + 4* P7) +  m13* (4* P5 + 2* P9);
+        cp0[11] = m14 * (4* P10 + 2* P6) + m15* (4* P11 + 2* P7) + m13* (2* P5 + 4* P9);
+        cp0[3]  = m14*(P10 + P2) + 4*m14*P6  + m15*(P11 + P3) + 4*m15*P7  + m13*(P1 + P9) + 4*m13*P5;
+        cp0[15] = m14*(P14 + P6) + 4*m14*P10 + m15*(P15 + P7) + 4*m15*P11 + m13*(P13 + P5) + 4*m13*P9;
+
+        for (int j = 0; j < 16; ++j) {
+            cp0[j] = cp0[j]*(1.0f/6.0f);
+        }
+
+        // Minfinite
+        // 0   1   2   (3) |
+        // 4   5   6   (7) |(crease)
+        // 8   9  10  (11) |
+        // 12  13  14  (15)|
+        cp1[0]  = ((P0 + P10) + (P2 + P8)) + 4 * ((P4 + P6) + (P1 + P9) + 4 * P5);
+        cp1[4]  = (2*P10 + 4*P6) + (4*P4 + 2*P8) + 4*(4*P5 + 2*P9);
+        cp1[8]  = (4*P10 + 2*P6) + (2*P4 + 4*P8) + 4*(2*P5 + 4*P9);
+        cp1[12] = ((P12 + P6) + (P14 + P4)) + 4 * ((P10 + P8) + (P13 + P5) + 4 *P9);
+
+        // is this good...?
+        cp1[1]  = 2*((P10 + P2) + 4*P6) + 4*((P1 + P9) + 4*P5);
+        cp1[2]  = 4*((P10 + P2) + 4*P6) + 2*((P1 + P9) + 4*P5);
+        cp1[13] = 2*(4*P10 + (P14 + P6)) + 4*((P13 + P5) + 4*P9);
+        cp1[14] = 4*(4*P10 + (P14 + P6)) + 2*((P13 + P5) + 4*P9);
+
+        cp1[3]  = 6 * ((P10 + P2) + 4 *P6);
+        cp1[15] = 6 * (4*P10 + (P14 + P6));
+
+        cp1[7]  = 6 * (2*P10 + 4*P6);
+        cp1[11] = 6 * (4*P10 + 2*P6);
+
+        cp1[5]  = 2 * (2*P10 + 4*P6) + 4 * (4*P5 + 2*P9);
+        cp1[6]  = 4 * (2*P10 + 4*P6) + 2 * (4*P5 + 2*P9);
+        cp1[9]  = 2 * (4*P10 + 2*P6) + 4 * (2*P5 + 4*P9);
+        cp1[10] = 4 * (4*P10 + 2*P6) + 2 * (2*P5 + 4*P9);
+
+        for (int j = 0; j < 16; ++j) {
+            cp1[j] = cp1[j]*(1.0f/36.0f);
+        }
+
+#if 0
         // convert bspline to bezier
         const float Q[4][4] = {
             { 1.f/6.f, 4.f/6.f, 1.f/6.f, 0.f },
@@ -189,7 +300,6 @@ int convertSingleCrease(std::vector<float> &bezierVertices,
             { 0.f,     0.f,     1.f,     0.f } };
 
         // ----------------------------------------------------
-        vec3f cp0[16], cp1[16];
         for (int j = 0; j < 4; j++) {
             for (int k = 0; k < 4; k++) {
                 vec3f H[4];
@@ -203,11 +313,12 @@ int convertSingleCrease(std::vector<float> &bezierVertices,
                     }
                 }
                 for (int m = 0; m < 4; m++) {
-                    cp0[j*4+k] += Ms[k][m] * H[m];
-                    cp1[j*4+k] += Mi[k][m] * H[m];
+                    //cp0[j*4+k] += Ms[k][m] * H[m];
+                    //cp1[j*4+k] += Mi[k][m] * H[m];
                 }
             }
         }
+#endif
         // split patch
         BezierPatch<vec3f, float, 4> patch0(cp0);
         BezierPatch<vec3f, float, 4> patch1(cp1);
@@ -281,9 +392,9 @@ int convertBoundary(std::vector<float> &bezierVertices,
                     std::vector<int> &cpIndices,
                     float const *vertices,
                     OpenSubdiv::Far::PatchTables const *patchTables,
-                    OpenSubdiv::Far::PatchTables::PatchArray const &parray)
+                    int array)
 {
-    int numPatches = parray.GetNumPatches();
+    int numPatches = patchTables->GetNumPatches(array);
 
     // convert boundary bspline to bezier
     const float Q[4][4] = {
@@ -306,7 +417,8 @@ int convertBoundary(std::vector<float> &bezierVertices,
                 for (int l = 0; l < 3; l++) {
                     H[l] = vec3f(0.0f);
                     for (int m = 0; m < 4; m++) {
-                        int vert = patchTables->GetPatchTable()[parray.GetVertIndex() + i*12 + l*4 + m];
+                        int vert = patchTables->GetPatchArrayVertices(array)[i*12 + l*4 + m];
+                                                                                                              //int vert = patchTables->GetPatchTable()[parray.GetVertIndex() + i*12 + l*4 + m];
                         H[l] += Q[j][m] * vec3f(vertices[vert*3+0],
                                                 vertices[vert*3+1],
                                                 vertices[vert*3+2]);
@@ -331,11 +443,11 @@ int convertBoundary(std::vector<float> &bezierVertices,
         bezierBounds.push_back(max[2]);
 
         // save center quad indices
-#if 1
-        cpIndices.push_back(patchTables->GetPatchTable()[parray.GetVertIndex() + i*12 + 1]);
-        cpIndices.push_back(patchTables->GetPatchTable()[parray.GetVertIndex() + i*12 + 2]);
-        cpIndices.push_back(patchTables->GetPatchTable()[parray.GetVertIndex() + i*12 + 5]);
-        cpIndices.push_back(patchTables->GetPatchTable()[parray.GetVertIndex() + i*12 + 6]);
+#if 0
+        cpIndices.push_back(patchTables->GetPatchArrayVertices(array)[i*12 + 1]);
+        cpIndices.push_back(patchTables->GetPatchArrayVertices(array)[i*12 + 2]);
+        cpIndices.push_back(patchTables->GetPatchArrayVertices(array)[i*12 + 5]);
+        cpIndices.push_back(patchTables->GetPatchArrayVertices(array)[i*12 + 6]);
 #else
         cpIndices.push_back(-1);
         cpIndices.push_back(-1);
@@ -351,9 +463,9 @@ int convertCorner(std::vector<float> &bezierVertices,
                   std::vector<int> &cpIndices,
                   float const *vertices,
                   OpenSubdiv::Far::PatchTables const *patchTables,
-                  OpenSubdiv::Far::PatchTables::PatchArray const &parray)
+                  int array)
 {
-    int numPatches = parray.GetNumPatches();
+    int numPatches = patchTables->GetNumPatches(array);
 
     // convert bspline to bezier
     const float B[4][3] = {
@@ -371,7 +483,7 @@ int convertCorner(std::vector<float> &bezierVertices,
                 for (int l = 0; l < 3; l++) {
                     H[l][0] = H[l][1] = H[l][2] = 0;
                     for (int m = 0; m < 3; m++) {
-                        int vert = patchTables->GetPatchTable()[parray.GetVertIndex() + i*9 + l*3 + m];
+                        int vert = patchTables->GetPatchArrayVertices(array)[i*9 + l*3 + m];
                         H[l][0] += B[3-j][2-m] * vertices[vert*3+0];
                         H[l][1] += B[3-j][2-m] * vertices[vert*3+1];
                         H[l][2] += B[3-j][2-m] * vertices[vert*3+2];
@@ -420,7 +532,7 @@ int convertGregory(std::vector<float> &bezierVertices,
                    std::vector<int> &cpIndices,
                    float const *vertices,
                    OpenSubdiv::Far::PatchTables const *patchTables,
-                   OpenSubdiv::Far::PatchTables::PatchArray const &parray)
+                   int array)
 {
     int const * vertexValenceBuffer = &patchTables->GetVertexValenceTable()[0];
     int valences[4];
@@ -442,12 +554,18 @@ int convertGregory(std::vector<float> &bezierVertices,
         *Ep_im=(float*)alloca(length*sizeof(float));
     float *q=(float*)alloca(length*16*sizeof(float));
 
-    for (int patchIndex = 0; patchIndex < (int)parray.GetNumPatches(); ++patchIndex) {
+    int numPatches = patchTables->GetNumPatches(array);
+    for (int patchIndex = 0; patchIndex < numPatches; ++patchIndex) {
         float min[3] = {FLT_MAX, FLT_MAX, FLT_MAX};
         float max[3] = {-FLT_MAX, -FLT_MAX, -FLT_MAX};
 
-        int const * vertexIndices = &patchTables->GetPatchTable()[parray.GetVertIndex() + patchIndex*4];
-        int const *quadOffsetBuffer = &patchTables->GetQuadOffsetTable()[parray.GetQuadOffsetIndex() + patchIndex*4];
+        int const * vertexIndices = &patchTables->GetPatchArrayVertices(array)[patchIndex*4];
+        //int const *quadOffsetBuffer = &patchTables->GetQuadOffsetTable()[parray.GetQuadOffsetIndex() + patchIndex*4];
+        OpenSubdiv::Far::PatchTables::PatchHandle handle;
+        handle.arrayIndex = array;
+        handle.patchIndex = patchIndex;
+        handle.vertIndex = patchIndex*4;
+        OpenSubdiv::Vtr::ConstArray<unsigned int> quadOffsets = patchTables->GetPatchQuadOffsets(handle);
 
         bool badPatch = false;
 
@@ -553,7 +671,7 @@ int convertGregory(std::vector<float> &bezierVertices,
             int ip = (vid+1)%4;
             int im = (vid+3)%4;
             int n = valences[vid];
-            int const *quadOffsets = quadOffsetBuffer;
+            //int const *quadOffsets = quadOffsetBuffer;
 
             int start = quadOffsets[vid] & 0x00ff;
             int prev = (quadOffsets[vid] & 0xff00) / 256;
@@ -651,10 +769,10 @@ int convertGregory(std::vector<float> &bezierVertices,
 
         // save center quad indices
         if (!badPatch) {
-            cpIndices.push_back(patchTables->GetPatchTable()[parray.GetVertIndex() + patchIndex*4 + 0]);
-            cpIndices.push_back(patchTables->GetPatchTable()[parray.GetVertIndex() + patchIndex*4 + 1]);
-            cpIndices.push_back(patchTables->GetPatchTable()[parray.GetVertIndex() + patchIndex*4 + 2]);
-            cpIndices.push_back(patchTables->GetPatchTable()[parray.GetVertIndex() + patchIndex*4 + 3]);
+            cpIndices.push_back(patchTables->GetPatchArrayVertices(array)[patchIndex*4 + 0]);
+            cpIndices.push_back(patchTables->GetPatchArrayVertices(array)[patchIndex*4 + 1]);
+            cpIndices.push_back(patchTables->GetPatchArrayVertices(array)[patchIndex*4 + 2]);
+            cpIndices.push_back(patchTables->GetPatchArrayVertices(array)[patchIndex*4 + 3]);
         } else {
             cpIndices.push_back(-1);
             cpIndices.push_back(-1);
@@ -663,7 +781,7 @@ int convertGregory(std::vector<float> &bezierVertices,
         }
     }
 
-    return parray.GetNumPatches();
+    return patchTables->GetNumPatches(array);
 }
 
 int convertBoundaryGregory(std::vector<float> &bezierVertices,
@@ -671,7 +789,7 @@ int convertBoundaryGregory(std::vector<float> &bezierVertices,
                            std::vector<int> &cpIndices,
                            float const *vertices,
                            OpenSubdiv::Far::PatchTables const *patchTables,
-                           OpenSubdiv::Far::PatchTables::PatchArray const &parray)
+                           int array)
 {
     int const * vertexValenceBuffer = &patchTables->GetVertexValenceTable()[0];
     int valences[4], zerothNeighbors[4];
@@ -691,13 +809,19 @@ int convertBoundaryGregory(std::vector<float> &bezierVertices,
         *Ep_im=(float*)alloca(length*sizeof(float));
     float *q=(float*)alloca(length*16*sizeof(float));
 
-    for (int patchIndex = 0; patchIndex < (int)parray.GetNumPatches(); ++patchIndex) {
+    int numPatches = patchTables->GetNumPatches(array);
+    for (int patchIndex = 0; patchIndex < numPatches; ++patchIndex) {
         float min[3] = {FLT_MAX, FLT_MAX, FLT_MAX};
         float max[3] = {-FLT_MAX, -FLT_MAX, -FLT_MAX};
 
         // vertex
-        int const * vertexIndices = &patchTables->GetPatchTable()[parray.GetVertIndex() + patchIndex*4];
-        int const * quadOffsetBuffer = &patchTables->GetQuadOffsetTable()[parray.GetQuadOffsetIndex() + patchIndex*4];
+        int const * vertexIndices = &patchTables->GetPatchArrayVertices(array)[patchIndex*4];
+        //int const * quadOffsets = &patchTables->GetQuadOffsetTable()[parray.GetQuadOffsetIndex() + patchIndex*4];
+        OpenSubdiv::Far::PatchTables::PatchHandle handle;
+        handle.arrayIndex = array;
+        handle.patchIndex = patchIndex;
+        handle.vertIndex = patchIndex*4;
+        OpenSubdiv::Vtr::ConstArray<unsigned int> quadOffsets = patchTables->GetPatchQuadOffsets(handle);
 
         bool badPatch = false;
 
@@ -892,7 +1016,7 @@ int convertBoundaryGregory(std::vector<float> &bezierVertices,
                 n = abs(valences[vid]),
                 ivalence = n;
 
-            const int *quadOffsets = quadOffsetBuffer;
+            //const int *quadOffsets = quadOffsetBuffer;
 
             int vofs = vid * length;
 
@@ -1057,5 +1181,5 @@ int convertBoundaryGregory(std::vector<float> &bezierVertices,
 #endif
     }
 
-    return parray.GetNumPatches();
+    return patchTables->GetNumPatches(array);
 }
