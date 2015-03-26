@@ -453,31 +453,16 @@ Scene::Shade(float rgba[4], const Intersection &isect, const Ray &ray, Context *
     } else if (_mode == AO) {
         Intersection si;
         Ray sray;
-        int numHits = 0;
-
         OsdBezier::vec3f sample(0.5-randomreal(), 0.5-randomreal(), 0.5-randomreal());
         sample.normalize();
         sray.dir = sample * (dot(sample, isect.normal) > 0 ? -1 : 1);
         sray.invDir = sray.dir.neg();
         sray.org = ray.org + ray.dir * isect.t + sray.dir * 0.0001;
-        if (_accel.Traverse(si, &_mesh, sray, context)) {
+        if (_accel.Traverse(si, &_mesh, sray, NULL)) {
             color = vec3f(0.0f);
         } else {
             color = vec3f(1.0f);
         }
-#if 0
-        int numSamples = 16;
-        for (int i = 0; i < numSamples; ++i) {
-            OsdBezier::vec3f sample(0.5-randomreal(), 0.5-randomreal(), 0.5-randomreal());
-            sample.normalize();
-            sray.dir = sample * (dot(sample, isect.normal) > 0 ? -1 : 1);
-            sray.invDir = sray.dir.neg();
-            sray.org = ray.org + ray.dir * isect.t + sray.dir * 0.0001;
-            numHits += _accel.Traverse(si, &_mesh, sray, context) ? 1 : 0;
-        }
-#endif
-
-        //        color[0] = color[1] = color[2] = d * (1.0-numHits/float(numSamples));
     } else if (_mode == TRANSPARENT) {
         float alpha = 0.25 * (1.0 - rgba[3]);
         rgba[0] += d * alpha;
@@ -491,7 +476,7 @@ Scene::Shade(float rgba[4], const Intersection &isect, const Ray &ray, Context *
             sray.dir = ray.dir;
             sray.invDir = ray.invDir;
             sray.org = ray.org + ray.dir * (isect.t + 0.0001);
-            if (_accel.Traverse(si, &_mesh, sray, context)) {
+            if (_accel.Traverse(si, &_mesh, sray, NULL)) {
                 Shade(rgba, si, sray, context);
             } else {
                 rgba[3] = 1.0;
@@ -511,188 +496,189 @@ Scene::Shade(float rgba[4], const Intersection &isect, const Ray &ray, Context *
 bool
 Scene::LoadEnvMap(const std::string &filename)
 {
-  int x, y, n;
-  float *data = stbi_loadf(filename.c_str(), &x, &y, &n, 0);
-  float gamma = 1.0f;
+    int x, y, n;
+    float *data = stbi_loadf(filename.c_str(), &x, &y, &n, 0);
+    float gamma = 1.0f;
 
-  Texture::Coordinate coord_type = Texture::COORDINATE_LONGLAT;
+    Texture::Coordinate coord_type = Texture::COORDINATE_LONGLAT;
 
-  if (data) {
-    assert(n == 3); // RGB
-    printf("envmap [%s] %d x %d\n", filename.c_str(), x, y);
+    if (data) {
+        assert(n == 3); // RGB
+        printf("envmap [%s] %d x %d\n", filename.c_str(), x, y);
 
-    _envMap.Set(reinterpret_cast<const unsigned char *>(data), x, y, 3,
-                Texture::FORMAT_FLOAT, gamma, coord_type);
-  } else {
-    printf("Failed to load envmap [%s]\n", filename.c_str());
-  }
-
-  return true;
-}
-
-float vavg(vec3f x)
-{
-  return (x[0] + x[1] + x[2]) / 3;
-}
-
-
-vec3f vclamp01(vec3f x)
-{
-  vec3f ret;
-  ret[0] = x[0];
-  ret[1] = x[1];
-  ret[2] = x[2];
-
-  return ret;
-}
-
-vec3f reflect(const vec3f &in, const vec3f &n) {
-  float d = dot(in, n);
-  return in - n * (2.0 * d);
-}
-
-vec3f refract(bool &tir, const vec3f &in, const vec3f &n, float eta) {
-  vec3f ret;
-  vec3f N;
-  double e = eta;
-  double cos1 = dot(in, n);
-  if (cos1 < 0.0) { // entering
-    N = n;
-  } else { // outgoing
-    cos1 = -cos1;
-    e = 1.0f / eta;
-    N = n.neg();
-  }
-
-  double k = 1.0 - (e * e) * (1.0 - cos1 * cos1);
-  if (k <= 0.0) {
-    // Toral internal reflection.
-    ret = reflect(in, n);
-    tir = true;
-    ret.normalize();
-    return ret;
-  }
-
-  k = -e * cos1 - sqrt(k);
-
-  tir = false;
-  ret = k * N + e * in;
-  ret.normalize();
-
-  return ret;
-}
-
-void fresnel_factor(vec3f &refl, vec3f& refr, float &kr, float &kt,
-             const vec3f &in, const vec3f &n, float eta) {
-  float d = dot(in, n);
-
-  refl = reflect(in, n);
-
-  bool tir;
-  refr = refract(tir, in, n, eta);
-
-  if (tir) {
-    kr = 1.0;
-    kt = 0.0;
-    return;
-  }
-
-  float cos_r = dot(refl, n);
-  float cos_t = -dot(refr, n);
-
-  float rp = (cos_t - eta * cos_r) / (cos_t + eta * cos_r);
-  float rs = (cos_r - eta * cos_t) / (cos_r + eta * cos_t);
-  kr = (rp * rp + rs * rs) * 0.5f;
-
-  if (kr < 0.0f)
-    kr = 0.0f;
-  if (kr > 1.0f)
-    kr = 1.0f;
-
-  kt = 1.0f - kr;
-}
-
-void GenerateBasis(vec3f &tangent, vec3f &binormal,
-                          const vec3f &normal) {
-  // Find the minor axis of the vector
-  int i;
-  int index = -1;
-  double minval = 1.0e+6;
-  double val = 0;
-
-  for (int i = 0; i < 3; i++) {
-    val = fabsf(normal[i]);
-    if (val < minval) {
-      minval = val;
-      index = i;
+        _envMap.Set(reinterpret_cast<const unsigned char *>(data), x, y, 3,
+                    Texture::FORMAT_FLOAT, gamma, coord_type);
+    } else {
+        printf("Failed to load envmap [%s]\n", filename.c_str());
     }
-  }
 
-  if (index == 0) {
-
-    tangent[0] = 0.0;
-    tangent[1] = -normal[2];
-    tangent[2] = normal[1];
-    tangent.normalize();
-
-    binormal = cross(tangent, normal);
-    binormal.normalize();
-
-  } else if (index == 1) {
-
-    tangent[0] = -normal[2];
-    tangent[1] = 0.0;
-    tangent[2] = normal[0];
-    tangent.normalize();
-
-    binormal = cross(tangent, normal);
-    binormal.normalize();
-
-  } else {
-
-    tangent[0] = -normal[1];
-    tangent[1] = normal[0];
-    tangent[2] = 0.0;
-    tangent.normalize();
-
-    binormal = cross(tangent, normal);
-    binormal.normalize();
-  }
+    return true;
 }
 
-double SampleDiffuseIS(vec3f &dir, const vec3f &normal) {
-  vec3f tangent, binormal;
+inline float vavg(vec3f x)
+{
+    return (x[0] + x[1] + x[2]) / 3;
+}
 
-  GenerateBasis(tangent, binormal, normal);
 
-  double theta = acos(sqrt(1.0 - randomreal()));
-  double phi = 2.0 * M_PI * randomreal();
+inline vec3f vclamp01(vec3f x)
+{
+    vec3f ret;
+    ret[0] = x[0];
+    ret[1] = x[1];
+    ret[2] = x[2];
+
+    return ret;
+}
+
+inline vec3f reflect(const vec3f &in, const vec3f &n)
+{
+    float d = dot(in, n);
+    return in - n * (2.0 * d);
+}
+
+inline vec3f refract(bool &tir, const vec3f &in, const vec3f &n, float eta)
+{
+    vec3f ret;
+    vec3f N;
+    double e = eta;
+    double cos1 = dot(in, n);
+    if (cos1 < 0.0) { // entering
+        N = n;
+    } else { // outgoing
+        cos1 = -cos1;
+        e = 1.0f / eta;
+        N = n.neg();
+    }
+
+    double k = 1.0 - (e * e) * (1.0 - cos1 * cos1);
+    if (k <= 0.0) {
+        // Toral internal reflection.
+        ret = reflect(in, n);
+        tir = true;
+        ret.normalize();
+        return ret;
+    }
+
+    k = -e * cos1 - sqrt(k);
+
+    tir = false;
+    ret = k * N + e * in;
+    ret.normalize();
+
+    return ret;
+}
+
+static void fresnel_factor(vec3f &refl, vec3f& refr, float &kr, float &kt,
+                           const vec3f &in, const vec3f &n, float eta)
+{
+    refl = reflect(in, n);
+
+    bool tir;
+    refr = refract(tir, in, n, eta);
+
+    if (tir) {
+        kr = 1.0;
+        kt = 0.0;
+        return;
+    }
+
+    float cos_r = dot(refl, n);
+    float cos_t = -dot(refr, n);
+
+    float rp = (cos_t - eta * cos_r) / (cos_t + eta * cos_r);
+    float rs = (cos_r - eta * cos_t) / (cos_r + eta * cos_t);
+    kr = (rp * rp + rs * rs) * 0.5f;
+
+    if (kr < 0.0f)
+        kr = 0.0f;
+    if (kr > 1.0f)
+        kr = 1.0f;
+
+    kt = 1.0f - kr;
+}
+
+static void GenerateBasis(vec3f &tangent, vec3f &binormal,
+                          const vec3f &normal)
+{
+    // Find the minor axis of the vector
+    int index = -1;
+    double minval = 1.0e+6;
+    double val = 0;
+
+    for (int i = 0; i < 3; i++) {
+        val = fabsf(normal[i]);
+        if (val < minval) {
+            minval = val;
+            index = i;
+        }
+    }
+
+    if (index == 0) {
+
+        tangent[0] = 0.0;
+        tangent[1] = -normal[2];
+        tangent[2] = normal[1];
+        tangent.normalize();
+
+        binormal = cross(tangent, normal);
+        binormal.normalize();
+
+    } else if (index == 1) {
+
+        tangent[0] = -normal[2];
+        tangent[1] = 0.0;
+        tangent[2] = normal[0];
+        tangent.normalize();
+
+        binormal = cross(tangent, normal);
+        binormal.normalize();
+
+    } else {
+
+        tangent[0] = -normal[1];
+        tangent[1] = normal[0];
+        tangent[2] = 0.0;
+        tangent.normalize();
+
+        binormal = cross(tangent, normal);
+        binormal.normalize();
+    }
+}
+
+static double SampleDiffuseIS(vec3f &dir, const vec3f &normal)
+{
+    vec3f tangent, binormal;
+
+    GenerateBasis(tangent, binormal, normal);
+
+    double theta = acos(sqrt(1.0 - randomreal()));
+    double phi = 2.0 * M_PI * randomreal();
 
   //double cosTheta = cos(theta);
 
   /* D = T*cos(phi)*sin(theta) + B*sin(phi)*sin(theta) + N*cos(theta) */
-  double cos_theta = cos(theta);
-  vec3f T = tangent * cos(phi) * sin(theta);
-  vec3f B = binormal * sin(phi) * sin(theta);
-  vec3f N = normal * (cos_theta);
+    double cos_theta = cos(theta);
+    vec3f T = tangent * cos(phi) * sin(theta);
+    vec3f B = binormal * sin(phi) * sin(theta);
+    vec3f N = normal * (cos_theta);
 
-  dir = T + B + N;
+    dir = T + B + N;
 
-  return cos_theta; // PDF = weight
+    return cos_theta; // PDF = weight
 }
 
 // (Modified) Ward glossy BRDF
 // http://www.graphics.cornell.edu/~bjw/wardnotes.pdf
 // Some from OpenShadingLanguage
-void WardBRDF(
-    vec3f* omega_in, // output
-    float* pdf,     // output
-    float* weight,  // output
-    float ax,
-    float ay,
-    vec3f  omega_out,
-    vec3f  normal,               // shading normal
-    vec3f  geometric_normal)     // geometric normal
+static void WardBRDF(vec3f* omega_in, // output
+                     float* pdf,     // output
+                     float* weight,  // output
+                     float ax,
+                     float ay,
+                     vec3f  omega_out,
+                     vec3f  normal,               // shading normal
+                     vec3f  geometric_normal)     // geometric normal
 {
     float cosNO = dot(normal, omega_out);
 
@@ -869,208 +855,208 @@ Scene::PBS(float rgba[4], const Intersection &isect,
     float kt = vavg(ktRGB); kt = std::min(1.0f, std::max(0.0f, kt));
     float kd = vavg(kdRGB); kd = std::min(1.0f, std::max(0.0f, kd));
 
-  vec3f kdRet(0.0, 0.0, 0.0);
-  vec3f ktRet(0.0, 0.0, 0.0);
-  vec3f ksRet(0.0, 0.0, 0.0);
-  if (kd > 0.0) {
+    vec3f kdRet(0.0, 0.0, 0.0);
+    vec3f ktRet(0.0, 0.0, 0.0);
+    vec3f ksRet(0.0, 0.0, 0.0);
+    if (kd > 0.0) {
 
-    vec3f newDir;
-    double pdf = SampleDiffuseIS(newDir, n);
+        vec3f newDir;
+        SampleDiffuseIS(newDir, n);
 
-    Ray diffuseRay;
-    diffuseRay.dir = newDir;
-    diffuseRay.invDir = newDir.neg();
-    diffuseRay.org = isect.position + 0.00001f * newDir;
-    //diffuseRay.org = ray.org + ray.dir * isect.t + sray.dir * 0.0001;
-    diffuseRay.depth = ray.depth + 1;
+        Ray diffuseRay;
+        diffuseRay.dir = newDir;
+        diffuseRay.invDir = newDir.neg();
+        diffuseRay.org = isect.position + 0.00001f * newDir;
+        //diffuseRay.org = ray.org + ray.dir * isect.t + sray.dir * 0.0001;
+        diffuseRay.depth = ray.depth + 1;
 
-    Intersection diffuseIsect;
-    diffuseIsect.t = 1.0e+30;
-    bool hit = _accel.Traverse(diffuseIsect, &_mesh, diffuseRay, context);
-    //    bool hit = TraceRay(diffuseIsect, scene, diffuseRay);
-    if (hit) {
-      float diffuseRGBA[4];
-      PBS(diffuseRGBA, diffuseIsect, diffuseRay, context);
+        Intersection diffuseIsect;
+        diffuseIsect.t = 1.0e+30;
+        bool hit = _accel.Traverse(diffuseIsect, &_mesh, diffuseRay, NULL);
+        //    bool hit = TraceRay(diffuseIsect, scene, diffuseRay);
+        if (hit) {
+            float diffuseRGBA[4];
+            PBS(diffuseRGBA, diffuseIsect, diffuseRay, context);
 
-      kdRet[0] = kdRGB[0] * diffuseRGBA[0];
-      kdRet[1] = kdRGB[1] * diffuseRGBA[1];
-      kdRet[2] = kdRGB[2] * diffuseRGBA[2];
-      kdRet[3] = 1.0; // fixme
-    } else {
-      // env light
-      float rgba[4];
-      EnvCol(rgba, newDir);
+            kdRet[0] = kdRGB[0] * diffuseRGBA[0];
+            kdRet[1] = kdRGB[1] * diffuseRGBA[1];
+            kdRet[2] = kdRGB[2] * diffuseRGBA[2];
+            kdRet[3] = 1.0; // fixme
+        } else {
+            // env light
+            float rgba[4];
+            EnvCol(rgba, newDir);
 
-      float ndotl = dot(n, newDir);
-      ndotl = std::max(0.1f, ndotl);
+            float ndotl = dot(n, newDir);
+            ndotl = std::max(0.1f, ndotl);
 
-      kdRet[0] = ndotl * kdRGB[0] * rgba[0];
-      kdRet[1] = ndotl * kdRGB[1] * rgba[1];
-      kdRet[2] = ndotl * kdRGB[2] * rgba[2];
+            kdRet[0] = ndotl * kdRGB[0] * rgba[0];
+            kdRet[1] = ndotl * kdRGB[1] * rgba[1];
+            kdRet[2] = ndotl * kdRGB[2] * rgba[2];
+        }
     }
-  }
 
-  // reflection
-  if (ks > 0.0) {
-    vec3f r;
+    // reflection
+    if (ks > 0.0) {
+        vec3f r;
 
-    float weight = 1.0;
+        float weight = 1.0;
 
-    if (reflectionGlossiness < 1.0) {
-      // glossy reflection. WardBRDF
+        if (reflectionGlossiness < 1.0) {
+            // glossy reflection. WardBRDF
       
-      float pdf;
+            float pdf;
 
-      // larget = sharper.
-      float ax = 1.0f * (1.0f - reflectionGlossiness); // isotropic
-      float ay = 1.0f * (1.0f - reflectionGlossiness);
+            // larget = sharper.
+            float ax = 1.0f * (1.0f - reflectionGlossiness); // isotropic
+            float ay = 1.0f * (1.0f - reflectionGlossiness);
 
-      vec3f wi = in.neg();
+            vec3f wi = in.neg();
 
-      WardBRDF(&r, &pdf, &weight, ax, ay, wi, n, n);
-      //printf("w = %f, r = %f, %f, %f, n = %f, %f, %f\n",
-      //  weight, r[0], r[1], r[2], n[0], n[1], n[2]);
+            WardBRDF(&r, &pdf, &weight, ax, ay, wi, n, n);
+            //printf("w = %f, r = %f, %f, %f, n = %f, %f, %f\n",
+            //  weight, r[0], r[1], r[2], n[0], n[1], n[2]);
 
-      // HACK
-      r = r.neg();
-      weight = 1.0;
+            // HACK
+            r = r.neg();
+            weight = 1.0;
 
-    } else {
-      // perfect specular.
-      r = reflect(in, n);
+        } else {
+            // perfect specular.
+            r = reflect(in, n);
+        }
+
+        float dir[3];
+        dir[0] = r[0];
+        dir[1] = r[1];
+        dir[2] = r[2];
+
+        float rmag = r[0] * r[0] + r[1] * r[1] + r[2] * r[2];
+
+        if ((weight > 0.0) && (rmag > 0.1)) {
+
+            Ray reflRay;
+            reflRay.dir = r;
+            reflRay.org = isect.position + 0.01f * r;
+            reflRay.depth = ray.depth + 1;
+
+            Intersection reflIsect;
+            reflIsect.t = 1.0e+30;
+            bool hit = _accel.Traverse(reflIsect, &_mesh, reflRay, NULL);
+            //bool hit = TraceRay(reflIsect, scene, reflRay, context);
+
+            if (hit) {
+
+                float reflRGBA[4];
+                PBS(reflRGBA, reflIsect, reflRay, context);
+
+                ksRet[0] = ksRGB[0] * reflRGBA[0];
+                ksRet[1] = ksRGB[1] * reflRGBA[1];
+                ksRet[2] = ksRGB[2] * reflRGBA[2];
+                ksRet[3] = 1.0; // fixme
+
+            } else {
+                // env light
+                float rgba[4];
+                EnvCol(rgba, r);
+
+                ksRet[0] = ksRGB[0] * rgba[0];
+                ksRet[1] = ksRGB[1] * rgba[1];
+                ksRet[2] = ksRGB[2] * rgba[2];
+            }
+
+        } else {
+            // ???
+            ksRet[0] = 0.0;
+            ksRet[1] = 0.0;
+            ksRet[2] = 0.0;
+        }
     }
 
-    float dir[3];
-    dir[0] = r[0];
-    dir[1] = r[1];
-    dir[2] = r[2];
+    // refraction
+    if (kt > 0.0) {
 
-    float rmag = r[0] * r[0] + r[1] * r[1] + r[2] * r[2];
+        // Simple Ward refraction.
+        // @todo { GGX Glossy transmission. }
+        vec3f r;
 
-    if ((weight > 0.0) && (rmag > 0.1)) {
+        float weight = 1.0;
 
-      Ray reflRay;
-      reflRay.dir = r;
-      reflRay.org = isect.position + 0.01f * r;
-      reflRay.depth = ray.depth + 1;
-
-      Intersection reflIsect;
-      reflIsect.t = 1.0e+30;
-      bool hit = _accel.Traverse(reflIsect, &_mesh, reflRay, context);
-      //bool hit = TraceRay(reflIsect, scene, reflRay, context);
-
-      if (hit) {
-
-        float reflRGBA[4];
-        PBS(reflRGBA, reflIsect, reflRay, context);
-
-        ksRet[0] = ksRGB[0] * reflRGBA[0];
-        ksRet[1] = ksRGB[1] * reflRGBA[1];
-        ksRet[2] = ksRGB[2] * reflRGBA[2];
-        ksRet[3] = 1.0; // fixme
-
-      } else {
-        // env light
-        float rgba[4];
-        EnvCol(rgba, r);
-
-        ksRet[0] = ksRGB[0] * rgba[0];
-        ksRet[1] = ksRGB[1] * rgba[1];
-        ksRet[2] = ksRGB[2] * rgba[2];
-      }
-
-    } else {
-      // ???
-      ksRet[0] = 0.0;
-      ksRet[1] = 0.0;
-      ksRet[2] = 0.0;
-    }
-  }
-
-  // refraction
-  if (kt > 0.0) {
-
-    // Simple Ward refraction.
-    // @todo { GGX Glossy transmission. }
-    vec3f r;
-
-    float weight = 1.0;
-
-    if (refractionGlossiness < 1.0) {
-      // glossy reflection. WardBRDF
+        if (refractionGlossiness < 1.0) {
+            // glossy reflection. WardBRDF
       
-      float pdf;
+            float pdf;
 
-      // larget = sharper.
-      float ax = 1.0f * (1.0f - refractionGlossiness); // isotropic
-      float ay = 1.0f * (1.0f - refractionGlossiness);
+            // larget = sharper.
+            float ax = 1.0f * (1.0f - refractionGlossiness); // isotropic
+            float ay = 1.0f * (1.0f - refractionGlossiness);
 
-      vec3f wi = in.neg();
+            vec3f wi = in.neg();
 
-      WardBRDF(&r, &pdf, &weight, ax, ay, wi, n, n);
-      //printf("w = %f, r = %f, %f, %f, n = %f, %f, %f\n",
-      //  weight, r[0], r[1], r[2], n[0], n[1], n[2]);
+            WardBRDF(&r, &pdf, &weight, ax, ay, wi, n, n);
+            //printf("w = %f, r = %f, %f, %f, n = %f, %f, %f\n",
+            //  weight, r[0], r[1], r[2], n[0], n[1], n[2]);
 
-      // HACK
-      r = r.neg();
-      weight = 1.0;
+            // HACK
+            r = r.neg();
+            weight = 1.0;
 
-    } else {
-      // perfect transmission.
-      bool tir = false;
-      r = refract(tir, in, n, eta);
+        } else {
+            // perfect transmission.
+            bool tir = false;
+            r = refract(tir, in, n, eta);
+        }
+
+        float dir[3];
+        dir[0] = r[0];
+        dir[1] = r[1];
+        dir[2] = r[2];
+
+        float rmag = r[0] * r[0] + r[1] * r[1] + r[2] * r[2];
+
+        if ((weight > 0.0) && (rmag > 0.1)) {
+
+            Ray refrRay;
+            refrRay.dir = r;
+            refrRay.org = isect.position + 0.01f * r;
+            refrRay.depth = ray.depth + 1;
+
+            Intersection refrIsect;
+            refrIsect.t = 1.0e+30;
+            bool hit = _accel.Traverse(refrIsect, &_mesh, refrRay, NULL);
+            //bool hit = TraceRay(refrIsect, scene, refrRay);
+
+            if (hit) {
+
+                float refrRGBA[4];
+                PBS(refrRGBA, refrIsect, refrRay, context);
+
+                ktRet[0] = ktRGB[0] * refrRGBA[0];
+                ktRet[1] = ktRGB[1] * refrRGBA[1];
+                ktRet[2] = ktRGB[2] * refrRGBA[2];
+                ktRet[3] = 1.0; // fixme
+
+            } else {
+                // env light
+                float rgba[4];
+                EnvCol(rgba, r);
+
+                ktRet[0] = ktRGB[0] * rgba[0];
+                ktRet[1] = ktRGB[1] * rgba[1];
+                ktRet[2] = ktRGB[2] * rgba[2];
+            }
+
+        } else {
+            // ???
+            ktRet[0] = 0.0;
+            ktRet[1] = 0.0;
+            ktRet[2] = 0.0;
+        }
     }
 
-    float dir[3];
-    dir[0] = r[0];
-    dir[1] = r[1];
-    dir[2] = r[2];
-
-    float rmag = r[0] * r[0] + r[1] * r[1] + r[2] * r[2];
-
-    if ((weight > 0.0) && (rmag > 0.1)) {
-
-      Ray refrRay;
-      refrRay.dir = r;
-      refrRay.org = isect.position + 0.01f * r;
-      refrRay.depth = ray.depth + 1;
-
-      Intersection refrIsect;
-      refrIsect.t = 1.0e+30;
-      bool hit = _accel.Traverse(refrIsect, &_mesh, refrRay, context);
-      //bool hit = TraceRay(refrIsect, scene, refrRay);
-
-      if (hit) {
-
-        float refrRGBA[4];
-        PBS(refrRGBA, refrIsect, refrRay, context);
-
-        ktRet[0] = ktRGB[0] * refrRGBA[0];
-        ktRet[1] = ktRGB[1] * refrRGBA[1];
-        ktRet[2] = ktRGB[2] * refrRGBA[2];
-        ktRet[3] = 1.0; // fixme
-
-      } else {
-        // env light
-        float rgba[4];
-        EnvCol(rgba, r);
-
-        ktRet[0] = ktRGB[0] * rgba[0];
-        ktRet[1] = ktRGB[1] * rgba[1];
-        ktRet[2] = ktRGB[2] * rgba[2];
-      }
-
-    } else {
-      // ???
-      ktRet[0] = 0.0;
-      ktRet[1] = 0.0;
-      ktRet[2] = 0.0;
-    }
-  }
-
-  // @fixme.
-  rgba[0] = 0.5*3.14 * (kdRet[0] + ksRet[0] + ktRet[0]);
-  rgba[1] = 0.5*3.14 * (kdRet[1] + ksRet[1] + ktRet[1]);
-  rgba[2] = 0.5*3.14 * (kdRet[2] + ksRet[2] + ktRet[2]);
-  rgba[3] = 1.0;
+    // @fixme.
+    rgba[0] = 0.5*3.14 * (kdRet[0] + ksRet[0] + ktRet[0]);
+    rgba[1] = 0.5*3.14 * (kdRet[1] + ksRet[1] + ktRet[1]);
+    rgba[2] = 0.5*3.14 * (kdRet[2] + ksRet[2] + ktRet[2]);
+    rgba[3] = 1.0;
 }

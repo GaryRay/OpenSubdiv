@@ -181,8 +181,6 @@ int convertSingleCrease(std::vector<float> &bezierVertices,
             P[j] = vec3f(&vertices[verts[j]*3]);
         }
 
-        vec3f BP[16];
-
         /*
           m0 m1 m2 m3
              m5 m6 m7
@@ -193,15 +191,15 @@ int convertSingleCrease(std::vector<float> &bezierVertices,
         float m1 = Ms[0][1];
         float m2 = Ms[0][2];
         float m3 = Ms[0][3];
-        float m4 = Ms[1][0];
+        //float m4 = Ms[1][0];
         float m5 = Ms[1][1];
         float m6 = Ms[1][2];
         float m7 = Ms[1][3];
-        float m8 = Ms[2][0];
+        //float m8 = Ms[2][0];
         float m9 = Ms[2][1];
         float m10 = Ms[2][2];
         float m11 = Ms[2][3];
-        float m12 = Ms[3][0];
+        //float m12 = Ms[3][0];
         float m13 = Ms[3][1];
         float m14 = Ms[3][2];
         float m15 = Ms[3][3];
@@ -285,41 +283,6 @@ int convertSingleCrease(std::vector<float> &bezierVertices,
             cp1[j] = cp1[j]*(1.0f/36.0f);
         }
 
-#if 0
-        // convert bspline to bezier
-        const float Q[4][4] = {
-            { 1.f/6.f, 4.f/6.f, 1.f/6.f, 0.f },
-            { 0.f,     4.f/6.f, 2.f/6.f, 0.f },
-            { 0.f,     2.f/6.f, 4.f/6.f, 0.f },
-            { 0.f,     1.f/6.f, 4.f/6.f, 1.f/6.f } };
-
-        // Infinite sharp
-        const float Mi[4][4] = {
-            { 1.f/6.f, 4.f/6.f, 1.f/6.f, 0.f },
-            { 0.f,     4.f/6.f, 2.f/6.f, 0.f },
-            { 0.f,     2.f/6.f, 4.f/6.f, 0.f },
-            { 0.f,     0.f,     1.f,     0.f } };
-
-        // ----------------------------------------------------
-        for (int j = 0; j < 4; j++) {
-            for (int k = 0; k < 4; k++) {
-                vec3f H[4];
-                for (int l = 0; l < 4; l++) {
-                    H[l] = vec3f(0.0f);
-                    for (int m = 0; m < 4; m++) {
-                        int vert = verts[l*4 + m];
-                        H[l] += Q[j][m] * vec3f(vertices[vert*3+0],
-                                                vertices[vert*3+1],
-                                                vertices[vert*3+2]);
-                    }
-                }
-                for (int m = 0; m < 4; m++) {
-                    //cp0[j*4+k] += Ms[k][m] * H[m];
-                    //cp1[j*4+k] += Mi[k][m] * H[m];
-                }
-            }
-        }
-#endif
         // split patch
         BezierPatch<vec3f, float, 4> patch0(cp0);
         BezierPatch<vec3f, float, 4> patch1(cp1);
