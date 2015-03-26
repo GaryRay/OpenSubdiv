@@ -455,10 +455,11 @@ HDRToLDR(std::vector<unsigned char> &out, const std::vector<float> &in,
   // Flip w and h
   for (int x = 0; x < width; x++) {
     for (int y = 0; y < height; y++) {
-      out[4*(y*width+x)+0] = fclamp(gamma_correct(in[4*(x*width+y)+0], inv_gamma));
-      out[4*(y*width+x)+1] = fclamp(gamma_correct(in[4*(x*width+y)+1], inv_gamma));
-      out[4*(y*width+x)+2] = fclamp(gamma_correct(in[4*(x*width+y)+2], inv_gamma));
-      out[4*(y*width+x)+3] = fclamp(in[4*(x*width+y)+3]); // no gamma correct for alpha component
+        float alpha = in[4*(x*width+y)+3];
+        out[4*(y*width+x)+0] = fclamp(gamma_correct(in[4*(x*width+y)+0]/alpha, inv_gamma));
+        out[4*(y*width+x)+1] = fclamp(gamma_correct(in[4*(x*width+y)+1]/alpha, inv_gamma));
+        out[4*(y*width+x)+2] = fclamp(gamma_correct(in[4*(x*width+y)+2]/alpha, inv_gamma));
+        out[4*(y*width+x)+3] = fclamp(1.0f); // no gamma correct for alpha component
     }
   }
 }
