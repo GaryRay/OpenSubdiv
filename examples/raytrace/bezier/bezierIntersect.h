@@ -54,57 +54,9 @@ struct Epsilon {
 };
 template <>
 struct Epsilon<double> {
-    // Emprically it seems work(@syoyo).
-    // At least 1e-6 or smaller cause some crack. 2014/06/15. revisit
     static double GetEps() { return 1e-4; }
     static double GetUvEps() { return 1.0/32.0; }
 };
-
-#define Get16Bits(d) ((((uint32_t)(((const uint8_t *)(d))[1])) << 8)\
-                       +(uint32_t)(((const uint8_t *)(d))[0]) )
-
-inline uint32_t fastHash(const char *data, int len, uint32_t hash) {
-    uint32_t tmp;
-    int rem;
-
-    rem = len & 3;
-    len >>= 2;
-
-    /* Main loop */
-    for (;len > 0; len--) {
-        hash  += Get16Bits (data);
-        tmp    = (Get16Bits (data+2) << 11) ^ hash;
-        hash   = (hash << 16) ^ tmp;
-        data  += 2*sizeof (uint16_t);
-        hash  += hash >> 11;
-    }
-
-    /* Handle end cases */
-    switch (rem) {
-    case 3: hash += Get16Bits (data);
-        hash ^= hash << 16;
-        hash ^= data[sizeof (uint16_t)] << 18;
-        hash += hash >> 11;
-        break;
-    case 2: hash += Get16Bits (data);
-        hash ^= hash << 11;
-        hash += hash >> 17;
-        break;
-    case 1: hash += *data;
-        hash ^= hash << 10;
-        hash += hash >> 1;
-    }
-
-    /* Force "avalanching" of final 127 bits */
-    hash ^= hash << 3;
-    hash += hash >> 5;
-    hash ^= hash << 4;
-    hash += hash >> 17;
-    hash ^= hash << 25;
-    hash += hash >> 6;
-
-    return hash;
-}
 
 template<class VALUE_TYPE, class REAL, int N=4>
 class BezierPatchIntersection {
@@ -120,10 +72,9 @@ public:
         Real tmin, tmax;
     };
     struct UVT {
-        UVT() : u(0), v(0), t(0), level(0), quadHash(0) { }
+        UVT() : u(0), v(0), t(0), level(0) { }
         Real u, v, t;
         int level;
-        int quadHash;
         int failFlag;
     };
 
@@ -232,7 +183,6 @@ protected:
                 info->u = u;
                 info->v = v;
                 info->clipLevel = uvt.level;
-                info->quadHash = uvt.quadHash;
                 {
                     ValueType du = _patch.EvaluateDu(u,v);
                     ValueType dv = _patch.EvaluateDv(u,v);
@@ -294,7 +244,6 @@ protected:
                 info->u = u;
                 info->v = v;
                 info->clipLevel = uvt.level;
-                info->quadHash = uvt.quadHash;
                 {
                     ValueType du = _patch.EvaluateDu(u,v);
                     ValueType dv = _patch.EvaluateDv(u,v);
@@ -767,7 +716,6 @@ protected:
                     info->v = v;
                     info->t = t;
                     info->level = level;
-                    info->quadHash = computeHash(u0, u1, v0, v1);
                     return true;
                 }
             } else {
@@ -778,7 +726,6 @@ protected:
                     info->v = v;
                     info->t = t;
                     info->level = level;
-                    info->quadHash = computeHash(u0, u1, v0, v1);
                     return true;
                 }
             }
@@ -826,7 +773,6 @@ protected:
                         info->v = v;
                         info->t = t;
                         info->level = level;
-                        info->quadHash = computeHash(u0, u1, v0, v1);
                         bRet = true;
                     }
                 }else{
@@ -846,7 +792,6 @@ protected:
                         info->v = v;
                         info->t = t;
                         info->level = level;
-                        info->quadHash = computeHash(u0, u1, v0, v1);
                         bRet = true;
                     }
                 }
@@ -1024,21 +969,6 @@ protected:
         return rng->tmin <= rng->tmax;
     }
 
-#if 0
-    template<typename T>
-    uint32_t computeHash(T a, T b, T c, T d) const {
-        uint32_t hash = fastHash((const char *)&_patch, sizeof(_patch), 0);
-        T v[4] = {a, b, c, d};
-        hash = fastHash((const char*)v, sizeof(v), hash);
-        return hash;
-    }
-#else
-    template<typename T>
-    uint32_t computeHash(T, T, T, T) const {
-        return 0;
-    }
-#endif
-
     PatchType _patch;
     Real _uRange[2];
     Real _vRange[2];
@@ -1057,7 +987,5 @@ protected:
 };
 
 }   // end OsdBezier
-
-//}  // end namespace OsdBezier
 
 #endif  // BEZIER_BEZIER_INTERSECT_H
