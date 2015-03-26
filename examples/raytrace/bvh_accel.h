@@ -122,7 +122,7 @@ public:
     BVHBuildStatistics GetStatistics() const { return _stats; }
 
     ///< Traverse into BVH along ray and find closest hit point if found
-    bool Traverse(Intersection &isect, const Mesh *mesh, Ray &ray, Context *context);
+    bool Traverse(Intersection &isect, const Mesh *mesh, Ray &ray, Context *context) const;
 
     enum { OSD_FLOAT, OSD_SSE, OSD_DOUBLE } IntersectKernel;
     void SetIntersectKernel(int k) {_intersectKernel = k; }

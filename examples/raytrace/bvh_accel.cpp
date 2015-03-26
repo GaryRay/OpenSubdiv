@@ -1216,7 +1216,7 @@ void BuildIntersection(Intersection &isect, const Mesh *mesh, Ray &ray)
 
 #define kMaxStackDepth    512
 
-bool BVHAccel::Traverse(Intersection &isect, const Mesh *mesh, Ray &ray, Context *context) {
+bool BVHAccel::Traverse(Intersection &isect, const Mesh *mesh, Ray &ray, Context *context) const {
 
     if (context) context->BeginTraverse();
 
@@ -1252,7 +1252,7 @@ bool BVHAccel::Traverse(Intersection &isect, const Mesh *mesh, Ray &ray, Context
     real minT, maxT;
     while (nodeStackIndex >= 0) {
         int index = nodeStack[nodeStackIndex];
-        BVHNode &node = _nodes[index];
+        const BVHNode &node = _nodes[index];
 
         nodeStackIndex--;
 
