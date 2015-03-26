@@ -29,8 +29,7 @@
 
 #include "bezier/math.h"
 #include "bezier/bezier.h"
-
-using namespace OsdBezier;
+#include "common.h"
 
 static float ef[27] = {
     0.812816f, 0.500000f, 0.363644f, 0.287514f,
@@ -52,14 +51,14 @@ csf(unsigned int n, unsigned int j)
     }
 }
 
-OsdBezier::matrix4t<float>
+matrix4f
 computeMatrixSimplified(float sharpness)
 {
     float s = pow(2.0f, sharpness);
     float s2 = s*s;
     float s3 = s2*s;
 
-    OsdBezier::matrix4t<float> m = OsdBezier::matrix4t<float>(
+    OsdBezier::matrix4f m = OsdBezier::matrix4f(
         0, s + 1 + 3*s2 - s3, 7*s - 2 - 6*s2 + 2*s3, (1-s)*(s-1)*(s-1),
         0,       (1+s)*(1+s),        6*s - 2 - 2*s2,       (s-1)*(s-1),
         0,               1+s,               6*s - 2,               1-s,
@@ -76,6 +75,11 @@ computeMatrixSimplified(float sharpness)
 static void convertBezier(vec3f *BP, const vec3f *P)
 {
     // Watertight evaluation.
+    // 0   1   2   3
+    // 4   5   6   7
+    // 8   9  10  11
+    // 12 13  14  15
+    //
     BP[0] = (((P[0] + P[10]) + (P[2] + P[8])) + (4*(P[4] + P[6]) + 4*(P[1] + P[9])))+ 16*P[5];
     BP[1] = (4*(P[4] + P[6]) + 2*(P[8] + P[10])) + 4*(4*P[5] + 2*P[9]);
     BP[2] = (4*(P[8] + P[10]) + 2*(P[4] + P[6])) + 4*(4*P[9] + 2*P[5]);
@@ -98,7 +102,6 @@ static void convertBezier(vec3f *BP, const vec3f *P)
 }
 
 int convertRegular(std::vector<float> &bezierVertices,
-                   std::vector<float> &bezierBounds,
                    std::vector<int> &cpIndices,
                    float const *vertices,
                    OpenSubdiv::Far::PatchTables const *patchTables,
@@ -109,13 +112,7 @@ int convertRegular(std::vector<float> &bezierVertices,
     // regular to bezier
     for (int i = 0; i < numPatches; i++) {
         const int *verts = &patchTables->GetPatchArrayVertices(array)[i*16];
-        //const int *verts = &patchTables->GetPatchTable()[parray.GetVertIndex() + i*16];
 
-        // 0   1   2   3
-        // 4   5   6   7
-        // 8   9  10  11
-        // 12  13  14  15
-        using namespace OsdBezier;
         vec3f P[16];
         for (int j = 0; j < 16; ++j) {
             P[j] = vec3f(&vertices[verts[j]*3]);
@@ -123,20 +120,11 @@ int convertRegular(std::vector<float> &bezierVertices,
         vec3f BP[16];
         convertBezier(BP, P);
 
-        vec3f min(FLT_MAX), max(-FLT_MAX);
         for (int j = 0; j < 16; ++j) {
-            min = min.min(BP[j]);
-            max = max.max(BP[j]);
             bezierVertices.push_back(BP[j][0]);
             bezierVertices.push_back(BP[j][1]);
             bezierVertices.push_back(BP[j][2]);
         }
-        bezierBounds.push_back(min[0]);
-        bezierBounds.push_back(min[1]);
-        bezierBounds.push_back(min[2]);
-        bezierBounds.push_back(max[0]);
-        bezierBounds.push_back(max[1]);
-        bezierBounds.push_back(max[2]);
 
         // save center quad indices
         cpIndices.push_back(patchTables->GetPatchArrayVertices(array)[i*16 + 5]);
@@ -148,7 +136,6 @@ int convertRegular(std::vector<float> &bezierVertices,
 }
 
 int convertSingleCrease(std::vector<float> &bezierVertices,
-                        std::vector<float> &bezierBounds,
                         std::vector<int> &cpIndices,
                         float const *vertices,
                         OpenSubdiv::Far::PatchTables const *patchTables,
@@ -172,10 +159,9 @@ int convertSingleCrease(std::vector<float> &bezierVertices,
         //matrix4t<float> Mc = computeMatrixSimplified(Sc);
         //matrix4t<float> Mj = (1-Sr) * Mf + Sr * Mi;
 
-        matrix4t<float> Ms = computeMatrixSimplified(sharpness);
+        matrix4f Ms = computeMatrixSimplified(sharpness);
         vec3f cp0[16], cp1[16];
 
-        using namespace OsdBezier;
         vec3f P[16];
         for (int j = 0; j < 16; ++j) {
             P[j] = vec3f(&vertices[verts[j]*3]);
@@ -284,11 +270,11 @@ int convertSingleCrease(std::vector<float> &bezierVertices,
         }
 
         // split patch
-        BezierPatch<vec3f, float, 4> patch0(cp0);
-        BezierPatch<vec3f, float, 4> patch1(cp1);
+        OsdBezier::BezierPatch<vec3f, float, 4> patch0(cp0);
+        OsdBezier::BezierPatch<vec3f, float, 4> patch1(cp1);
 
-        BezierPatch<vec3f, float, 4> patch0s[2];
-        BezierPatch<vec3f, float, 4> patch1s[2];
+        OsdBezier::BezierPatch<vec3f, float, 4> patch0s[2];
+        OsdBezier::BezierPatch<vec3f, float, 4> patch1s[2];
         float t = 1.0 - pow(2.0f, -sharpness);
         patch0.SplitU(patch0s, t);
         patch1.SplitU(patch1s, t);
@@ -300,36 +286,16 @@ int convertSingleCrease(std::vector<float> &bezierVertices,
             }
         }
 
-        vec3f min(FLT_MAX), max(-FLT_MAX);
         for (int j = 0; j < 16; ++j) {
             bezierVertices.push_back(cp0[j][0]);
             bezierVertices.push_back(cp0[j][1]);
             bezierVertices.push_back(cp0[j][2]);
-            min = min.min(cp0[j]);
-            max = max.max(cp0[j]);
         }
-        bezierBounds.push_back(min[0]);
-        bezierBounds.push_back(min[1]);
-        bezierBounds.push_back(min[2]);
-        bezierBounds.push_back(max[0]);
-        bezierBounds.push_back(max[1]);
-        bezierBounds.push_back(max[2]);
-        min = vec3f(FLT_MAX);
-        max = vec3f(-FLT_MAX);
-
         for (int j = 0; j < 16; ++j) {
             bezierVertices.push_back(cp1[j][0]);
             bezierVertices.push_back(cp1[j][1]);
             bezierVertices.push_back(cp1[j][2]);
-            min = min.min(cp1[j]);
-            max = max.max(cp1[j]);
         }
-        bezierBounds.push_back(min[0]);
-        bezierBounds.push_back(min[1]);
-        bezierBounds.push_back(min[2]);
-        bezierBounds.push_back(max[0]);
-        bezierBounds.push_back(max[1]);
-        bezierBounds.push_back(max[2]);
 
 #if 0
         // save center quad indices
@@ -352,7 +318,6 @@ int convertSingleCrease(std::vector<float> &bezierVertices,
 }
 
 int convertBoundary(std::vector<float> &bezierVertices,
-                    std::vector<float> &bezierBounds,
                     std::vector<int> &cpIndices,
                     float const *vertices,
                     OpenSubdiv::Far::PatchTables const *patchTables,
@@ -382,39 +347,22 @@ int convertBoundary(std::vector<float> &bezierVertices,
 
         convertBezier(BP, P);
 
-        vec3f min(FLT_MAX), max(-FLT_MAX);
         for (int j = 0; j < 16; ++j) {
-            min = min.min(BP[j]);
-            max = max.max(BP[j]);
             bezierVertices.push_back(BP[j][0]);
             bezierVertices.push_back(BP[j][1]);
             bezierVertices.push_back(BP[j][2]);
         }
-        bezierBounds.push_back(min[0]);
-        bezierBounds.push_back(min[1]);
-        bezierBounds.push_back(min[2]);
-        bezierBounds.push_back(max[0]);
-        bezierBounds.push_back(max[1]);
-        bezierBounds.push_back(max[2]);
 
         // save center quad indices
-#if 1
         cpIndices.push_back(patchTables->GetPatchArrayVertices(array)[i*12 + 1]);
         cpIndices.push_back(patchTables->GetPatchArrayVertices(array)[i*12 + 2]);
         cpIndices.push_back(patchTables->GetPatchArrayVertices(array)[i*12 + 5]);
         cpIndices.push_back(patchTables->GetPatchArrayVertices(array)[i*12 + 6]);
-#else
-        cpIndices.push_back(-1);
-        cpIndices.push_back(-1);
-        cpIndices.push_back(-1);
-        cpIndices.push_back(-1);
-#endif
     }
     return numPatches;
 }
 
 int convertCorner(std::vector<float> &bezierVertices,
-                  std::vector<float> &bezierBounds,
                   std::vector<int> &cpIndices,
                   float const *vertices,
                   OpenSubdiv::Far::PatchTables const *patchTables,
@@ -423,8 +371,6 @@ int convertCorner(std::vector<float> &bezierVertices,
     int numPatches = patchTables->GetNumPatches(array);
 
     for (int i = 0; i < numPatches; i++) {
-        vec3f min(FLT_MAX), max(-FLT_MAX);
-
         const int *verts = &patchTables->GetPatchArrayVertices(array)[i*9];
 
         vec3f BP[16];
@@ -455,38 +401,22 @@ int convertCorner(std::vector<float> &bezierVertices,
         convertBezier(BP, P);
 
         for (int j = 0; j < 16; ++j) {
-            min = min.min(BP[j]);
-            max = max.max(BP[j]);
             bezierVertices.push_back(BP[j][0]);
             bezierVertices.push_back(BP[j][1]);
             bezierVertices.push_back(BP[j][2]);
         }
-        bezierBounds.push_back(min[0]);
-        bezierBounds.push_back(min[1]);
-        bezierBounds.push_back(min[2]);
-        bezierBounds.push_back(max[0]);
-        bezierBounds.push_back(max[1]);
-        bezierBounds.push_back(max[2]);
 
         // save center quad indices
-#if 1
         cpIndices.push_back(patchTables->GetPatchArrayVertices(array)[i*9 + 1]);
         cpIndices.push_back(patchTables->GetPatchArrayVertices(array)[i*9 + 2]);
         cpIndices.push_back(patchTables->GetPatchArrayVertices(array)[i*9 + 4]);
         cpIndices.push_back(patchTables->GetPatchArrayVertices(array)[i*9 + 5]);
-#else
-        cpIndices.push_back(-1);
-        cpIndices.push_back(-1);
-        cpIndices.push_back(-1);
-        cpIndices.push_back(-1);
-#endif
     }
     return numPatches;
 }
 
 
 int convertGregory(std::vector<float> &bezierVertices,
-                   std::vector<float> &bezierBounds,
                    std::vector<int> &cpIndices,
                    float const *vertices,
                    OpenSubdiv::Far::PatchTables const *patchTables,
@@ -497,7 +427,7 @@ int convertGregory(std::vector<float> &bezierVertices,
     int length = 3;
     int stride = 3;
     int maxValence = patchTables->GetMaxValence();
-    printf("Max Valence = %d\n", maxValence);
+    //printf("Max Valence = %d\n", maxValence);
     float *r = (float*)alloca((maxValence+2)*4*length*sizeof(float));
     float *f = (float*)alloca(maxValence*length*sizeof(float)),
         *pos = (float*)alloca(length*sizeof(float)),
@@ -514,8 +444,6 @@ int convertGregory(std::vector<float> &bezierVertices,
 
     int numPatches = patchTables->GetNumPatches(array);
     for (int patchIndex = 0; patchIndex < numPatches; ++patchIndex) {
-        float min[3] = {FLT_MAX, FLT_MAX, FLT_MAX};
-        float max[3] = {-FLT_MAX, -FLT_MAX, -FLT_MAX};
 
         int const * vertexIndices = &patchTables->GetPatchArrayVertices(array)[patchIndex*4];
         //int const *quadOffsetBuffer = &patchTables->GetQuadOffsetTable()[parray.GetQuadOffsetIndex() + patchIndex*4];
@@ -706,24 +634,11 @@ int convertGregory(std::vector<float> &bezierVertices,
         for (int x = 0; x < 4; ++x) {
             for (int y = 0; y < 4; ++y) {
                 int index = y*4 + x;
-                min[0] = std::min(min[0], q[index*3+0]);
-                min[1] = std::min(min[1], q[index*3+1]);
-                min[2] = std::min(min[2], q[index*3+2]);
-                max[0] = std::max(max[0], q[index*3+0]);
-                max[1] = std::max(max[1], q[index*3+1]);
-                max[2] = std::max(max[2], q[index*3+2]);
                 bezierVertices.push_back(q[index*3+0]);
                 bezierVertices.push_back(q[index*3+1]);
                 bezierVertices.push_back(q[index*3+2]);
             }
         }
-        bezierBounds.push_back(min[0]);
-        bezierBounds.push_back(min[1]);
-        bezierBounds.push_back(min[2]);
-        bezierBounds.push_back(max[0]);
-        bezierBounds.push_back(max[1]);
-        bezierBounds.push_back(max[2]);
-
 
         // save center quad indices
         if (!badPatch) {
@@ -743,7 +658,6 @@ int convertGregory(std::vector<float> &bezierVertices,
 }
 
 int convertBoundaryGregory(std::vector<float> &bezierVertices,
-                           std::vector<float> &bezierBounds,
                            std::vector<int> &cpIndices,
                            float const *vertices,
                            OpenSubdiv::Far::PatchTables const *patchTables,
@@ -769,8 +683,6 @@ int convertBoundaryGregory(std::vector<float> &bezierVertices,
 
     int numPatches = patchTables->GetNumPatches(array);
     for (int patchIndex = 0; patchIndex < numPatches; ++patchIndex) {
-        float min[3] = {FLT_MAX, FLT_MAX, FLT_MAX};
-        float max[3] = {-FLT_MAX, -FLT_MAX, -FLT_MAX};
 
         // vertex
         int const * vertexIndices = &patchTables->GetPatchArrayVertices(array)[patchIndex*4];
@@ -1108,23 +1020,11 @@ int convertBoundaryGregory(std::vector<float> &bezierVertices,
         for (int x = 0; x < 4; ++x) {
             for (int y = 0; y < 4; ++y) {
                 int index = y*4 + x;
-                min[0] = std::min(min[0], q[index*3+0]);
-                min[1] = std::min(min[1], q[index*3+1]);
-                min[2] = std::min(min[2], q[index*3+2]);
-                max[0] = std::max(max[0], q[index*3+0]);
-                max[1] = std::max(max[1], q[index*3+1]);
-                max[2] = std::max(max[2], q[index*3+2]);
                 bezierVertices.push_back(q[index*3+0]);
                 bezierVertices.push_back(q[index*3+1]);
                 bezierVertices.push_back(q[index*3+2]);
             }
         }
-        bezierBounds.push_back(min[0]);
-        bezierBounds.push_back(min[1]);
-        bezierBounds.push_back(min[2]);
-        bezierBounds.push_back(max[0]);
-        bezierBounds.push_back(max[1]);
-        bezierBounds.push_back(max[2]);
 
 #if 0
         cpIndices.push_back(patchTables->GetPatchTable()[parray.GetVertIndex() + patchIndex*4 + 0]);

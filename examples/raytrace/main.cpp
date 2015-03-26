@@ -525,7 +525,6 @@ updateGeom() {
     s.Start();
     
     g_scene.GetMesh().BezierConvert(g_cpuVertexBuffer->BindCpuBuffer(),
-                                    g_cpuVertexBuffer->GetNumVertices(),
                                     g_topologyRefiner,
                                     g_patchTables,
                                     g_watertight,

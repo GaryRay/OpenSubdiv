@@ -28,42 +28,36 @@
 #include <far/patchTables.h>
 
 extern int convertRegular(std::vector<float> &bezierVertices,
-                          std::vector<float> &bezierBounds,
                           std::vector<int> &cpIndices,
                           float const *vertices,
                           OpenSubdiv::Far::PatchTables const *patchTables,
                           int array);
 
 extern int convertSingleCrease(std::vector<float> &bezierVertices,
-                               std::vector<float> &bezierBounds,
                                std::vector<int> &cpIndices,
                                float const *vertices,
                                OpenSubdiv::Far::PatchTables const *patchTables,
                                int array);
 
 extern int convertBoundary(std::vector<float> &bezierVertices,
-                           std::vector<float> &bezierBounds,
                            std::vector<int> &cpIndices,
                            float const *vertices,
                            OpenSubdiv::Far::PatchTables const *patchTables,
                            int array);
 
 extern int convertCorner(std::vector<float> &bezierVertices,
-                         std::vector<float> &bezierBounds,
                          std::vector<int> &cpIndices,
                          float const *vertices,
                          OpenSubdiv::Far::PatchTables const *patchTables,
                          int array);
 
 extern int convertGregory(std::vector<float> &bezierVertices,
-                          std::vector<float> &bezierBounds,
                           std::vector<int> &cpIndices,
                           float const *vertices,
                           OpenSubdiv::Far::PatchTables const *patchTables,
                           int array);
 
 extern int convertBoundaryGregory(std::vector<float> &bezierVertices,
-                                  std::vector<float> &bezierBounds,
                                   std::vector<int> &cpIndices,
                                   float const *vertices,
                                   OpenSubdiv::Far::PatchTables const *patchTables,

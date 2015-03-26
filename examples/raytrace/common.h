@@ -27,6 +27,7 @@
 #include "bezier/math.h"
 
 using OsdBezier::vec3f;
+using OsdBezier::matrix4f;
 
 
 #endif // RAYTRACE_COMMON_H

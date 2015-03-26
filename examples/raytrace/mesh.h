@@ -50,7 +50,7 @@ struct Mesh {
              _displaceBound(0) {
     }
 
-    void BezierConvert(float *vertices, int numVertices,
+    void BezierConvert(const float *vertices,
                        OpenSubdiv::Far::TopologyRefiner const *refiner,
                        OpenSubdiv::Far::PatchTables const *patchTables,
                        bool watertight,
@@ -61,6 +61,7 @@ struct Mesh {
     bool IsBezierMesh() const { return _numTriangles == 0; }
     int GetNumPatches() const { return _numBezierPatches; }
     int GetNumTriangles() const { return _numTriangles; }
+    int GetWatertightFlag(int face) const { return _wcpFlags[face]; }
 
     Material const &GetMaterial(int matID) const { return _materials[matID]; }
     void SetMaterial(int matID, Material const &mat) {
@@ -72,8 +73,7 @@ struct Mesh {
         size_t mem = 0;
         if (IsBezierMesh()) {
             mem += _bezierVertices.size() * sizeof(float);  // cp
-            mem += _numBezierPatches/2; // (4bit per patch);
-            //mem += _mesh.bezierBounds.size() * sizeof(float);   // bounds
+            mem += _numBezierPatches/2; // wcpFlag (4bit per patch);
         } else {
             mem += _triVertices.size() * sizeof(float); // verts
             mem += _faces.size() * sizeof(unsigned int); // indices
@@ -89,14 +89,14 @@ struct Mesh {
 
     // patches
     size_t _numBezierPatches;
-    std::vector<float> _bezierVertices;              /// [xyz] * 16 * numBezierPatches
-    std::vector<float> _bezierBounds;                /// [xyz] * [min, max] * numBezierPatches
+    std::vector<float> _bezierVertices;             /// [xyz] * 16 * numBezierPatches
+    std::vector<unsigned char> _wcpFlags;           /// 4bit per patch flag
 
-    OpenSubdiv::Far::PatchParamTable _patchParams;       /// [FarPatchParam] * numBezierPatches
+    // optional data
+    OpenSubdiv::Far::PatchParamTable _patchParams;  /// [FarPatchParam] * numBezierPatches
     std::vector<float> _colors;                     /// [rgb] * numBezierPatches;
     std::vector<float> _sharpnesses;                /// sharpness * numBezierPatches (for single-crease patch)
 
-    std::vector<int> _wcpFlags; 
     std::vector<int> _materialIDs;
     std::vector<Material> _materials;
 

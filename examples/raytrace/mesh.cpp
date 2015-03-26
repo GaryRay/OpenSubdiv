@@ -26,7 +26,6 @@
 #include <set>
 #include "mesh.h"
 #include "convert_bezier.h"
-#include "bezier/math.h"
 #include "bezier/bezier.h"
 #include "../common/patchColors.h"
 
@@ -69,7 +68,7 @@ struct Bezier {
 };
 
 void
-Mesh::BezierConvert(float *inVertices, int numVertices,
+Mesh::BezierConvert(const float *vertices,
                     OpenSubdiv::Far::TopologyRefiner const *refiner,
                     OpenSubdiv::Far::PatchTables const *patchTables,
                     bool watertight,
@@ -78,54 +77,15 @@ Mesh::BezierConvert(float *inVertices, int numVertices,
     using namespace OpenSubdiv;
     using namespace OsdBezier;
 
-    // convert to mesh
-    // centering/normalize vertices.
-    std::vector<float> vertices;
-    vertices.reserve(numVertices*3);
-    {
-        float min[3] = {FLT_MAX, FLT_MAX, FLT_MAX};
-        float max[3] = {-FLT_MAX, -FLT_MAX, -FLT_MAX};
-        for (int i = 0; i < numVertices; ++i) {
-            float *v = inVertices + i*3;
-            for (int j = 0; j < 3; ++j) {
-                min[j] = std::min(min[j], v[j]);
-                max[j] = std::max(max[j], v[j]);
-            }
-        }
-        float center[3] = { (max[0]+min[0])*0.5f,
-                            (max[1]+min[1])*0.5f,
-                            (max[2]+min[2])*0.5f };
-        float radius = std::max(std::max(max[0]-min[0], max[1]-min[1]), max[2]-min[2]);
-        for (int i = 0; i < numVertices; ++i) {
-            float *v = inVertices + i*3;
-#if 0
-            // centering
-            vertices.push_back((v[0]-center[0])/radius);
-            vertices.push_back((v[1]-center[1])/radius);
-            vertices.push_back((v[2]-center[2])/radius);
-#else
-            vertices.push_back(v[0]);
-            vertices.push_back(v[1]);
-            vertices.push_back(v[2]);
-#endif
-        }
-    }
-
     int numTotalPatches = 0;
     _bezierVertices.clear();
-    _bezierBounds.clear();
     _colors.clear();
     _sharpnesses.clear();
     _wcpFlags.clear();
     _materialIDs.clear();
 
     std::vector<int> cpIndices; // 16 * numPatches
-
     std::vector<Far::PatchDescriptor> patchDescs;
-
-    Far::PatchParamTable const &srcPatchParam =
-        patchTables->GetPatchParamTable();
-
     Far::PatchParamTable patchParam;
 
     // iterate patch types.
@@ -137,46 +97,41 @@ Mesh::BezierConvert(float *inVertices, int numVertices,
 
         switch(desc.GetType()) {
         case Far::PatchDescriptor::REGULAR:
-            numPatches = convertRegular(_bezierVertices,
-                                        _bezierBounds,
-                                        cpIndices,
-                                        &vertices[0], patchTables, array);
+            numPatches = convertRegular(
+                _bezierVertices, cpIndices,
+                &vertices[0], patchTables, array);
             break;
         case Far::PatchDescriptor::SINGLE_CREASE:
-            numPatches = convertSingleCrease(_bezierVertices,
-                                             _bezierBounds,
-                                             cpIndices,
-                                             &vertices[0], patchTables, array);
+            numPatches = convertSingleCrease(
+                _bezierVertices, cpIndices,
+                &vertices[0], patchTables, array);
             break;
         case Far::PatchDescriptor::BOUNDARY:
-            numPatches = convertBoundary(_bezierVertices,
-                                         _bezierBounds,
-                                         cpIndices,
-                                         &vertices[0], patchTables, array);
+            numPatches = convertBoundary(
+                _bezierVertices, cpIndices,
+                &vertices[0], patchTables, array);
             break;
         case Far::PatchDescriptor::CORNER:
-            numPatches = convertCorner(_bezierVertices,
-                                       _bezierBounds,
-                                       cpIndices,
-                                       &vertices[0], patchTables, array);
+            numPatches = convertCorner(
+                _bezierVertices, cpIndices,
+                &vertices[0], patchTables, array);
             break;
         case Far::PatchDescriptor::GREGORY:
-            numPatches = convertGregory(_bezierVertices,
-                                        _bezierBounds,
-                                        cpIndices,
-                                        &vertices[0], patchTables, array);
+            numPatches = convertGregory(
+                _bezierVertices, cpIndices,
+                &vertices[0], patchTables, array);
             break;
         case Far::PatchDescriptor::GREGORY_BOUNDARY:
-            numPatches = convertBoundaryGregory(_bezierVertices,
-                                                _bezierBounds,
-                                                cpIndices,
-                                                &vertices[0], patchTables, array);
+            numPatches = convertBoundaryGregory(
+                _bezierVertices, cpIndices,
+                &vertices[0], patchTables, array);
             break;
         default:
             break;
         }
         numTotalPatches += numPatches;
-        // color array
+
+        // stamp out color and desc
         {
             const float *color = getAdaptivePatchColor(desc);
             for (int i = 0; i < numPatches; ++i) {
@@ -189,11 +144,7 @@ Mesh::BezierConvert(float *inVertices, int numVertices,
                 _colors.push_back(r);
                 _colors.push_back(g);
                 _colors.push_back(b);
-            }
-        }
-        //descs
-        {
-            for (int i = 0; i < numPatches; ++i) {
+
                 patchDescs.push_back(desc);
             }
         }
@@ -228,7 +179,7 @@ Mesh::BezierConvert(float *inVertices, int numVertices,
 
         // save wcp flags
         for (int i = 0; i < numTotalPatches; ++i) {
-            int face = patchParam[i].faceIndex;
+            //int face = patchParam[i].faceIndex;
             int wcpFlag = 0;
             int rots = 0;//patchDescs[i].rotation??
             //int rots = face->_adaptiveFlags.rots;
@@ -298,17 +249,17 @@ Mesh::BezierConvert(float *inVertices, int numVertices,
                 }
             }
         }
-  /*
-    pattern0        pattern1       pattern2        pattern3        pattern4
- +-------------+ +-------------+ +-------------+ +-------------+ +-------------+
- |     /\\     | | 0   /\\   2 | |             | |      |      | |      |      |
- | 1  /  \\  2 | |    /   \\   | |      0      | |  1   |  0   | |      |      |
- |   /    \\   | |   /  3   \\ | |-------------| |------|------| |  1   |   0  |
- |  /      \\  | |  /       /  | |\\    3    / | |      |      | |      |      |
- | /    0   \\ | | /    /    1 | |  \\     /   | |  3   |  2   | |      |      |
- |/          \\| |/ /          | | 1  \\ /   2 | |      |      | |      |      |
- +-------------+ +-------------+ +-------------+ +-------------+ +-------------+
-*/
+        /*
+             pattern0        pattern1       pattern2        pattern3        pattern4
+          +-------------+ +-------------+ +-------------+ +-------------+ +-------------+
+          |     /\\     | | 0   /\\   2 | |             | |      |      | |      |      |
+          | 1  /  \\  2 | |    /   \\   | |      0      | |  1   |  0   | |      |      |
+          |   /    \\   | |   /  3   \\ | |-------------| |------|------| |  1   |   0  |
+          |  /      \\  | |  /       /  | |\\    3    / | |      |      | |      |      |
+          | /    0   \\ | | /    /    1 | |  \\     /   | |  3   |  2   | |      |      |
+          |/          \\| |/ /          | | 1  \\ /   2 | |      |      | |      |      |
+          +-------------+ +-------------+ +-------------+ +-------------+ +-------------+
+        */
         std::map<std::pair<int, int>, int> finalFaces;
         for (int i = 0; i < numTotalPatches; ++i) {
             int faceIndex = patchParam[i].vtrFaceIndex;
@@ -440,7 +391,7 @@ Mesh::BezierConvert(float *inVertices, int numVertices,
                     continue;
                 }
 
-                int patchIndex = finalFaces[std::make_pair(level, adjFace)];
+                //int patchIndex = finalFaces[std::make_pair(level, adjFace)];
 
 
                 // inefficient!
@@ -527,7 +478,7 @@ Mesh::BezierConvert(float *inVertices, int numVertices,
                     }
                 } else {
                     // not found in the edge dictionary.
-                    printf("not found. patch %d\n", i);
+                    //printf("not found. patch %d\n", i);
                 }
             }
         }
@@ -562,15 +513,8 @@ Mesh::Tessellate(int level)
     _triVertices.clear();
     _triNormals.clear();
     _faces.clear();
-    //_colors.clear();
     _numTriangles = 0;
-
-    // _triVertices.reserve(120000000*3*3);
-    // _triNormals.reserve(120000000*3*3);
-    // _faces.reserve(120000000*3*2);
-
     std::vector<float> colors;
-    //colors.reserve(120000000*3*2);
 
     if (level == 0) {
         return;

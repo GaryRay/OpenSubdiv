@@ -74,17 +74,15 @@ bool g_traceEnabled = false;
 //
 
 struct BinBuffer {
+    BinBuffer(int size) {
+        binSize = size;
+        bin.resize(2 * 3 * size);
+        clear();
+    }
+    void clear() { memset(&bin[0], 0, sizeof(size_t) * 2 * 3 * binSize); }
 
-  BinBuffer(int size) {
-    binSize = size;
-    bin.resize(2 * 3 * size);
-    clear();
-  }
-
-  void clear() { memset(&bin[0], 0, sizeof(size_t) * 2 * 3 * binSize); }
-
-  std::vector<size_t> bin; // (min, max) * xyz * binsize
-  int binSize;
+    std::vector<size_t> bin; // (min, max) * xyz * binsize
+    int binSize;
 };
 
 static inline double CalculateSurfaceArea(const vec3f &min, const vec3f &max)
@@ -123,13 +121,8 @@ static inline void GetBoundingBoxOfTriangle(vec3f &bmin, vec3f &bmax,
 static inline void GetBoundingBoxOfRegularPatch(vec3f &bmin, vec3f &bmax,
                                                 const Mesh *mesh,
                                                 unsigned int index) {
-    float bound = mesh->_displaceBound;
-    bmin[0] = mesh->_bezierBounds[index*6+0] - bound;
-    bmin[1] = mesh->_bezierBounds[index*6+1] - bound;
-    bmin[2] = mesh->_bezierBounds[index*6+2] - bound;
-    bmax[0] = mesh->_bezierBounds[index*6+3] + bound;
-    bmax[1] = mesh->_bezierBounds[index*6+4] + bound;
-    bmax[2] = mesh->_bezierBounds[index*6+5] + bound;
+    BezierPatch<vec3f, float, 4> patch((const vec3f*)&mesh->_bezierVertices[index * 16 * 3]);
+    patch.GetMinMax(bmin, bmax);
 }
 
 static void ContributeBinBuffer(BinBuffer *bins, // [out]
@@ -351,31 +344,27 @@ private:
 };
 
 static void ComputeBoundingBox(vec3f &bmin, vec3f &bmax,
-                               const float *bezierBounds,
+                               const float *bezierVertices,
                                const unsigned int *indices,
                                unsigned int leftIndex,
                                unsigned int rightIndex,
-                               float displaceBound/*tmp*/) {
+                               float displaceBound/*tmp*/)
+{
     const float kEPS = std::numeric_limits<float>::epsilon() * 1024;
 
     size_t i = leftIndex;
     size_t idx = indices[i];
 
-    bmin[0] = bezierBounds[6*idx + 0];
-    bmin[1] = bezierBounds[6*idx + 1];
-    bmin[2] = bezierBounds[6*idx + 2];
-    bmax[0] = bezierBounds[6*idx + 3];
-    bmax[1] = bezierBounds[6*idx + 4];
-    bmax[2] = bezierBounds[6*idx + 5];
+    BezierPatch<vec3f, float, 4> patch((const vec3f*)&bezierVertices[idx * 16 * 3]);
+    patch.GetMinMax(bmin, bmax);
 
     for (i = leftIndex; i < rightIndex; i++) { // for each faces
         size_t idx = indices[i];
-        bmin[0] = std::min(bmin[0], bezierBounds[6*idx + 0]);
-        bmin[1] = std::min(bmin[1], bezierBounds[6*idx + 1]);
-        bmin[2] = std::min(bmin[2], bezierBounds[6*idx + 2]);
-        bmax[0] = std::max(bmax[0], bezierBounds[6*idx + 3]);
-        bmax[1] = std::max(bmax[1], bezierBounds[6*idx + 4]);
-        bmax[2] = std::max(bmax[2], bezierBounds[6*idx + 5]);
+        vec3f pmin, pmax;
+        BezierPatch<vec3f, float, 4> patch((const vec3f*)&bezierVertices[idx * 16 * 3]);
+        patch.GetMinMax(pmin, pmax);
+        bmin = bmin.min(pmin);
+        bmax = bmax.max(pmax);
     }
     bmin[0] -= kEPS + displaceBound;
     bmin[1] -= kEPS + displaceBound;
@@ -383,7 +372,6 @@ static void ComputeBoundingBox(vec3f &bmin, vec3f &bmax,
     bmax[0] += kEPS + displaceBound;
     bmax[1] += kEPS + displaceBound;
     bmax[2] += kEPS + displaceBound;
-
 }
 
 static void ComputeBoundingBox(vec3f &bmin, vec3f &bmax,
@@ -439,7 +427,7 @@ size_t BVHAccel::BuildTree(const Mesh *mesh, unsigned int leftIdx,
 
     vec3f bmin, bmax;
     if (mesh->IsBezierMesh()) {
-        ComputeBoundingBox(bmin, bmax, &mesh->_bezierBounds[0],
+        ComputeBoundingBox(bmin, bmax, &mesh->_bezierVertices[0],
                            &_indices.at(0), leftIdx, rightIdx, mesh->_displaceBound);
     } else {
         ComputeBoundingBox(bmin, bmax, &mesh->_triVertices[0],
@@ -1082,7 +1070,7 @@ bool TestLeafNode(Intersection &isect, // [inout]
             int faceIdx = indices[i + offset];
 
             const float *bv = &mesh->_bezierVertices[faceIdx * 16 * 3];
-            int wcpFlag = conservativeTest ? mesh->_wcpFlags[faceIdx] : 0;
+            int wcpFlag = conservativeTest ? mesh->GetWatertightFlag(faceIdx) : 0;
 
 //            trace("TestLeafNode(%d/%d) patch = %d\n", i, numPrimitives, faceIdx);
 
