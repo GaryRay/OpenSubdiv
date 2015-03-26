@@ -117,6 +117,7 @@ Mesh::BezierConvert(float *inVertices, int numVertices,
     _colors.clear();
     _sharpnesses.clear();
     _wcpFlags.clear();
+    _materialIDs.clear();
 
     std::vector<int> cpIndices; // 16 * numPatches
 
@@ -219,6 +220,7 @@ Mesh::BezierConvert(float *inVertices, int numVertices,
     }
 
     _wcpFlags.resize(numTotalPatches);
+    _materialIDs.resize(numTotalPatches);
 
     // vertex position verification pass
     if (watertight) {

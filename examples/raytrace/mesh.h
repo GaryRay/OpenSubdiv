@@ -29,15 +29,19 @@
 #include <far/topologyRefiner.h>
 #include <far/patchTables.h>
 
+#include "bezier/math.h"
+
 struct Material {
-    float ka[3];         // ambient
-    float kd[3];         // diffuse
-    float ks[3];         // specular
-    float ns;            // specular exponent
-    float ni;            // optical density (1.0=no refraction, glass=1.5)
-    float sharpness;     // reflection sharpness
-    float tf[3];         // transmission filter
-    float d;             // dissolve factor (1.0 = opaque)
+    Material() : diffuse(0.5f), reflection(0.01f), refraction(0.0f),
+                 reflectionGlossiness(1.0f), refractionGlossiness(1.0f),
+                 fresnel(false), ior(0.0f) { }
+    OsdBezier::vec3f diffuse;
+    OsdBezier::vec3f reflection;
+    OsdBezier::vec3f refraction;
+    float reflectionGlossiness;
+    float refractionGlossiness;
+    bool  fresnel;
+    float ior;
 };
 
 struct Mesh {
@@ -57,6 +61,12 @@ struct Mesh {
     bool IsBezierMesh() const { return _numTriangles == 0; }
     int GetNumPatches() const { return _numBezierPatches; }
     int GetNumTriangles() const { return _numTriangles; }
+
+    Material const &GetMaterial(int matID) const { return _materials[matID]; }
+    void SetMaterial(int matID, Material const &mat) {
+        if (_materials.size() <= matID) _materials.resize(matID+1);
+        _materials[matID] = mat;
+    }
 
     size_t GetMemoryUsage() const {
         size_t mem = 0;

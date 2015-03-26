@@ -101,7 +101,7 @@ public:
 
     // background style
 
-    enum BackgroundMode { GRADATION, WHITE, BLACK };
+    enum BackgroundMode { GRADATION, WHITE, BLACK, ENVMAP };
 
     void SetBackgroudMode(BackgroundMode mode) {
         _backgroundMode = mode;

@@ -95,7 +95,7 @@ static const char *s_FS =
     "  c = mix(c, c2, c2.a);\n"
     "  c = mix(c, cs, min(1, cs.a));\n"
     "  outColor = c;\n"
-    "  outColor.rgb = pow(outColor.rgb/max(1, cs.a), vec3(0.5454));\n"
+    "  outColor.rgb = pow(outColor.rgb/max(1, cs.a), vec3(0.454545));\n"
     "}\n";
 static const char *s0_FS =
     "#version 410\n"
@@ -104,11 +104,11 @@ static const char *s0_FS =
     "uniform sampler2D tex;\n"
     "void main()\n"
     "{\n"
-    "  vec2 texUV = textureSize(tex, 0)*uv;\n"
+    "  ivec2 texUV = ivec2(textureSize(tex, 0)*uv);\n"
     "  vec4 c = vec4(0.1, 0.1, 0.1, 0);\n"
-    "  vec4 cs = texelFetch(tex, ivec2(texUV), 0);\n"
-    "  outColor = mix(c, cs, cs.a);\n"
-    "  outColor.rgb = pow(outColor.rgb/outColor.a, vec3(0.5454));\n"
+    "  vec4 cs = texelFetch(tex, texUV, 0);\n"
+    "  outColor = mix(c, cs, min(1, cs.a));\n"
+    "  outColor.rgb = pow(outColor.rgb/max(1, cs.a), vec3(0.454545));\n"
     "}\n";
 
 static const char *s_VS_BVH =
@@ -308,11 +308,13 @@ std::vector<int> g_farToHbrVertexRemap;
 //------------------------------------------------------------------------------
 static void
 setup() {
+    int width = g_width;
+    int height = g_height;
     g_image.clear();
-    g_image.resize(g_width*g_height*4);
+    g_image.resize(width*height*4);
 
     double fov = 45.0f;
-    g_scene.SetCamera(g_width, g_height, fov, g_image, g_eye, g_lookat, g_up);
+    g_scene.SetCamera(width, height, fov, g_image, g_eye, g_lookat, g_up);
 
     Scene::Config config;
     config.intersectKernel = g_intersectKernel;
@@ -566,8 +568,13 @@ createOsdMesh( const std::string &shapeStr, int level ){
     shape->addGroundPlane(5.0f, -0.5f);
     if (g_topologyRefiner) delete g_topologyRefiner;
 
-    for (int i = 0 ; i < shape->mtlbind.size(); ++i){
-        printf("%d  : %d\n", i, shape->mtlbind[i]);
+    if (shape->mtlbind.empty()) {
+        g_scene.GetMesh().SetMaterial(0, Material());
+    } else {
+        for (int i = 0 ; i < shape->mtlbind.size(); ++i){
+            printf("%d  : %d\n", i, shape->mtlbind[i]);
+            g_scene.GetMesh().SetMaterial(i, Material());
+        }
     }
 
     {
@@ -899,6 +906,7 @@ reshape(GLFWwindow *, int width, int height) {
 
     // window size might not match framebuffer size on a high DPI display
     glfwGetWindowSize(g_window, &g_width, &g_height);
+
     g_hud.Rebuild(g_width, g_height, g_frameBufferWidth, g_frameBufferHeight);
 
     setCamera();
@@ -935,6 +943,8 @@ keyboardChar(GLFWwindow *, unsigned int codepoint)
             } else if (g_backgroundType == Scene::WHITE) {
               g_backgroundType = Scene::BLACK;
             } else if (g_backgroundType == Scene::BLACK) {
+              g_backgroundType = Scene::ENVMAP;
+            } else if (g_backgroundType == Scene::ENVMAP) {
               g_backgroundType = Scene::GRADATION;
             }
             g_scene.SetBackgroudMode(g_backgroundType);
@@ -1266,7 +1276,7 @@ idle() {
         g_stepIndex = 0;
     }
 
-    if (g_displayStyle == Scene::SHADED) {
+    if (g_displayStyle == Scene::SHADED || g_displayStyle == Scene::AO) {
         if (g_stepIndex == 0) {
             g_stepIndex = g_step*g_step;
         }
@@ -1325,13 +1335,13 @@ int main(int argc, char ** argv)
         } else if(!strcmp(argv[i], "-e")) {
             envmapFile = argv[++i];
         } else {
-            std::ifstream ifs(argv[1]);
+            std::ifstream ifs(argv[i]);
             if (ifs) {
                 std::stringstream ss;
                 ss << ifs.rdbuf();
                 ifs.close();
                 str = ss.str();
-                g_defaultShapes.push_back(ShapeDesc(argv[1], str.c_str(), kCatmark));
+                g_defaultShapes.push_back(ShapeDesc(argv[i], str.c_str(), kCatmark));
             }
         }
     }
@@ -1357,7 +1367,6 @@ int main(int argc, char ** argv)
     }
     glfwMakeContextCurrent(g_window);
 
-    // accommocate high DPI displays (e.g. mac retina displays)
     glfwGetFramebufferSize(g_window, &g_frameBufferWidth, &g_frameBufferHeight);
     glfwSetFramebufferSizeCallback(g_window, reshape);
 
@@ -1384,6 +1393,10 @@ int main(int argc, char ** argv)
 #endif
 
     //loadCamera();
+    if (envmapFile.size()) {
+        g_scene.LoadEnvMap(envmapFile);
+        g_backgroundType = Scene::ENVMAP;
+    }
 
     initGL();
 
@@ -1394,8 +1407,6 @@ int main(int argc, char ** argv)
 
     g_image.resize(g_width*g_height*4);
     g_scene.SetShadeMode((Scene::ShadeMode)g_displayStyle);
-
-    if (envmapFile.size()) g_scene.LoadEnvMap(envmapFile);
 
     while (g_running) {
         idle();

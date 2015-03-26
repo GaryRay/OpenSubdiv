@@ -155,6 +155,8 @@ public:
            Camera *camera, float *image, Scene *scene) :
         _width(width), _stepIndex(stepIndex), _step(step), _accel(accel),
         _mesh(mesh), _camera(camera), _image(image), _scene(scene) {
+        _subPixel[0] = rand()/(float)RAND_MAX;
+        _subPixel[1] = rand()/(float)RAND_MAX;
     }
 
 #ifdef OPENSUBDIV_HAS_TBB
@@ -174,12 +176,13 @@ public:
                 float u = 0.5;
                 float v = 0.5;
 
-                float offset = 10.0f;//0; // _step + 2.0f;
-                Ray ray = _camera->GenerateRay(x + u + offset, y + v + offset);
+                float offsetX = _subPixel[0];
+                float offsetY = _subPixel[1];
+                Ray ray = _camera->GenerateRay(x + u + offsetX, y + v + offsetY);
                 if(useRayDiff){
-                    Ray rayO  = _camera->GenerateRay(x + offset, y + offset);
-                    Ray rayDX = _camera->GenerateRay(x + 1 + offset, y + offset);
-                    Ray rayDY = _camera->GenerateRay(x + offset, y + 1 + offset);
+                    Ray rayO  = _camera->GenerateRay(x + offsetX, y + offsetY);
+                    Ray rayDX = _camera->GenerateRay(x + 1 + offsetX, y + offsetY);
+                    Ray rayDY = _camera->GenerateRay(x + offsetX, y + 1 + offsetY);
                     ray.dDdx = rayDX.dir-rayO.dir;
                     ray.dDdy = rayDY.dir-rayO.dir;
                     ray.hasDifferential = true;
@@ -205,13 +208,13 @@ public:
                       rgba[1] = 0.1f;
                       rgba[2] = 0.4f * ((_width - x - 1)/(double)_width);
                       rgba[3] = 1.0f;
-
-                      _scene->EnvCol(rgba, ray.dir);
-                      rgba[0] = 0.5* rgba[0];
-                      rgba[1] = 0.5* rgba[1];
-                      rgba[2] = 0.5* rgba[2];
-                      rgba[3] = 1.0f;
-
+                    } else if (_scene->GetBackgroundMode() == Scene::ENVMAP) {
+                      float bg[4] = { 0, 0, 0, 0};
+                      _scene->EnvCol(bg, ray.dir);
+                      rgba[0] += bg[0]/3.14;
+                      rgba[1] += bg[1]/3.14;
+                      rgba[2] += bg[2]/3.14;
+                      rgba[3] += bg[3];
                     } else if (_scene->GetBackgroundMode() == Scene::WHITE) {
                       rgba[0] = 1.0f; 
                       rgba[1] = 1.0f;
@@ -243,6 +246,7 @@ private:
     Camera *_camera;
     float *_image;
     Scene *_scene;
+    float _subPixel[2];
 };
 
 void
@@ -391,6 +395,7 @@ Scene::EnvCol(float rgba[4], const OsdBezier::vec3f & dir)
         rgba[0] *= 3.14;
         rgba[1] *= 3.14;
         rgba[2] *= 3.14;
+        rgba[3] = 1.0;
     } else {
         rgba[0] = 0.0;
         rgba[1] = 0.0;
@@ -450,6 +455,17 @@ Scene::Shade(float rgba[4], const Intersection &isect, const Ray &ray, Context *
         Ray sray;
         int numHits = 0;
 
+        OsdBezier::vec3f sample(0.5-randomreal(), 0.5-randomreal(), 0.5-randomreal());
+        sample.normalize();
+        sray.dir = sample * (dot(sample, isect.normal) > 0 ? -1 : 1);
+        sray.invDir = sray.dir.neg();
+        sray.org = ray.org + ray.dir * isect.t + sray.dir * 0.0001;
+        if (_accel.Traverse(si, &_mesh, sray, context)) {
+            color = vec3f(0.0f);
+        } else {
+            color = vec3f(1.0f);
+        }
+#if 0
         int numSamples = 16;
         for (int i = 0; i < numSamples; ++i) {
             OsdBezier::vec3f sample(0.5-randomreal(), 0.5-randomreal(), 0.5-randomreal());
@@ -459,8 +475,9 @@ Scene::Shade(float rgba[4], const Intersection &isect, const Ray &ray, Context *
             sray.org = ray.org + ray.dir * isect.t + sray.dir * 0.0001;
             numHits += _accel.Traverse(si, &_mesh, sray, context) ? 1 : 0;
         }
+#endif
 
-        color[0] = color[1] = color[2] = d * (1.0-numHits/float(numSamples));
+        //        color[0] = color[1] = color[2] = d * (1.0-numHits/float(numSamples));
     } else if (_mode == TRANSPARENT) {
         float alpha = 0.25 * (1.0 - rgba[3]);
         rgba[0] += d * alpha;
@@ -651,7 +668,7 @@ double SampleDiffuseIS(vec3f &dir, const vec3f &normal) {
   double theta = acos(sqrt(1.0 - randomreal()));
   double phi = 2.0 * M_PI * randomreal();
 
-  double cosTheta = cos(theta);
+  //double cosTheta = cos(theta);
 
   /* D = T*cos(phi)*sin(theta) + B*sin(phi)*sin(theta) + N*cos(theta) */
   double cos_theta = cos(theta);
@@ -792,25 +809,16 @@ Scene::PBS(float rgba[4], const Intersection &isect,
 
     //int matID = isect.matID;
     int matID = 0;
-    //const Material& mat = scene.GetMaterial(matID);
+    const Material& mat = _mesh.GetMaterial(matID);
 
   // Preserve Energy conservation for each channel.
-#if 0
     vec3f diffuse = mat.diffuse;
     vec3f reflection = mat.reflection;
     vec3f refraction = mat.refraction;
-    float reflectionGlossiness = mat.reflection_glossiness;
-    float refractionGlossiness = mat.refraction_glossiness;
+    float reflectionGlossiness = mat.reflectionGlossiness;
+    float refractionGlossiness = mat.refractionGlossiness;
     bool  fresnel = mat.fresnel;
     float ior = mat.ior;
-#endif
-    vec3f diffuse = vec3f(0.5f);
-    vec3f reflection = vec3f(0.1f);
-    vec3f refraction = vec3f(0.0f);
-    float reflectionGlossiness = 1.0f;
-    float refractionGlossiness = 1.0f;
-    bool  fresnel = false;
-    float ior = 0.0f;
 
     vec3f in, n;
     in[0] = ray.dir[0];
