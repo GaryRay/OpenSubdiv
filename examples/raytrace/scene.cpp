@@ -202,30 +202,12 @@ public:
                 if (hit) {
                     _scene->Shade(rgba, isect, ray, &context);
                 } else {
-                    if (_scene->GetBackgroundMode() == Scene::GRADATION) {
-                      // Maya like gradation. Maybe helpful to check crack visually.
-                      rgba[0] = 0.1f; 
-                      rgba[1] = 0.1f;
-                      rgba[2] = 0.4f * ((_width - x - 1)/(double)_width);
-                      rgba[3] = 1.0f;
-                    } else if (_scene->GetBackgroundMode() == Scene::ENVMAP) {
-                      float bg[4] = { 0, 0, 0, 0};
-                      _scene->EnvCol(bg, ray.dir);
-                      rgba[0] += bg[0]/3.14;
-                      rgba[1] += bg[1]/3.14;
-                      rgba[2] += bg[2]/3.14;
-                      rgba[3] += bg[3];
-                    } else if (_scene->GetBackgroundMode() == Scene::WHITE) {
-                      rgba[0] = 1.0f; 
-                      rgba[1] = 1.0f;
-                      rgba[2] = 1.0f;
-                      rgba[3] = 1.0f;
-                    } else {
-                      rgba[0] = 0.0f; 
-                      rgba[1] = 0.0f;
-                      rgba[2] = 0.0f;
-                      rgba[3] = 1.0f;
-                    }
+                    float bg[4] = {0, 0, 0, 0};
+                    _scene->EnvCol(bg, ray.dir);
+                    rgba[0] += bg[0]/3.14;
+                    rgba[1] += bg[1]/3.14;
+                    rgba[2] += bg[2]/3.14;
+                    rgba[3] += bg[3];
                 }
                 d[0] = rgba[0];
                 d[1] = rgba[1];
@@ -390,17 +372,18 @@ Scene::EnvCol(float rgba[4], const OsdBezier::vec3f & dir)
     d[1] = dir[1];
     d[2] = dir[2];
 
-    if (_envMap.IsValid()) {
+    if (_backgroundMode == Scene::ENVMAP && _envMap.IsValid()) {
         LongLatMapSampler::Sample(rgba, d, &_envMap);
         rgba[0] *= 3.14;
         rgba[1] *= 3.14;
         rgba[2] *= 3.14;
         rgba[3] = 1.0;
     } else {
-        rgba[0] = 0.0;
-        rgba[1] = 0.0;
-        rgba[2] = 0.0;
-        rgba[3] = 1.0;
+        float l = pow((1.0+dir[2])*0.5, 100.0)*50.0f + 0.1f;
+        rgba[0] = l;
+        rgba[1] = l;
+        rgba[2] = l;
+        rgba[3] = 1.0f;
     }
 }
 
