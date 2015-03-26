@@ -29,6 +29,17 @@
 #include <far/topologyRefiner.h>
 #include <far/patchTables.h>
 
+struct Material {
+    float ka[3];         // ambient
+    float kd[3];         // diffuse
+    float ks[3];         // specular
+    float ns;            // specular exponent
+    float ni;            // optical density (1.0=no refraction, glass=1.5)
+    float sharpness;     // reflection sharpness
+    float tf[3];         // transmission filter
+    float d;             // dissolve factor (1.0 = opaque)
+};
+
 struct Mesh {
     Mesh() : _numTriangles(0),
              _numBezierPatches(0),
@@ -76,6 +87,8 @@ struct Mesh {
     std::vector<float> _sharpnesses;                /// sharpness * numBezierPatches (for single-crease patch)
 
     std::vector<int> _wcpFlags; 
+    std::vector<int> _materialIDs;
+    std::vector<Material> _materials;
 
     float _displaceBound;
 };

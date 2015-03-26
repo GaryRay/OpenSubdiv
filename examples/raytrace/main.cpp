@@ -198,7 +198,8 @@ static void setCamera();
 int g_currentShape = 0;
 
 // GUI variables
-int   g_displayStyle = Scene::SHADED, //Scene::PATCH_TYPE,
+//int   g_displayStyle = Scene::SHADED, //Scene::PATCH_TYPE,
+int   g_displayStyle = Scene::PATCH_TYPE,
       g_drawBVH = false,
       g_blockFill = true,
       g_mbutton[3] = {0, 0, 0},
@@ -561,9 +562,13 @@ createOsdMesh( const std::string &shapeStr, int level ){
 
     // create refiner
 
-    Shape * shape = Shape::parseObj(shapeStr.c_str(), kCatmark);
+    Shape * shape = Shape::parseObj(shapeStr.c_str(), kCatmark, 1, true);
     shape->addGroundPlane(5.0f, -0.5f);
     if (g_topologyRefiner) delete g_topologyRefiner;
+
+    for (int i = 0 ; i < shape->mtlbind.size(); ++i){
+        printf("%d  : %d\n", i, shape->mtlbind[i]);
+    }
 
     {
         OpenSubdiv::Sdc::SchemeType type = GetSdcType(*shape);
