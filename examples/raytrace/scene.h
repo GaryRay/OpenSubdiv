@@ -27,6 +27,7 @@
 #include "bvh_accel.h"
 #include "camera.h"
 #include "texture.h"
+#include "mesh.h"
 #include <far/patchTables.h>
 #include <osd/opengl.h>
 

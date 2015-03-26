@@ -28,18 +28,14 @@
 #include "ray.h"
 #include "mesh.h"
 #include "context.h"
-#include "bezier/math.h"
-
-typedef float real;
+#include "common.h"
 
 class BVHNode {
 public:
-    typedef OsdBezier::vec3f real3;
-
     BVHNode() {};
     ~BVHNode() {};
 
-    real3 bmin, bmax;
+    vec3f bmin, bmax;
     int flag; // 1 = leaf node, 0 = branch node
     int axis;
     // leaf
@@ -55,7 +51,7 @@ public:
 ///< BVH build option.
 struct BVHBuildOptions {
     bool debugPrint;
-    real costTaabb;
+    float costTaabb;
     int minLeafPrimitives;
     int maxTreeDepth;
     int binSize;
@@ -76,8 +72,6 @@ struct BVHBuildStatistics {
 };
 
 typedef struct {
-    typedef OsdBezier::vec3f real3;
-
     float t;
     float u;
     float v;
@@ -97,11 +91,11 @@ typedef struct {
     unsigned int f1;
     unsigned int f2;
 
-    real3 position;
-    real3 geometricNormal;
-    real3 normal;
-    real3 tangent;
-    real3 binormal;
+    vec3f position;
+    vec3f geometricNormal;
+    vec3f normal;
+    vec3f tangent;
+    vec3f binormal;
     float texcoord[2];
 } Intersection;
 

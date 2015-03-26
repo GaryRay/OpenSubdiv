@@ -44,7 +44,6 @@
 #include <memory>
 
 using namespace OsdBezier;
-typedef OsdBezier::vec3f real3;
 
 bool g_traceEnabled = false;
 
@@ -88,23 +87,24 @@ struct BinBuffer {
   int binSize;
 };
 
-static inline double CalculateSurfaceArea(const real3 &min, const real3 &max) {
-  real3 box = max - min;
-  return 2.0 * (box[0] * box[1] + box[1] * box[2] + box[2] * box[0]);
+static inline double CalculateSurfaceArea(const vec3f &min, const vec3f &max)
+{
+    vec3f box = max - min;
+    return 2.0 * (box[0] * box[1] + box[1] * box[2] + box[2] * box[0]);
 }
 
-static inline void GetBoundingBoxOfTriangle(real3 &bmin, real3 &bmax,
+static inline void GetBoundingBoxOfTriangle(vec3f &bmin, vec3f &bmax,
                                             const Mesh *mesh,
                                             unsigned int index) {
   unsigned int f0 = mesh->_faces[3 * index + 0];
   unsigned int f1 = mesh->_faces[3 * index + 1];
   unsigned int f2 = mesh->_faces[3 * index + 2];
 
-  real3 p[3];
+  vec3f p[3];
 
-  p[0] = real3(&mesh->_triVertices[3 * f0]);
-  p[1] = real3(&mesh->_triVertices[3 * f1]);
-  p[2] = real3(&mesh->_triVertices[3 * f2]);
+  p[0] = vec3f(&mesh->_triVertices[3 * f0]);
+  p[1] = vec3f(&mesh->_triVertices[3 * f1]);
+  p[2] = vec3f(&mesh->_triVertices[3 * f2]);
 
   bmin = p[0];
   bmax = p[0];
@@ -120,7 +120,7 @@ static inline void GetBoundingBoxOfTriangle(real3 &bmin, real3 &bmax,
   }
 }
 
-static inline void GetBoundingBoxOfRegularPatch(real3 &bmin, real3 &bmax,
+static inline void GetBoundingBoxOfRegularPatch(vec3f &bmin, vec3f &bmax,
                                                 const Mesh *mesh,
                                                 unsigned int index) {
     float bound = mesh->_displaceBound;
@@ -133,15 +133,15 @@ static inline void GetBoundingBoxOfRegularPatch(real3 &bmin, real3 &bmax,
 }
 
 static void ContributeBinBuffer(BinBuffer *bins, // [out]
-                                const real3 &sceneMin, const real3 &sceneMax,
+                                const vec3f &sceneMin, const vec3f &sceneMax,
                                 const Mesh *mesh, unsigned int *indices,
                                 unsigned int leftIdx, unsigned int rightIdx) {
-    static const real EPS = std::numeric_limits<real>::epsilon() * 1024;
+    static const float EPS = std::numeric_limits<float>::epsilon() * 1024;
 
-    real binSize = (real)bins->binSize;
+    float binSize = (float)bins->binSize;
 
     // Calculate extent
-    real3 sceneSize, sceneInvSize;
+    vec3f sceneSize, sceneInvSize;
     sceneSize = sceneMax - sceneMin;
     for (int i = 0; i < 3; ++i) {
         assert(sceneSize[i] >= 0.0);
@@ -168,8 +168,8 @@ static void ContributeBinBuffer(BinBuffer *bins, // [out]
         //
         // q[i] = (int)(p[i] - scene_bmin) / scene_size
         //
-        real3 bmin;
-        real3 bmax;
+        vec3f bmin;
+        vec3f bmax;
 
         if (bezierMesh) {
             GetBoundingBoxOfRegularPatch(bmin, bmax, mesh, indices[i]);
@@ -177,8 +177,8 @@ static void ContributeBinBuffer(BinBuffer *bins, // [out]
             GetBoundingBoxOfTriangle(bmin, bmax, mesh, indices[i]);
         }
 
-        real3 quantizedBMin = (bmin - sceneMin) * sceneInvSize;
-        real3 quantizedBMax = (bmax - sceneMin) * sceneInvSize;
+        vec3f quantizedBMin = (bmin - sceneMin) * sceneInvSize;
+        vec3f quantizedBMax = (bmax - sceneMin) * sceneInvSize;
 
         // idx is now in [0, BIN_SIZE)
         for (size_t j = 0; j < 3; ++j) {
@@ -200,35 +200,35 @@ static void ContributeBinBuffer(BinBuffer *bins, // [out]
     }
 }
 
-static inline double SAH(size_t ns1, real leftArea, size_t ns2, real rightArea,
-                         real invS, real Taabb, real Ttri) {
-    // const real Taabb = 0.2f;
-    // const real Ttri = 0.8f;
-    real T;
+static inline double SAH(size_t ns1, float leftArea, size_t ns2, float rightArea,
+                         float invS, float Taabb, float Ttri) {
+    // const float Taabb = 0.2f;
+    // const float Ttri = 0.8f;
+    float T;
 
-    T = 2.0f * Taabb + (leftArea * invS) * (real)(ns1)*Ttri +
-        (rightArea * invS) * (real)(ns2)*Ttri;
+    T = 2.0f * Taabb + (leftArea * invS) * (float)(ns1)*Ttri +
+        (rightArea * invS) * (float)(ns2)*Ttri;
 
     return T;
 }
 
-static bool FindCutFromBinBuffer(real *cutPos,     // [out] xyz
+static bool FindCutFromBinBuffer(float *cutPos,     // [out] xyz
                                  int &minCostAxis, // [out]
-                                 const BinBuffer *bins, const real3 &bmin,
-                                 const real3 &bmax, size_t numTriangles,
-                                 real costTaabb) // should be in [0.0, 1.0]
+                                 const BinBuffer *bins, const vec3f &bmin,
+                                 const vec3f &bmax, size_t numTriangles,
+                                 float costTaabb) // should be in [0.0, 1.0]
 {
-    const real eps = std::numeric_limits<real>::epsilon() * 1024;
+    const float eps = std::numeric_limits<float>::epsilon() * 1024;
 
     size_t left, right;
-    real3 bsize, bstep;
-    real3 bminLeft, bmaxLeft;
-    real3 bminRight, bmaxRight;
-    real saLeft, saRight, saTotal;
-    real pos;
-    real minCost[3];
+    vec3f bsize, bstep;
+    vec3f bminLeft, bmaxLeft;
+    vec3f bminRight, bmaxRight;
+    float saLeft, saRight, saTotal;
+    float pos;
+    float minCost[3];
 
-    real costTtri = 1.0 - costTaabb;
+    float costTtri = 1.0 - costTaabb;
 
     minCostAxis = 0;
 
@@ -236,7 +236,7 @@ static bool FindCutFromBinBuffer(real *cutPos,     // [out] xyz
     bstep = bsize * (1.0 / bins->binSize);
     saTotal = CalculateSurfaceArea(bmin, bmax);
 
-    real invSaTotal = 0.0;
+    float invSaTotal = 0.0;
     if (saTotal > eps) {
         invSaTotal = 1.0 / saTotal;
     }
@@ -252,8 +252,8 @@ static bool FindCutFromBinBuffer(real *cutPos,     // [out] xyz
         //     +----+----+----+----+----+
         //
 
-        real minCostPos = bmin[j] + 0.5 * bstep[j];
-        minCost[j] = std::numeric_limits<real>::max();
+        float minCostPos = bmin[j] + 0.5 * bstep[j];
+        minCost[j] = std::numeric_limits<float>::max();
 
         left = 0;
         right = numTriangles;
@@ -279,7 +279,7 @@ static bool FindCutFromBinBuffer(real *cutPos,     // [out] xyz
             saLeft = CalculateSurfaceArea(bminLeft, bmaxLeft);
             saRight = CalculateSurfaceArea(bminRight, bmaxRight);
 
-            real cost =
+            float cost =
                 SAH(left, saLeft, right, saRight, invSaTotal, costTaabb, costTtri);
             if (cost < minCost[j]) {
                 //
@@ -298,7 +298,7 @@ static bool FindCutFromBinBuffer(real *cutPos,     // [out] xyz
     // cutPos = minCostPos;
 
     // Find min cost axis
-    real cost = minCost[0];
+    float cost = minCost[0];
     minCostAxis = 0;
     if (cost > minCost[1]) {
         minCostAxis = 1;
@@ -314,17 +314,17 @@ static bool FindCutFromBinBuffer(real *cutPos,     // [out] xyz
 
 class SAHPred : public std::unary_function<unsigned int, bool> {
 public:
-    SAHPred(int axis, real pos, const Mesh *mesh)
+    SAHPred(int axis, float pos, const Mesh *mesh)
         : axis_(axis), pos_(pos), mesh_(mesh) {
         bezier_ = mesh->IsBezierMesh();
     }
 
     bool operator()(unsigned int i) const {
         int axis = axis_;
-        real pos = pos_;
+        float pos = pos_;
 
         if (bezier_) {
-            real center = 0;
+            float center = 0;
             for (int j = 0; j < 16; ++j) {
                 center += mesh_->_bezierVertices[3 * (16 * i + j) + axis];
             }
@@ -333,11 +333,11 @@ public:
             unsigned int i0 = mesh_->_faces[3 * i + 0];
             unsigned int i1 = mesh_->_faces[3 * i + 1];
             unsigned int i2 = mesh_->_faces[3 * i + 2];
-            real3 p0(&mesh_->_triVertices[3 * i0]);
-            real3 p1(&mesh_->_triVertices[3 * i1]);
-            real3 p2(&mesh_->_triVertices[3 * i2]);
+            vec3f p0(&mesh_->_triVertices[3 * i0]);
+            vec3f p1(&mesh_->_triVertices[3 * i1]);
+            vec3f p2(&mesh_->_triVertices[3 * i2]);
 
-            real center = p0[axis] + p1[axis] + p2[axis];
+            float center = p0[axis] + p1[axis] + p2[axis];
 
             return (center < pos * 3.0);
         }
@@ -345,18 +345,18 @@ public:
 
 private:
     int axis_;
-    real pos_;
+    float pos_;
     const Mesh *mesh_;
     bool bezier_;
 };
 
-static void ComputeBoundingBox(real3 &bmin, real3 &bmax,
-                               const real *bezierBounds,
+static void ComputeBoundingBox(vec3f &bmin, vec3f &bmax,
+                               const float *bezierBounds,
                                const unsigned int *indices,
                                unsigned int leftIndex,
                                unsigned int rightIndex,
                                float displaceBound/*tmp*/) {
-    const real kEPS = std::numeric_limits<real>::epsilon() * 1024;
+    const float kEPS = std::numeric_limits<float>::epsilon() * 1024;
 
     size_t i = leftIndex;
     size_t idx = indices[i];
@@ -386,13 +386,13 @@ static void ComputeBoundingBox(real3 &bmin, real3 &bmax,
 
 }
 
-static void ComputeBoundingBox(real3 &bmin, real3 &bmax,
-                               const real *vertices,
+static void ComputeBoundingBox(vec3f &bmin, vec3f &bmax,
+                               const float *vertices,
                                const unsigned int *faces,
                                const unsigned int *indices,
                                unsigned int leftIndex,
                                unsigned int rightIndex) {
-    const real kEPS = std::numeric_limits<real>::epsilon() * 1024;
+    const float kEPS = std::numeric_limits<float>::epsilon() * 1024;
 
     size_t i = leftIndex;
     size_t idx = indices[i];
@@ -410,8 +410,8 @@ static void ComputeBoundingBox(real3 &bmin, real3 &bmax,
         for (int j = 0; j < 3; j++) { // for each face vertex
             size_t fid = faces[3 * idx + j];
             for (int k = 0; k < 3; k++) { // xyz
-                real minval = vertices[3 * fid + k] - kEPS;
-                real maxval = vertices[3 * fid + k] + kEPS;
+                float minval = vertices[3 * fid + k] - kEPS;
+                float maxval = vertices[3 * fid + k] + kEPS;
                 if (bmin[k] > minval)
                     bmin[k] = minval;
                 if (bmax[k] < maxval)
@@ -437,7 +437,7 @@ size_t BVHAccel::BuildTree(const Mesh *mesh, unsigned int leftIdx,
         _stats.maxTreeDepth = depth;
     }
 
-    real3 bmin, bmax;
+    vec3f bmin, bmax;
     if (mesh->IsBezierMesh()) {
         ComputeBoundingBox(bmin, bmax, &mesh->_bezierBounds[0],
                            &_indices.at(0), leftIdx, rightIdx, mesh->_displaceBound);
@@ -480,7 +480,7 @@ size_t BVHAccel::BuildTree(const Mesh *mesh, unsigned int leftIdx,
     // Compute SAH and find best split axis and position
     //
     int minCutAxis = 0;
-    real cutPos[3] = {0.0, 0.0, 0.0};
+    float cutPos[3] = {0.0, 0.0, 0.0};
 
     BinBuffer bins(_options.binSize);
     ContributeBinBuffer(&bins, bmin, bmax, mesh, &_indices.at(0), leftIdx,
@@ -573,8 +573,8 @@ bool BVHAccel::Build(const Mesh *mesh, const BVHBuildOptions &options) {
     // Tree will be null if input triangle count == 0.
     if (!_nodes.empty()) {
       // 0 = root node.
-        real3 bmin(&_nodes[0].bmin[0]);
-        real3 bmax(&_nodes[0].bmax[0]);
+        vec3f bmin(&_nodes[0].bmin[0]);
+        vec3f bmax(&_nodes[0].bmax[0]);
         trace("[BVHAccel] bound min = (%f, %f, %f)\n", bmin[0], bmin[1], bmin[2]);
         trace("[BVHAccel] bound max = (%f, %f, %f)\n", bmax[0], bmax[1], bmax[2]);
     }
@@ -585,18 +585,18 @@ bool BVHAccel::Build(const Mesh *mesh, const BVHBuildOptions &options) {
 
 namespace {
 
-bool IntersectRayAABB(real &tminOut, // [out]
-                      real &tmaxOut, // [out]
-                      real maxT, real3 bmin, real3 bmax,
-                      real3 rayOrg, real3 rayInvDir, int rayDirSign[3]) {
-    real tmin, tmax;
+bool IntersectRayAABB(float &tminOut, // [out]
+                      float &tmaxOut, // [out]
+                      float maxT, vec3f bmin, vec3f bmax,
+                      vec3f rayOrg, vec3f rayInvDir, int rayDirSign[3]) {
+    float tmin, tmax;
 
-    const real min_x = rayDirSign[0] * bmax[0] + (1-rayDirSign[0]) * bmin[0];
-    const real min_y = rayDirSign[1] * bmax[1] + (1-rayDirSign[1]) * bmin[1];
-    const real min_z = rayDirSign[2] * bmax[2] + (1-rayDirSign[2]) * bmin[2];
-    const real max_x = rayDirSign[0] * bmin[0] + (1-rayDirSign[0]) * bmax[0];
-    const real max_y = rayDirSign[1] * bmin[1] + (1-rayDirSign[1]) * bmax[1];
-    const real max_z = rayDirSign[2] * bmin[2] + (1-rayDirSign[2]) * bmax[2];
+    const float min_x = rayDirSign[0] * bmax[0] + (1-rayDirSign[0]) * bmin[0];
+    const float min_y = rayDirSign[1] * bmax[1] + (1-rayDirSign[1]) * bmin[1];
+    const float min_z = rayDirSign[2] * bmax[2] + (1-rayDirSign[2]) * bmin[2];
+    const float max_x = rayDirSign[0] * bmin[0] + (1-rayDirSign[0]) * bmax[0];
+    const float max_y = rayDirSign[1] * bmin[1] + (1-rayDirSign[1]) * bmax[1];
+    const float max_z = rayDirSign[2] * bmin[2] + (1-rayDirSign[2]) * bmax[2];
 
     // X
     const double tmin_x = (min_x - rayOrg[0]) * rayInvDir[0];
@@ -634,23 +634,23 @@ bool IntersectRayAABB(real &tminOut, // [out]
 #endif
 }
 
-inline bool TriangleIsect(real &tInOut, real &uOut, real &vOut, const real3 &v0,
-                          const real3 &v1, const real3 &v2, const real3 &rayOrg,
-                          const real3 &rayDir) {
-    const real kEPS = std::numeric_limits<real>::epsilon() * 1024;
+inline bool TriangleIsect(float &tInOut, float &uOut, float &vOut, const vec3f &v0,
+                          const vec3f &v1, const vec3f &v2, const vec3f &rayOrg,
+                          const vec3f &rayDir) {
+    const float kEPS = std::numeric_limits<float>::epsilon() * 1024;
 
-    real3 p0(v0[0], v0[1], v0[2]);
-    real3 p1(v1[0], v1[1], v1[2]);
-    real3 p2(v2[0], v2[1], v2[2]);
-    real3 e1, e2;
-    real3 p, s, q;
+    vec3f p0(v0[0], v0[1], v0[2]);
+    vec3f p1(v1[0], v1[1], v1[2]);
+    vec3f p2(v2[0], v2[1], v2[2]);
+    vec3f e1, e2;
+    vec3f p, s, q;
 
     e1 = p1 - p0;
     e2 = p2 - p0;
     p = cross(rayDir, e2);
 
-    real invDet;
-    real det = dot(e1, p);
+    float invDet;
+    float det = dot(e1, p);
     if (std::abs(det) < kEPS) { // no-cull
         //    return false;
     }
@@ -660,9 +660,9 @@ inline bool TriangleIsect(real &tInOut, real &uOut, real &vOut, const real3 &v0,
     s = rayOrg - p0;
     q = cross(s, e1);
 
-    real u = dot(s, p) * invDet;
-    real v = dot(q, rayDir) * invDet;
-    real t = dot(e2, q) * invDet;
+    float u = dot(s, p) * invDet;
+    float v = dot(q, rayDir) * invDet;
+    float t = dot(e2, q) * invDet;
 
     if (u < 0.0 || u > 1.0)
         return false;
@@ -681,7 +681,7 @@ inline bool TriangleIsect(real &tInOut, real &uOut, real &vOut, const real3 &v0,
 template<typename T>
 bool PatchIsect(int patchIndex,
     Intersection &isect,
-                const real *bezierVerts,
+                const float *bezierVerts,
                 int wcpFlag,
                 const Ray &ray,
                 float uvMargin,
@@ -707,7 +707,7 @@ bool PatchIsect(int patchIndex,
     bzi.SetDirectBilinear(directBilinear);
     bzi.SetWatertightFlag(wcpFlag);
 
-    real t = isect.t;
+    float t = isect.t;
     return bzi.Test(&isect, ray, 0, t);
 }
 
@@ -754,7 +754,7 @@ sideCrop(float &umin, float &umax, float &vmin, float &vmax,
 
 template<typename T>
 bool PatchIsectDisp(Intersection &isect,
-                    const real *bezierVerts,
+                    const float *bezierVerts,
                     const Ray &ray,
                     float uvMargin,
                     bool cropUV,
@@ -800,7 +800,7 @@ bool PatchIsectDisp(Intersection &isect,
            +----------+
      */
 
-    real t = isect.t;
+    float t = isect.t;
     Intersection upperIs = isect, lowerIs = isect;
     Intersect upperIsect(upperPatch);
     Intersect lowerIsect(lowerPatch);
@@ -831,7 +831,7 @@ bool PatchIsectDisp(Intersection &isect,
     bool upperFlag = upperIsect.Test(&upperIs, ray, 0, t);
     bool lowerFlag = lowerIsect.Test(&lowerIs, ray, 0, t);
 
-    real umin = 0, umax = 1, vmin = 0, vmax = 1;
+    float umin = 0, umax = 1, vmin = 0, vmax = 1;
 
     if (upperFlag and lowerFlag) {
         umin = std::min(upperIs.u, lowerIs.u);
@@ -919,11 +919,11 @@ bool PatchIsectDisp(Intersection &isect,
     }
 
     // make square for better cropping
-    real ulen = umax - umin;
-    real vlen = vmax - vmin;
+    float ulen = umax - umin;
+    float vlen = vmax - vmin;
     ulen = std::max(ulen, vlen);
-    real ucenter = (umin+umax)*0.5;
-    real vcenter = (vmin+vmax)*0.5;
+    float ucenter = (umin+umax)*0.5;
+    float vcenter = (vmin+vmax)*0.5;
     umin = ucenter - ulen;
     umax = ucenter + ulen;
     vmin = vcenter - ulen; // use u
@@ -943,27 +943,27 @@ bool PatchIsectDisp(Intersection &isect,
     diceLevel = std::min(16, diceLevel);
 
     // dice & displace patch
-    real ustep = (umax-umin)/diceLevel;
-    real vstep = (vmax-vmin)/diceLevel;
+    float ustep = (umax-umin)/diceLevel;
+    float vstep = (vmax-vmin)/diceLevel;
     bool hit = false;
 
-    real freq = displaceFreq;
-    const real kEPS = 1.0e-4;
+    float freq = displaceFreq;
+    const float kEPS = 1.0e-4;
 
     for (int lu = 0; lu < diceLevel; ++lu) {
-        real umin2 = umin + ustep*lu - kEPS;
-        real umax2 = umin + ustep*(lu+1) + kEPS;
+        float umin2 = umin + ustep*lu - kEPS;
+        float umax2 = umin + ustep*(lu+1) + kEPS;
         PatchType tmp;
         patch.CropU(tmp, umin2, umax2);
 
         for (int lv = 0; lv < diceLevel; ++lv) {
-            real vmin2 = vmin + vstep*lv - kEPS;
-            real vmax2 = vmin + vstep*(lv+1) + kEPS;
+            float vmin2 = vmin + vstep*lv - kEPS;
+            float vmax2 = vmin + vstep*(lv+1) + kEPS;
             PatchType subPatch;
             tmp.CropV(subPatch, vmin2, vmax2);
 
             // triangle intersect
-            real t = isect.t;
+            float t = isect.t;
 
             T p[4];
             p[0] = subPatch.Get(0,0);
@@ -974,17 +974,17 @@ bool PatchIsectDisp(Intersection &isect,
 #define DISPLACEMENT(x, y) (upperBound * pow(0.5 * (1+sin(x*freq)*cos(y*freq)), 5))
             //#define DISPLACEMENT(x, y) (upperBound * 0.8)
 
-            real3 v[4];
+            vec3f v[4];
             float uv[4][2] = { {umin2, vmin2}, {umin2, vmax2},
                                {umax2, vmin2}, {umax2, vmax2} };
             for (int i = 0; i < 4; ++i) {
                 vec3f n = patch.EvaluateNormal(uv[i][0], uv[i][1]);
                 float displacement = DISPLACEMENT(p[i][0], p[i][1]);
                 vec3f dp = p[i] - n * displacement;
-                v[i] = real3(dp[0], dp[1], dp[2]);
+                v[i] = vec3f(dp[0], dp[1], dp[2]);
             }
 
-            real ou, ov;
+            float ou, ov;
             bool i0 = TriangleIsect(t, ou, ov, v[0], v[1], v[2], ray.org, ray.dir);
             bool i1 = i0 ? false : TriangleIsect(t, ou, ov, v[1], v[2], v[3], ray.org, ray.dir);
 
@@ -1021,7 +1021,7 @@ bool PatchIsectDisp(Intersection &isect,
 
                 vec3f n = -1.0*cross(Su, Sv);
                 n.normalize();
-                isect.normal = real3(n[0], n[1], n[2]);
+                isect.normal = vec3f(n[0], n[1], n[2]);
 
                 hit = true;
 #undef DISPLACEMNT
@@ -1032,10 +1032,10 @@ bool PatchIsectDisp(Intersection &isect,
 }
 
 
-inline real Inverse(real x)
+inline float Inverse(float x)
 {
     if (fabs(x) < 1e-16) return 1e+16;
-    return real(1)/x;
+    return float(1)/x;
 }
 
 bool TestLeafNode(Intersection &isect, // [inout]
@@ -1066,13 +1066,13 @@ bool TestLeafNode(Intersection &isect, // [inout]
     unsigned int numPrimitives = node.data[0];
     unsigned int offset = node.data[1];
 
-    real t = isect.t;
+    float t = isect.t;
 
-    real3 rayOrg = ray.org;
-    real3 rayDir = ray.dir;
+    vec3f rayOrg = ray.org;
+    vec3f rayDir = ray.dir;
 
     Ray tr = ray;
-    tr.invDir = real3(Inverse(rayDir[0]),Inverse(rayDir[1]),Inverse(rayDir[2]));
+    tr.invDir = vec3f(Inverse(rayDir[0]),Inverse(rayDir[1]),Inverse(rayDir[2]));
     for (int i=0; i < 3 ; i++) {
         tr.dirSign[i] = (rayDir[i]<0)?1:0;
     }
@@ -1081,7 +1081,7 @@ bool TestLeafNode(Intersection &isect, // [inout]
         for (unsigned int i = 0; i < numPrimitives; i++) {
             int faceIdx = indices[i + offset];
 
-            const real *bv = &mesh->_bezierVertices[faceIdx * 16 * 3];
+            const float *bv = &mesh->_bezierVertices[faceIdx * 16 * 3];
             int wcpFlag = conservativeTest ? mesh->_wcpFlags[faceIdx] : 0;
 
 //            trace("TestLeafNode(%d/%d) patch = %d\n", i, numPrimitives, faceIdx);
@@ -1124,7 +1124,7 @@ bool TestLeafNode(Intersection &isect, // [inout]
             int f1 = mesh->_faces[3 * faceIdx + 1];
             int f2 = mesh->_faces[3 * faceIdx + 2];
 
-            real3 v0, v1, v2;
+            vec3f v0, v1, v2;
             v0[0] = mesh->_triVertices[3 * f0 + 0];
             v0[1] = mesh->_triVertices[3 * f0 + 1];
             v0[2] = mesh->_triVertices[3 * f0 + 2];
@@ -1137,7 +1137,7 @@ bool TestLeafNode(Intersection &isect, // [inout]
             v2[1] = mesh->_triVertices[3 * f2 + 1];
             v2[2] = mesh->_triVertices[3 * f2 + 2];
 
-            real u, v;
+            float u, v;
             if (TriangleIsect(t, u, v, v0, v1, v2, rayOrg, rayDir)) {
                 // Update isect state
                 isect.t = t;
@@ -1189,21 +1189,21 @@ void BuildIntersection(Intersection &isect, const Mesh *mesh, Ray &ray)
         isect.f1 = faces[3 * isect.faceID + 1];
         isect.f2 = faces[3 * isect.faceID + 2];
 
-        const real *vertices = &mesh->_triVertices[0];
-        real3 p0(&vertices[3 * isect.f0]);
-        real3 p1(&vertices[3 * isect.f1]);
-        real3 p2(&vertices[3 * isect.f2]);
+        const float *vertices = &mesh->_triVertices[0];
+        vec3f p0(&vertices[3 * isect.f0]);
+        vec3f p1(&vertices[3 * isect.f1]);
+        vec3f p2(&vertices[3 * isect.f2]);
 
         // calc shading point.
         isect.position = ray.org + isect.t * ray.dir;
 
         // interpolate normal
-        const real *normals = &mesh->_triNormals[0];
-        real3 n0(&normals[3 * isect.f0]);
-        real3 n1(&normals[3 * isect.f1]);
-        real3 n2(&normals[3 * isect.f2]);
+        const float *normals = &mesh->_triNormals[0];
+        vec3f n0(&normals[3 * isect.f0]);
+        vec3f n1(&normals[3 * isect.f1]);
+        vec3f n2(&normals[3 * isect.f2]);
 
-        real3 n = n1 * isect.u + n2 * isect.v + n0 * (1 - isect.u - isect.v);
+        vec3f n = n1 * isect.u + n2 * isect.v + n0 * (1 - isect.u - isect.v);
         n.normalize();
         n = n.neg();
 
@@ -1220,7 +1220,7 @@ bool BVHAccel::Traverse(Intersection &isect, const Mesh *mesh, Ray &ray, Context
 
     if (context) context->BeginTraverse();
 
-    real hitT = std::numeric_limits<real>::max(); // far = no hit.
+    float hitT = std::numeric_limits<float>::max(); // far = no hit.
 
     int nodeStackIndex = 0;
     int nodeStack[kMaxStackDepth+1];
@@ -1239,17 +1239,17 @@ bool BVHAccel::Traverse(Intersection &isect, const Mesh *mesh, Ray &ray, Context
     dirSign[2] = ray.dir[2] < 0.0 ? 1 : 0;
 
     // @fixme { Check edge case; i.e., 1/0 }
-    real3 rayInvDir;
+    vec3f rayInvDir;
     rayInvDir[0] = 1.0 / ray.dir[0];
     rayInvDir[1] = 1.0 / ray.dir[1];
     rayInvDir[2] = 1.0 / ray.dir[2];
 
-    real3 rayOrg;
+    vec3f rayOrg;
     rayOrg[0] = ray.org[0];
     rayOrg[1] = ray.org[1];
     rayOrg[2] = ray.org[2];
 
-    real minT, maxT;
+    float minT, maxT;
     while (nodeStackIndex >= 0) {
         int index = nodeStack[nodeStackIndex];
         const BVHNode &node = _nodes[index];
@@ -1292,7 +1292,7 @@ bool BVHAccel::Traverse(Intersection &isect, const Mesh *mesh, Ray &ray, Context
 
     assert(nodeStackIndex < kMaxStackDepth);
 
-    if (isect.t < std::numeric_limits<real>::max()) {
+    if (isect.t < std::numeric_limits<float>::max()) {
         BuildIntersection(isect, mesh, ray);
 
         if (context) context->EndTraverse();

@@ -403,7 +403,7 @@ Scene::Shade(float rgba[4], const Intersection &isect, const Ray &ray, Context *
         //color = d * OsdBezier::vec3f(0.8, 0.8, 0.8) + s * OsdBezier::vec3f(1, 1, 1);
         //color = ray.org + ray.dir * isect.t;
         //color[2] = color[2]  * 10;
-        //color = isect.normal * 0.5 + real3(0.5, 0.5, 0.5);
+        //color = isect.normal * 0.5 + vec3f(0.5, 0.5, 0.5);
         float c[4] = {0, 0, 0, 0};
         PBS(c, isect, ray, context);
         color = vec3f(c[0], c[1], c[2]);

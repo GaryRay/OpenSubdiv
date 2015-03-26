@@ -494,14 +494,14 @@ updateGeom() {
     std::vector<float> vertex;
     vertex.reserve(nverts*3);
 
-    float r = g_animate ? sin(g_frame*0.1f) : 0.0f;
+    //float r = g_animate ? sin(g_frame*0.1f) : 0.0f;
     const float *pp = &g_orgPositions[0];
     for (int i = 0; i < nverts; ++i) {
         float x = pp[0];
         float y = pp[1];
         float z = pp[2];
-        float ct = cos(y * r);
-        float st = sin(y * r);
+        //float ct = cos(y * r);
+        //float st = sin(y * r);
         // vertex.push_back(x * ct + z * st);
         // vertex.push_back(y);
         // vertex.push_back(- x * st + z * ct);
@@ -572,7 +572,7 @@ createOsdMesh( const std::string &shapeStr, int level ){
     if (shape->mtlbind.empty()) {
         g_scene.GetMesh().SetMaterial(0, Material());
     } else {
-        for (int i = 0 ; i < shape->mtlbind.size(); ++i){
+        for (int i = 0 ; i < (int)shape->mtlbind.size(); ++i){
             printf("%d  : %d\n", i, shape->mtlbind[i]);
             g_scene.GetMesh().SetMaterial(i, Material());
         }

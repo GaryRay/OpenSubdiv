@@ -21,22 +21,12 @@
 //   KIND, either express or implied. See the Apache License for the specific
 //   language governing permissions and limitations under the Apache License.
 //
+#ifndef RAYTRACE_COMMON_H
+#define RAYTRACE_COMMON_H
 
-#ifndef RAY_H
-#define RAY_H
+#include "bezier/math.h"
 
-#include "common.h"
+using OsdBezier::vec3f;
 
-struct Ray {
-    vec3f org;
-    vec3f dir;
-    vec3f invDir;
-    int dirSign[3];
-    int depth;
-    bool hasDifferential;
 
-    vec3f dDdx;
-    vec3f dDdy;
-};
-
-#endif // RAY_H
+#endif // RAYTRACE_COMMON_H

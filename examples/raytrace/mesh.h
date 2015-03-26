@@ -29,15 +29,15 @@
 #include <far/topologyRefiner.h>
 #include <far/patchTables.h>
 
-#include "bezier/math.h"
+#include "common.h"
 
 struct Material {
     Material() : diffuse(0.5f), reflection(0.01f), refraction(0.0f),
                  reflectionGlossiness(1.0f), refractionGlossiness(1.0f),
                  fresnel(false), ior(0.0f) { }
-    OsdBezier::vec3f diffuse;
-    OsdBezier::vec3f reflection;
-    OsdBezier::vec3f refraction;
+    vec3f diffuse;
+    vec3f reflection;
+    vec3f refraction;
     float reflectionGlossiness;
     float refractionGlossiness;
     bool  fresnel;
@@ -64,7 +64,7 @@ struct Mesh {
 
     Material const &GetMaterial(int matID) const { return _materials[matID]; }
     void SetMaterial(int matID, Material const &mat) {
-        if (_materials.size() <= matID) _materials.resize(matID+1);
+        if ((int)_materials.size() <= matID) _materials.resize(matID+1);
         _materials[matID] = mat;
     }
 
