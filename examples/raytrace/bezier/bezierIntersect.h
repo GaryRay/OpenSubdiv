@@ -123,7 +123,7 @@ public:
     }
 
     template<typename RAY, typename INTERSECTION>
-    bool Test(INTERSECTION* info, RAY const &r, Real tmin, Real tmax) NO_INLINE {
+    NO_INLINE bool Test(INTERSECTION* info, RAY const &r, Real tmin, Real tmax) {
 
         RangeAABB rng;
         if (intersectAABB(&rng, _min, _max, r, tmin, tmax)) {
@@ -163,7 +163,7 @@ public:
 
 protected:
     template<typename RAY, typename INTERSECTION>
-    bool testInternal(INTERSECTION* info, const RAY& r, Real tmin, Real tmax) NO_INLINE {
+    NO_INLINE bool testInternal(INTERSECTION* info, const RAY& r, Real tmin, Real tmax) {
         typename ValueType::Matrix4Type mat(ValueType(r.org), ValueType(r.dir)); // getZAlign
 
         bool bRet = false;
@@ -948,8 +948,8 @@ protected:
     }
 
     template<typename RAY>
-    bool intersectAABB(RangeAABB *rng, ValueType const & min, ValueType const & max,
-                       RAY const & r, Real tmin, Real tmax) const NO_INLINE {
+    NO_INLINE bool intersectAABB(RangeAABB *rng, ValueType const & min, ValueType const & max,
+                       RAY const & r, Real tmin, Real tmax) const {
 
         //int phase = r.phase();
         int sign[3] = {r.dirSign[0],r.dirSign[1],r.dirSign[2]};
