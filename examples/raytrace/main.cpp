@@ -1162,24 +1162,24 @@ initHUD()
     g_hud.AddSlider("Disp freq", 0, 200, g_displaceFreq,
                     10, y, 20, false, callbackSlider, 2);y+=30;
 
-    int kernel_pulldown = g_hud.AddPullDown("Intersect (I)", 400, 10, 200, callbackIntersect, 'i');
-    g_hud.AddPullDownButton(kernel_pulldown, "Osd float", 0, g_intersectKernel == 0);
-    g_hud.AddPullDownButton(kernel_pulldown, "Osd sse", 1, g_intersectKernel == 1);
-    g_hud.AddPullDownButton(kernel_pulldown, "Osd double", 2, g_intersectKernel == 2);
+    int kernel_pulldown = g_hud.AddPullDown("Intersect Kernel (I)", 400, 10, 200, callbackIntersect, 'i');
+    g_hud.AddPullDownButton(kernel_pulldown, "float", 0, g_intersectKernel == 0);
+    g_hud.AddPullDownButton(kernel_pulldown, "sse", 1, g_intersectKernel == 1);
+    g_hud.AddPullDownButton(kernel_pulldown, "double", 2, g_intersectKernel == 2);
 
     int shading_pulldown = g_hud.AddPullDown("Shading (W)", 200, 10, 250, callbackDisplayStyle, 'w');
     g_hud.AddPullDownButton(shading_pulldown, "Shaded", Scene::SHADED,
                             g_displayStyle==Scene::SHADED);
-    g_hud.AddPullDownButton(shading_pulldown, "Ptex coord", Scene::PTEX_COORD,
-                            g_displayStyle==Scene::PTEX_COORD);
+    g_hud.AddPullDownButton(shading_pulldown, "Ptex coord", Scene::PATCH_COORD,
+                            g_displayStyle==Scene::PATCH_COORD);
     g_hud.AddPullDownButton(shading_pulldown, "Patch color", Scene::PATCH_TYPE,
                             g_displayStyle==Scene::PATCH_TYPE);
     g_hud.AddPullDownButton(shading_pulldown, "Heat Map", Scene::HEAT_MAP,
                             g_displayStyle==Scene::HEAT_MAP);
-    g_hud.AddPullDownButton(shading_pulldown, "Quads", Scene::QUADS,
-                            g_displayStyle==Scene::QUADS);
     g_hud.AddPullDownButton(shading_pulldown, "Ambient Occlusion", Scene::AO,
                             g_displayStyle==Scene::AO);
+    g_hud.AddPullDownButton(shading_pulldown, "PBS", Scene::PBS,
+                            g_displayStyle==Scene::PBS);
     g_hud.AddPullDownButton(shading_pulldown, "Transparent", Scene::TRANSPARENT,
                             g_displayStyle==Scene::TRANSPARENT);
 
@@ -1276,7 +1276,7 @@ idle() {
         g_stepIndex = 0;
     }
 
-    if (g_displayStyle == Scene::SHADED || g_displayStyle == Scene::AO) {
+    if (g_displayStyle == Scene::PBS || g_displayStyle == Scene::AO) {
         if (g_stepIndex == 0) {
             g_stepIndex = g_step*g_step;
         }

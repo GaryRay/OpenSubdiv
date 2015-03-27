@@ -85,42 +85,44 @@ struct BinBuffer {
     int binSize;
 };
 
-static inline double CalculateSurfaceArea(const vec3f &min, const vec3f &max)
+static inline float CalculateSurfaceArea(const vec3f &min, const vec3f &max)
 {
     vec3f box = max - min;
-    return 2.0 * (box[0] * box[1] + box[1] * box[2] + box[2] * box[0]);
+    return 2.0f * (box[0] * box[1] + box[1] * box[2] + box[2] * box[0]);
 }
 
 static inline void GetBoundingBoxOfTriangle(vec3f &bmin, vec3f &bmax,
                                             const Mesh *mesh,
-                                            unsigned int index) {
-  unsigned int f0 = mesh->_faces[3 * index + 0];
-  unsigned int f1 = mesh->_faces[3 * index + 1];
-  unsigned int f2 = mesh->_faces[3 * index + 2];
+                                            unsigned int index)
+{
+    unsigned int f0 = mesh->_faces[3 * index + 0];
+    unsigned int f1 = mesh->_faces[3 * index + 1];
+    unsigned int f2 = mesh->_faces[3 * index + 2];
 
-  vec3f p[3];
+    vec3f p[3];
 
-  p[0] = vec3f(&mesh->_triVertices[3 * f0]);
-  p[1] = vec3f(&mesh->_triVertices[3 * f1]);
-  p[2] = vec3f(&mesh->_triVertices[3 * f2]);
+    p[0] = vec3f(&mesh->_triVertices[3 * f0]);
+    p[1] = vec3f(&mesh->_triVertices[3 * f1]);
+    p[2] = vec3f(&mesh->_triVertices[3 * f2]);
 
-  bmin = p[0];
-  bmax = p[0];
+    bmin = p[0];
+    bmax = p[0];
 
-  for (int i = 1; i < 3; i++) {
-    bmin[0] = std::min(bmin[0], p[i][0]);
-    bmin[1] = std::min(bmin[1], p[i][1]);
-    bmin[2] = std::min(bmin[2], p[i][2]);
+    for (int i = 1; i < 3; i++) {
+        bmin[0] = std::min(bmin[0], p[i][0]);
+        bmin[1] = std::min(bmin[1], p[i][1]);
+        bmin[2] = std::min(bmin[2], p[i][2]);
 
-    bmax[0] = std::max(bmax[0], p[i][0]);
-    bmax[1] = std::max(bmax[1], p[i][1]);
-    bmax[2] = std::max(bmax[2], p[i][2]);
-  }
+        bmax[0] = std::max(bmax[0], p[i][0]);
+        bmax[1] = std::max(bmax[1], p[i][1]);
+        bmax[2] = std::max(bmax[2], p[i][2]);
+    }
 }
 
 static inline void GetBoundingBoxOfRegularPatch(vec3f &bmin, vec3f &bmax,
                                                 const Mesh *mesh,
-                                                unsigned int index) {
+                                                unsigned int index)
+{
     BezierPatch<vec3f, float, 4> patch((const vec3f*)&mesh->_bezierVertices[index * 16 * 3]);
     patch.GetMinMax(bmin, bmax);
 }
@@ -128,7 +130,8 @@ static inline void GetBoundingBoxOfRegularPatch(vec3f &bmin, vec3f &bmax,
 static void ContributeBinBuffer(BinBuffer *bins, // [out]
                                 const vec3f &sceneMin, const vec3f &sceneMax,
                                 const Mesh *mesh, unsigned int *indices,
-                                unsigned int leftIdx, unsigned int rightIdx) {
+                                unsigned int leftIdx, unsigned int rightIdx)
+{
     static const float EPS = std::numeric_limits<float>::epsilon() * 1024;
 
     float binSize = (float)bins->binSize;
@@ -571,12 +574,12 @@ bool BVHAccel::Build(const Mesh *mesh, const BVHBuildOptions &options) {
     return true;
 }
 
-namespace {
-
-bool IntersectRayAABB(float &tminOut, // [out]
-                      float &tmaxOut, // [out]
-                      float maxT, vec3f bmin, vec3f bmax,
-                      vec3f rayOrg, vec3f rayInvDir, int rayDirSign[3]) {
+static bool
+IntersectRayAABB(float &tminOut, // [out]
+                 float &tmaxOut, // [out]
+                 float maxT, vec3f bmin, vec3f bmax,
+                 vec3f rayOrg, vec3f rayInvDir, int rayDirSign[3])
+{
     float tmin, tmax;
 
     const float min_x = rayDirSign[0] * bmax[0] + (1-rayDirSign[0]) * bmin[0];
@@ -962,6 +965,10 @@ bool PatchIsectDisp(Intersection &isect,
 #define DISPLACEMENT(x, y) (upperBound * pow(0.5 * (1+sin(x*freq)*cos(y*freq)), 5))
             //#define DISPLACEMENT(x, y) (upperBound * 0.8)
 
+            // TODO:
+            //
+            //    we'll make spline surfaces, rather than triangles.
+            //
             vec3f v[4];
             float uv[4][2] = { {umin2, vmin2}, {umin2, vmax2},
                                {umax2, vmin2}, {umax2, vmax2} };
@@ -986,8 +993,7 @@ bool PatchIsectDisp(Intersection &isect,
                     isect.v = vmin2 * ou + vmax2 * ov + vmax2 * (1 - ou - ov);
                 }
 
-                // analytical displaced normal approximation
-                // (ignoring weingarten term)
+                // displaced normal approximation (ignoring weingarten term)
                 // du Ns' = du S + Ns du D
                 // dv Ns' = dv S + Ns dv D
 
@@ -1019,36 +1025,39 @@ bool PatchIsectDisp(Intersection &isect,
     return hit;
 }
 
-
-inline float Inverse(float x)
+static inline float
+Inverse(float x)
 {
     if (fabs(x) < 1e-16) return 1e+16;
     return float(1)/x;
 }
 
-bool TestLeafNode(Intersection &isect, // [inout]
-                  const BVHNode &node, const std::vector<unsigned int> &indices,
-                  const Mesh *mesh, const Ray &ray, int intersectKernel,
-                  float uvMargin, bool cropUV, bool bezierClip,
-                  float displaceScale, float displaceFreq,
-                  double eps,
-                  int maxLevel,
-                  bool useTriangle,
-                  bool useRayDiffEpsilon,
-                  bool conservativeTest,
-                  bool directBilinear) __attribute__((noinline));
+static bool
+TestLeafNode(Intersection &isect, // [inout]
+             const BVHNode &node, const std::vector<unsigned int> &indices,
+             const Mesh *mesh, const Ray &ray, int intersectKernel,
+             float uvMargin, bool cropUV, bool bezierClip,
+             float displaceScale, float displaceFreq,
+             double eps,
+             int maxLevel,
+             bool useTriangle,
+             bool useRayDiffEpsilon,
+             bool conservativeTest,
+             bool directBilinear) __attribute__((noinline));
 
-bool TestLeafNode(Intersection &isect, // [inout]
-                  const BVHNode &node, const std::vector<unsigned int> &indices,
-                  const Mesh *mesh, const Ray &ray, int intersectKernel,
-                  float uvMargin, bool cropUV, bool bezierClip,
-                  float displaceScale, float displaceFreq,
-                  double eps,
-                  int maxLevel,
-                  bool useTriangle,
-                  bool useRayDiffEpsilon,
-                  bool conservativeTest,
-                  bool directBilinear) {
+static bool
+TestLeafNode(Intersection &isect, // [inout]
+             const BVHNode &node, const std::vector<unsigned int> &indices,
+             const Mesh *mesh, const Ray &ray, int intersectKernel,
+             float uvMargin, bool cropUV, bool bezierClip,
+             float displaceScale, float displaceFreq,
+             double eps,
+             int maxLevel,
+             bool useTriangle,
+             bool useRayDiffEpsilon,
+             bool conservativeTest,
+             bool directBilinear)
+{
     bool hit = false;
 
     unsigned int numPrimitives = node.data[0];
@@ -1076,15 +1085,15 @@ bool TestLeafNode(Intersection &isect, // [inout]
 
             if (displaceScale == 0) {
                 bool r = false;
-                if (intersectKernel == BVHAccel::OSD_FLOAT) {
+                if (intersectKernel == BVHAccel::KERNEL_FLOAT) {
                     r = PatchIsect<OsdBezier::vec3f>(faceIdx, isect, bv, wcpFlag, tr, uvMargin,
                                                      cropUV, bezierClip, eps, maxLevel, useTriangle,
                                                      useRayDiffEpsilon, directBilinear);
-                } else if (intersectKernel == BVHAccel::OSD_SSE) {
+                } else if (intersectKernel == BVHAccel::KERNEL_SSE) {
                     r = PatchIsect<OsdBezier::vec3sse>(faceIdx, isect, bv, wcpFlag, tr, uvMargin,
                                                        cropUV, bezierClip, eps, maxLevel, useTriangle,
                                                        useRayDiffEpsilon, directBilinear);
-                } else if (intersectKernel == BVHAccel::OSD_DOUBLE) {
+                } else if (intersectKernel == BVHAccel::KERNEL_DOUBLE) {
                     r = PatchIsect<OsdBezier::vec3d>(faceIdx, isect, bv, wcpFlag, tr, uvMargin,
                                                      cropUV, bezierClip, eps, maxLevel, useTriangle,
                                                      useRayDiffEpsilon, directBilinear);
@@ -1139,7 +1148,8 @@ bool TestLeafNode(Intersection &isect, // [inout]
     return hit;
 }
 
-void BuildIntersection(Intersection &isect, const Mesh *mesh, Ray &ray)
+static void
+BuildIntersection(Intersection &isect, const Mesh *mesh, Ray &ray)
 {
     if (mesh->IsBezierMesh()) {
         const OpenSubdiv::Far::PatchParam &param = mesh->_patchParams[isect.faceID];
@@ -1200,12 +1210,12 @@ void BuildIntersection(Intersection &isect, const Mesh *mesh, Ray &ray)
     }
 }
 
-} // namespace
-
 #define kMaxStackDepth    512
 
-bool BVHAccel::Traverse(Intersection &isect, const Mesh *mesh, Ray &ray, Context *context) const {
-
+bool
+BVHAccel::Traverse(Intersection &isect, const Mesh *mesh, Ray &ray,
+                   Context *context) const
+{
     if (context) context->BeginTraverse();
 
     float hitT = std::numeric_limits<float>::max(); // far = no hit.
@@ -1276,9 +1286,11 @@ bool BVHAccel::Traverse(Intersection &isect, const Mesh *mesh, Ray &ray, Context
                 }
             }
         }
+        if (nodeStackIndex >= kMaxStackDepth) {
+            trace("node stack overflow\n");
+            return false;
+        }
     }
-
-    assert(nodeStackIndex < kMaxStackDepth);
 
     if (isect.t < std::numeric_limits<float>::max()) {
         BuildIntersection(isect, mesh, ray);

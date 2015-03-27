@@ -36,7 +36,7 @@ class Scene
 public:
     struct Config {
         Config() {
-            intersectKernel = BVHAccel::OSD_FLOAT;
+            intersectKernel = BVHAccel::KERNEL_FLOAT;
             uvMargin = 0.0f;
             cropUV = false;
             bezierClip = true;
@@ -81,8 +81,6 @@ public:
     void SetConfig(Config const &config);
 
     bool LoadEnvMap(const std::string &filename);
-    void PBS(float rgba[4], const Intersection &isect, const Ray &ray,
-             Context *context);
     // render, debug
 
     void Render(int stepIndex, int step);
@@ -90,11 +88,13 @@ public:
     void DebugTrace(float x, float y);
 
     // shading style
+    void PhysicallyBasedShading(float rgba[4], const Intersection &isect, const Ray &ray,
+                                Context *context);
     void EnvCol(float rgba[4], const OsdBezier::vec3f & dir);
+    void Shade(float rgba[4], const Intersection &isect, const Ray &ray,
+               Context *context);
 
-    void Shade(float rgba[4], const Intersection &isect, const Ray &ray, Context *context);
-
-    enum ShadeMode { SHADED, PTEX_COORD, PATCH_TYPE, HEAT_MAP, QUADS, AO, TRANSPARENT };
+    enum ShadeMode { SHADED, PATCH_COORD, PATCH_TYPE, HEAT_MAP, AO, PBS, TRANSPARENT };
 
     void SetShadeMode(ShadeMode mode) {
         _mode = mode;
@@ -111,10 +111,10 @@ public:
         return _backgroundMode;
     }
 
-    // mesh, vbo
-
+    // mesh
     Mesh &GetMesh() { return _mesh; }
 
+    // BVH visualize
     GLuint GetVBO() const { return _vbo; }
 
     int GetNumBVHNode() const { return (int)_accel.GetNodes().size(); }

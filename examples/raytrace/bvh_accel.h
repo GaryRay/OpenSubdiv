@@ -71,43 +71,19 @@ struct BVHBuildStatistics {
     BVHBuildStatistics() : maxTreeDepth(0), numLeafNodes(0), numBranchNodes(0) {}
 };
 
-typedef struct {
-    float t;
-    float u;
-    float v;
-    unsigned int faceID;
-
-    // patch info
-    unsigned int patchID;
-    unsigned int level;
-    unsigned int clipLevel;
-    unsigned int quadHash;
-
-    // for SGA tech brief
-    float        eps;
-    unsigned int maxLevel;
-
-    unsigned int f0;
-    unsigned int f1;
-    unsigned int f2;
-
-    vec3f position;
-    vec3f geometricNormal;
-    vec3f normal;
-    vec3f tangent;
-    vec3f binormal;
-    float texcoord[2];
-} Intersection;
-
 class BVHAccel {
 public:
-    BVHAccel(float uvMargin=0.1f) : _intersectKernel(OSD_FLOAT),
-                                    _uvMargin(uvMargin), _cropUV(true),
-                                    _bezierClip(true), _displaceScale(0), _displaceFreq(100) ,
-                                    _epsilon(1e-4), _maxLevel(10), _useTriangle(false),
-                                    _useRayDiffEpsilon(false), _conservativeTest(false),
-                                    _directBilinear(false) {}
+    BVHAccel(float uvMargin=0) :
+        _intersectKernel(KERNEL_FLOAT),
+        _uvMargin(uvMargin), _cropUV(true),
+        _bezierClip(true), _displaceScale(0), _displaceFreq(100) ,
+        _epsilon(1e-4), _maxLevel(10), _useTriangle(false),
+        _useRayDiffEpsilon(false), _conservativeTest(false),
+        _directBilinear(false) {}
     ~BVHAccel() {};
+
+    /// kernel type
+    enum { KERNEL_FLOAT, KERNEL_SSE, KERNEL_DOUBLE } IntersectKernel;
 
     ///< Build BVH for input mesh.
     bool Build(const Mesh *mesh, const BVHBuildOptions &options);
@@ -116,9 +92,9 @@ public:
     BVHBuildStatistics GetStatistics() const { return _stats; }
 
     ///< Traverse into BVH along ray and find closest hit point if found
-    bool Traverse(Intersection &isect, const Mesh *mesh, Ray &ray, Context *context) const;
+    bool Traverse(Intersection &isect, const Mesh *mesh, Ray &ray,
+                  Context *context) const;
 
-    enum { OSD_FLOAT, OSD_SSE, OSD_DOUBLE } IntersectKernel;
     void SetIntersectKernel(int k) {_intersectKernel = k; }
     void SetUVMargin(float margin) { _uvMargin = margin; }
     void SetCropUV(bool flag) {_cropUV = flag;}

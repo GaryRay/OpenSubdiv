@@ -39,4 +39,32 @@ struct Ray {
     vec3f dDdy;
 };
 
+typedef struct {
+    float t;
+    float u;
+    float v;
+    unsigned int faceID;
+
+    // patch info
+    unsigned int patchID;
+    unsigned int level;
+    unsigned int clipLevel;
+
+    // for SGA tech brief
+    float        eps;
+    unsigned int maxLevel;
+
+    unsigned int f0;
+    unsigned int f1;
+    unsigned int f2;
+
+    vec3f position;
+    vec3f geometricNormal;
+    vec3f normal;
+    vec3f tangent;
+    vec3f binormal;
+    float texcoord[2];
+} Intersection;
+
+
 #endif // RAY_H

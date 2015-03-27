@@ -400,21 +400,13 @@ Scene::Shade(float rgba[4], const Intersection &isect, const Ray &ray, Context *
 
     OsdBezier::vec3f color;
     if (_mode == SHADED) {
-        //color = d * OsdBezier::vec3f(0.8, 0.8, 0.8) + s * OsdBezier::vec3f(1, 1, 1);
-        //color = ray.org + ray.dir * isect.t;
-        //color[2] = color[2]  * 10;
-        //color = isect.normal * 0.5 + vec3f(0.5, 0.5, 0.5);
+        color = d * OsdBezier::vec3f(0.8, 0.8, 0.8) + s * OsdBezier::vec3f(1, 1, 1);
+    } else if (_mode == PBS) {
         float c[4] = {0, 0, 0, 0};
-        PBS(c, isect, ray, context);
+        PhysicallyBasedShading(c, isect, ray, context);
         color = vec3f(c[0], c[1], c[2]);
-    } else if (_mode == PTEX_COORD) {
+    } else if (_mode == PATCH_COORD) {
         color = d * OsdBezier::vec3f(isect.u, isect.v, 1) + s * OsdBezier::vec3f(1.0f);
-        // float m = 0.01;
-        // float d = 1-std::max(std::max(fabs(m-isect.u), fabs((1-m)-isect.u)),
-        //                      std::max(fabs(m-isect.v), fabs((1-m)-isect.v)));
-        // d = d * dot(ray.dir, isect.normal);
-        // if (d > 0.1f) d = 1.0f;
-        // color = OsdBezier::vec3f(d);
     } else if (_mode == PATCH_TYPE) {
         float l = isect.level * 0.05;
         color = d * (OsdBezier::vec3f(&_mesh._colors[isect.patchID*3])
@@ -425,14 +417,9 @@ Scene::Shade(float rgba[4], const Intersection &isect, const Ray &ray, Context *
     } else if (_mode == HEAT_MAP) {
         float col[3];
         ShadeHeatmap(col, isect.clipLevel, isect.maxLevel);
-        //printf("col = %f, %f, %f(lv:%d, mlv: %d)\n", col[0], col[1], col[2], isect.level, isect.maxLevel);
         color[0] = col[0];
         color[1] = col[1];
         color[2] = col[2];
-    } else if (_mode == QUADS) {
-        color[0] = d*((((isect.quadHash>>0)&0xff)/255.0)*0.5 + 0.5);
-        color[1] = d*((((isect.quadHash>>8)&0xff)/255.0)*0.5 + 0.5);
-        color[2] = d*((((isect.quadHash>>16)&0xff)/255.0)*0.5 + 0.5);
     } else if (_mode == AO) {
         Intersection si;
         Ray sray;
@@ -762,8 +749,8 @@ static void WardBRDF(vec3f* omega_in, // output
 
 // Physically-based shader
 void
-Scene::PBS(float rgba[4], const Intersection &isect,
-           const Ray &ray, Context *context)
+Scene::PhysicallyBasedShading(float rgba[4], const Intersection &isect,
+                              const Ray &ray, Context *context)
 {
     //printf("depth = %d\n", ray.depth);
     if (ray.depth > 3) {
@@ -859,7 +846,7 @@ Scene::PBS(float rgba[4], const Intersection &isect,
         //    bool hit = TraceRay(diffuseIsect, scene, diffuseRay);
         if (hit) {
             float diffuseRGBA[4];
-            PBS(diffuseRGBA, diffuseIsect, diffuseRay, context);
+            PhysicallyBasedShading(diffuseRGBA, diffuseIsect, diffuseRay, context);
 
             kdRet[0] = kdRGB[0] * diffuseRGBA[0];
             kdRet[1] = kdRGB[1] * diffuseRGBA[1];
@@ -931,7 +918,7 @@ Scene::PBS(float rgba[4], const Intersection &isect,
             if (hit) {
 
                 float reflRGBA[4];
-                PBS(reflRGBA, reflIsect, reflRay, context);
+                PhysicallyBasedShading(reflRGBA, reflIsect, reflRay, context);
 
                 ksRet[0] = ksRGB[0] * reflRGBA[0];
                 ksRet[1] = ksRGB[1] * reflRGBA[1];
@@ -1012,7 +999,7 @@ Scene::PBS(float rgba[4], const Intersection &isect,
             if (hit) {
 
                 float refrRGBA[4];
-                PBS(refrRGBA, refrIsect, refrRay, context);
+                PhysicallyBasedShading(refrRGBA, refrIsect, refrRay, context);
 
                 ktRet[0] = ktRGB[0] * refrRGBA[0];
                 ktRet[1] = ktRGB[1] * refrRGBA[1];
