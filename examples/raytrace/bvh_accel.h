@@ -29,7 +29,7 @@
 #include "context.h"
 #include "common.h"
 
-struct Mesh;
+class Mesh;
 
 class BVHNode {
 public:

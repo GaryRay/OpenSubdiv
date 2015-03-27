@@ -89,7 +89,7 @@ ShadePatchType(const Scene *scene, const Ray &ray, const Intersection &isect)
     float l = isect.level * 0.05;
     float d = std::max(float(0.2), dot(ray.dir, isect.normal));
 
-    col = d * (vec3f(&scene->GetMesh()._colors[isect.patchID*3]) - vec3f(l));
+    col = d * (scene->GetMesh().GetColor(isect.patchID) - vec3f(l));
     col[0] = std::max(0.0f, col[0]);
     col[1] = std::max(0.0f, col[1]);
     col[2] = std::max(0.0f, col[2]);

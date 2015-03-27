@@ -83,8 +83,8 @@ Scene::BuildBVH(int minLeafPrimitives)
     printf("    # of leaf primitives: %d\n", options.minLeafPrimitives);
     printf("    SAH binsize         : %d\n", options.binSize);
 
-    printf("  # of triangles : %ld\n", _mesh._numTriangles);
-    printf("  # of bezier patches : %ld\n", _mesh._numBezierPatches);
+    printf("  # of triangles : %d\n", _mesh.GetNumTriangles());
+    printf("  # of bezier patches : %d\n", _mesh.GetNumPatches());
 
     _accel = BVHAccel();
     _accel.Build(&_mesh, options);
@@ -171,57 +171,62 @@ public:
 #endif
             int y = rr*_step + _stepIndex/_step;
             for (int x = _stepIndex%_step; x < _width; x += _step) {
-                float u = 0.5;
-                float v = 0.5;
-
                 float offsetX = _subPixel[0];
                 float offsetY = _subPixel[1];
-                Ray ray = _camera->GenerateRay(x + u + offsetX, y + v + offsetY);
+                Ray ray = _camera->GenerateRay(x + 0.5f + offsetX,
+                                               y + 0.5f + offsetY);
                 if (useRayDiff) {
-                    Ray rayO  = _camera->GenerateRay(x + offsetX, y + offsetY);
-                    Ray rayDX = _camera->GenerateRay(x + 1 + offsetX, y + offsetY);
-                    Ray rayDY = _camera->GenerateRay(x + offsetX, y + 1 + offsetY);
+                    Ray rayO  = _camera->GenerateRay(x + offsetX,
+                                                     y + offsetY);
+                    Ray rayDX = _camera->GenerateRay(x + 1 + offsetX,
+                                                     y + offsetY);
+                    Ray rayDY = _camera->GenerateRay(x + offsetX,
+                                                     y + 1 + offsetY);
                     ray.dDdx = rayDX.dir-rayO.dir;
                     ray.dDdy = rayDY.dir-rayO.dir;
                     ray.hasDifferential = true;
                 }
 
+                // intersection
                 Intersection isect;
                 bool hit = _accel->Traverse(ray, &isect, &context);
 
-                context.BeginShade();
+                // shading
+                {
+                    context.BeginShade();
 
-                float *d = _image + 4 * (y * _width + x);
-                float rgba[4] = { 0, 0, 0, 0 };
+                    float *d = _image + 4 * (y * _width + x);
 
-                // read pixel
-                rgba[0] = d[0];
-                rgba[1] = d[1];
-                rgba[2] = d[2];
-                rgba[3] = d[3];
+                    // read pixel
+                    float rgba[4];
+                    rgba[0] = d[0];
+                    rgba[1] = d[1];
+                    rgba[2] = d[2];
+                    rgba[3] = d[3];
 
-                // accumulate
-                if (hit) {
-                    vec3f c = _shader(_scene, ray, isect);
-                    rgba[0] += c[0];
-                    rgba[1] += c[1];
-                    rgba[2] += c[2];
-                    rgba[3] += 1.0f;
-                } else {
-                    vec3f bg = _scene->GetEnvColor(ray.dir);
-                    rgba[0] += bg[0]/3.14;
-                    rgba[1] += bg[1]/3.14;
-                    rgba[2] += bg[2]/3.14;
-                    rgba[3] += 1.0f;
+                    // accumulate
+                    if (hit) {
+                        vec3f c = _shader(_scene, ray, isect);
+                        rgba[0] += c[0];
+                        rgba[1] += c[1];
+                        rgba[2] += c[2];
+                        rgba[3] += 1.0f;
+                    } else {
+                        vec3f bg = _scene->GetEnvColor(ray.dir);
+                        rgba[0] += bg[0]/3.14;
+                        rgba[1] += bg[1]/3.14;
+                        rgba[2] += bg[2]/3.14;
+                        rgba[3] += 1.0f;
+                    }
+
+                    // write back
+                    d[0] = rgba[0];
+                    d[1] = rgba[1];
+                    d[2] = rgba[2];
+                    d[3] = rgba[3];
+
+                    context.EndShade();
                 }
-
-                // write back
-                d[0] = rgba[0];
-                d[1] = rgba[1];
-                d[2] = rgba[2];
-                d[3] = rgba[3];
-
-                context.EndShade();
             }
         }
     }
@@ -280,6 +285,7 @@ Scene::SetConfig(Config const &config)
 void
 Scene::Render(int stepIndex, int step)
 {
+    // shader selection
     ShadeFunc shader;
     if (_mode == SHADED) {
         shader = ShadeLambert;

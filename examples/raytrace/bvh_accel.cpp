@@ -96,15 +96,15 @@ static inline void GetBoundingBoxOfTriangle(vec3f &bmin, vec3f &bmax,
                                             const Mesh *mesh,
                                             unsigned int index)
 {
-    unsigned int f0 = mesh->_faces[3 * index + 0];
-    unsigned int f1 = mesh->_faces[3 * index + 1];
-    unsigned int f2 = mesh->_faces[3 * index + 2];
+    unsigned int f0 = mesh->GetFaces()[3 * index + 0];
+    unsigned int f1 = mesh->GetFaces()[3 * index + 1];
+    unsigned int f2 = mesh->GetFaces()[3 * index + 2];
 
     vec3f p[3];
 
-    p[0] = vec3f(&mesh->_triVertices[3 * f0]);
-    p[1] = vec3f(&mesh->_triVertices[3 * f1]);
-    p[2] = vec3f(&mesh->_triVertices[3 * f2]);
+    p[0] = vec3f(&mesh->GetTriangleVerts()[3 * f0]);
+    p[1] = vec3f(&mesh->GetTriangleVerts()[3 * f1]);
+    p[2] = vec3f(&mesh->GetTriangleVerts()[3 * f2]);
 
     bmin = p[0];
     bmax = p[0];
@@ -124,7 +124,7 @@ static inline void GetBoundingBoxOfRegularPatch(vec3f &bmin, vec3f &bmax,
                                                 const Mesh *mesh,
                                                 unsigned int index)
 {
-    BezierPatch<vec3f, float, 4> patch((const vec3f*)&mesh->_bezierVertices[index * 16 * 3]);
+    BezierPatch<vec3f, float, 4> patch(mesh->GetBezierVerts(index));
     patch.GetMinMax(bmin, bmax);
 }
 
@@ -323,16 +323,17 @@ public:
         if (bezier_) {
             float center = 0;
             for (int j = 0; j < 16; ++j) {
-                center += mesh_->_bezierVertices[3 * (16 * i + j) + axis];
+                vec3f v = *(mesh_->GetBezierVerts(i) + j);
+                center += v[axis];
             }
             return (center < pos * 16.0);
         } else {
-            unsigned int i0 = mesh_->_faces[3 * i + 0];
-            unsigned int i1 = mesh_->_faces[3 * i + 1];
-            unsigned int i2 = mesh_->_faces[3 * i + 2];
-            vec3f p0(&mesh_->_triVertices[3 * i0]);
-            vec3f p1(&mesh_->_triVertices[3 * i1]);
-            vec3f p2(&mesh_->_triVertices[3 * i2]);
+            unsigned int i0 = mesh_->GetFaces()[3 * i + 0];
+            unsigned int i1 = mesh_->GetFaces()[3 * i + 1];
+            unsigned int i2 = mesh_->GetFaces()[3 * i + 2];
+            vec3f p0(&mesh_->GetTriangleVerts()[3 * i0]);
+            vec3f p1(&mesh_->GetTriangleVerts()[3 * i1]);
+            vec3f p2(&mesh_->GetTriangleVerts()[3 * i2]);
 
             float center = p0[axis] + p1[axis] + p2[axis];
 
@@ -348,7 +349,7 @@ private:
 };
 
 static void ComputeBoundingBox(vec3f &bmin, vec3f &bmax,
-                               const float *bezierVertices,
+                               const vec3f *bezierVertices,
                                const unsigned int *indices,
                                unsigned int leftIndex,
                                unsigned int rightIndex,
@@ -359,13 +360,13 @@ static void ComputeBoundingBox(vec3f &bmin, vec3f &bmax,
     size_t i = leftIndex;
     size_t idx = indices[i];
 
-    BezierPatch<vec3f, float, 4> patch((const vec3f*)&bezierVertices[idx * 16 * 3]);
+    BezierPatch<vec3f, float, 4> patch(&bezierVertices[idx * 16]);
     patch.GetMinMax(bmin, bmax);
 
     for (i = leftIndex; i < rightIndex; i++) { // for each faces
         size_t idx = indices[i];
         vec3f pmin, pmax;
-        BezierPatch<vec3f, float, 4> patch((const vec3f*)&bezierVertices[idx * 16 * 3]);
+        BezierPatch<vec3f, float, 4> patch(&bezierVertices[idx * 16]);
         patch.GetMinMax(pmin, pmax);
         bmin = bmin.min(pmin);
         bmax = bmax.max(pmax);
@@ -432,12 +433,12 @@ BVHAccel::BuildTree(unsigned int leftIdx, unsigned int rightIdx, int depth)
 
     vec3f bmin, bmax;
     if (_mesh->IsBezierMesh()) {
-        ComputeBoundingBox(bmin, bmax, &_mesh->_bezierVertices[0],
+        ComputeBoundingBox(bmin, bmax, _mesh->GetBezierVerts(0),
                            &_indices.at(0), leftIdx, rightIdx,
-                           _mesh->_displaceBound);
+                           _mesh->GetDisplaceBound());
     } else {
-        ComputeBoundingBox(bmin, bmax, &_mesh->_triVertices[0],
-                           &_mesh->_faces[0],
+        ComputeBoundingBox(bmin, bmax, &_mesh->GetTriangleVerts()[0],
+                           &_mesh->GetFaces()[0],
                            &_indices.at(0),
                            leftIdx, rightIdx);
     }
@@ -550,7 +551,7 @@ bool BVHAccel::Build(const Mesh *mesh, const BVHBuildOptions &options)
 
     assert(_options.binSize > 1);
 
-    size_t n = mesh->IsBezierMesh() ? mesh->_numBezierPatches : mesh->_numTriangles;
+    size_t n = mesh->GetNumPrimitives();
     trace("[BVHAccel] Input # of bezier patches = %lu\n", mesh->GetNumPatches());
 
     //
@@ -677,7 +678,7 @@ inline bool TriangleIsect(float &tInOut, float &uOut, float &vOut, const vec3f &
 template<typename T>
 bool PatchIsect(int patchIndex,
                 Intersection *isect,
-                const float *bezierVerts,
+                const vec3f *bezierVerts,
                 int wcpFlag,
                 const Ray &ray,
                 float uvMargin,
@@ -689,7 +690,7 @@ bool PatchIsect(int patchIndex,
                 bool useRayDiffEpsilon,
                 bool directBilinear) {
 
-    OsdBezier::BezierPatchIntersection<T, typename T::ElementType, 4> bzi((const OsdBezier::vec3f*)bezierVerts);
+    OsdBezier::BezierPatchIntersection<T, typename T::ElementType, 4> bzi(bezierVerts);
     if(useRayDiffEpsilon){
         eps = bzi.ComputeEpsilon(ray, eps);
     }
@@ -750,7 +751,7 @@ sideCrop(float &umin, float &umax, float &vmin, float &vmax,
 
 template<typename T>
 bool PatchIsectDisp(Intersection *isect,
-                    const float *bezierVerts,
+                    const vec3f *bezierVerts,
                     const Ray &ray,
                     float uvMargin,
                     bool cropUV,
@@ -768,7 +769,7 @@ bool PatchIsectDisp(Intersection *isect,
 
     typedef BezierPatch<T, typename T::ElementType, 4> PatchType;
     typedef BezierPatchIntersection<T, typename T::ElementType, 4> Intersect;
-    PatchType patch((const vec3f*)bezierVerts);
+    PatchType patch(bezierVerts);
 
     PatchType upperPatch;
     PatchType lowerPatch;
@@ -1083,7 +1084,7 @@ TestLeafNode(Intersection *isect, // [inout]
         for (unsigned int i = 0; i < numPrimitives; i++) {
             int faceIdx = indices[i + offset];
 
-            const float *bv = &mesh->_bezierVertices[faceIdx * 16 * 3];
+            const vec3f *bv = mesh->GetBezierVerts(faceIdx);
             int wcpFlag = conservativeTest ? mesh->GetWatertightFlag(faceIdx) : 0;
 
 //            trace("TestLeafNode(%d/%d) patch = %d\n", i, numPrimitives, faceIdx);
@@ -1122,22 +1123,22 @@ TestLeafNode(Intersection *isect, // [inout]
         for (unsigned int i = 0; i < numPrimitives; i++) {
             int faceIdx = indices[i + offset];
 
-            int f0 = mesh->_faces[3 * faceIdx + 0];
-            int f1 = mesh->_faces[3 * faceIdx + 1];
-            int f2 = mesh->_faces[3 * faceIdx + 2];
+            int f0 = mesh->GetFaces()[3 * faceIdx + 0];
+            int f1 = mesh->GetFaces()[3 * faceIdx + 1];
+            int f2 = mesh->GetFaces()[3 * faceIdx + 2];
 
             vec3f v0, v1, v2;
-            v0[0] = mesh->_triVertices[3 * f0 + 0];
-            v0[1] = mesh->_triVertices[3 * f0 + 1];
-            v0[2] = mesh->_triVertices[3 * f0 + 2];
+            v0[0] = mesh->GetTriangleVerts()[3 * f0 + 0];
+            v0[1] = mesh->GetTriangleVerts()[3 * f0 + 1];
+            v0[2] = mesh->GetTriangleVerts()[3 * f0 + 2];
 
-            v1[0] = mesh->_triVertices[3 * f1 + 0];
-            v1[1] = mesh->_triVertices[3 * f1 + 1];
-            v1[2] = mesh->_triVertices[3 * f1 + 2];
+            v1[0] = mesh->GetTriangleVerts()[3 * f1 + 0];
+            v1[1] = mesh->GetTriangleVerts()[3 * f1 + 1];
+            v1[2] = mesh->GetTriangleVerts()[3 * f1 + 2];
 
-            v2[0] = mesh->_triVertices[3 * f2 + 0];
-            v2[1] = mesh->_triVertices[3 * f2 + 1];
-            v2[2] = mesh->_triVertices[3 * f2 + 2];
+            v2[0] = mesh->GetTriangleVerts()[3 * f2 + 0];
+            v2[1] = mesh->GetTriangleVerts()[3 * f2 + 1];
+            v2[2] = mesh->GetTriangleVerts()[3 * f2 + 2];
 
             float u, v;
             if (TriangleIsect(t, u, v, v0, v1, v2, rayOrg, rayDir)) {
@@ -1157,7 +1158,8 @@ static void
 BuildIntersection(Intersection *isect, const Mesh *mesh, const Ray &ray)
 {
     if (mesh->IsBezierMesh()) {
-        const OpenSubdiv::Far::PatchParam &param = mesh->_patchParams[isect->faceID];
+        //const OpenSubdiv::Far::PatchParam &param = mesh->_patchParams[isect->faceID];
+        const OpenSubdiv::Far::PatchParam &param = mesh->GetPatchParam(isect->faceID);
         unsigned int bits = param.bitField.field;
         isect->patchID = isect->faceID;
         isect->faceID = param.faceIndex;
@@ -1187,12 +1189,12 @@ BuildIntersection(Intersection *isect, const Mesh *mesh, const Ray &ray)
         isect->patchID = isect->faceID;
         isect->level = 1;
 
-        const unsigned int *faces = &mesh->_faces[0];
+        const unsigned int *faces = mesh->GetFaces();
         isect->f0 = faces[3 * isect->faceID + 0];
         isect->f1 = faces[3 * isect->faceID + 1];
         isect->f2 = faces[3 * isect->faceID + 2];
 
-        const float *vertices = &mesh->_triVertices[0];
+        const float *vertices = mesh->GetTriangleVerts();
         vec3f p0(&vertices[3 * isect->f0]);
         vec3f p1(&vertices[3 * isect->f1]);
         vec3f p2(&vertices[3 * isect->f2]);
@@ -1201,7 +1203,7 @@ BuildIntersection(Intersection *isect, const Mesh *mesh, const Ray &ray)
         isect->position = ray.org + isect->t * ray.dir;
 
         // interpolate normal
-        const float *normals = &mesh->_triNormals[0];
+        const float *normals = mesh->GetTriangleNormals();
         vec3f n0(&normals[3 * isect->f0]);
         vec3f n1(&normals[3 * isect->f1]);
         vec3f n2(&normals[3 * isect->f2]);

@@ -44,7 +44,8 @@ struct Material {
     float ior;
 };
 
-struct Mesh {
+class Mesh {
+public:
     Mesh() : _numTriangles(0),
              _numBezierPatches(0),
              _displaceBound(0) {
@@ -61,13 +62,24 @@ struct Mesh {
     bool IsBezierMesh() const { return _numTriangles == 0; }
     int GetNumPatches() const { return _numBezierPatches; }
     int GetNumTriangles() const { return _numTriangles; }
+    int GetNumPrimitives() const {
+        return IsBezierMesh() ? _numBezierPatches : _numTriangles;
+    }
     int GetWatertightFlag(int face) const { return _wcpFlags[face]; }
+
+    const vec3f* GetBezierVerts(int face) const {
+        return (const vec3f*)&_bezierVertices[face * 16 * 3];
+    }
 
     Material const &GetMaterial(int matID) const { return _materials[matID]; }
     void SetMaterial(int matID, Material const &mat) {
         if ((int)_materials.size() <= matID) _materials.resize(matID+1);
         _materials[matID] = mat;
     }
+
+    const unsigned int *GetFaces() const { return &_faces[0]; }
+    const float* GetTriangleVerts() const { return &_triVertices[0]; }
+    const float* GetTriangleNormals() const { return &_triNormals[0]; }
 
     size_t GetMemoryUsage() const {
         size_t mem = 0;
@@ -85,6 +97,12 @@ struct Mesh {
         return mem;
     }
 
+    float GetDisplaceBound() const { return _displaceBound; }
+    vec3f GetColor(int face) const { return vec3f(&_colors[face*3]); }
+    OpenSubdiv::Far::PatchParam GetPatchParam(int face) const
+        { return _patchParams[face]; }
+
+private:
     // triangles
     size_t _numTriangles;
     std::vector<float> _triVertices;
@@ -93,14 +111,21 @@ struct Mesh {
 
     // patches
     size_t _numBezierPatches;
-    std::vector<float> _bezierVertices;             /// [xyz] * 16 * numBezierPatches
-    std::vector<unsigned char> _wcpFlags;           /// 4bit per patch flag
+    /// [xyz] * 16 * numBezierPatches
+    std::vector<float> _bezierVertices;
+    /// 4bit per patch flag
+    std::vector<unsigned char> _wcpFlags;
 
     // optional data
-    OpenSubdiv::Far::PatchParamTable _patchParams;  /// [FarPatchParam] * numBezierPatches
-    std::vector<float> _colors;                     /// [rgb] * numBezierPatches;
-    std::vector<float> _sharpnesses;                /// sharpness * numBezierPatches (for single-crease patch)
+    /// [FarPatchParam] * numBezierPatches
+    OpenSubdiv::Far::PatchParamTable _patchParams;
+    /// [rgb] * numBezierPatches;
+    std::vector<float> _colors;
+    /// sharpness * numBezierPatches
+    /// (for single-crease patch. needed until bezier conversion)
+    std::vector<float> _sharpnesses;
 
+    /// material index for each patches.
     std::vector<int> _materialIDs;
     std::vector<Material> _materials;
 
