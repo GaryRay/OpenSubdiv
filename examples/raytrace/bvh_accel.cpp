@@ -29,22 +29,16 @@
 
 #define __STDC_FORMAT_MACROS
 #include <inttypes.h>
-
+#include <memory>
 #include <limits>
-#include <functional>
-#include <algorithm>
 
 #include "bvh_accel.h"
 #include "mesh.h"
-#include "../common/stopwatch.h"
 
 #include "bezier/bezier.h"
 #include "bezier/bezierIntersect.h"
 #include "bezier/math.h"
 #include "bezier/math_sse.h"
-#include <memory>
-
-using namespace OsdBezier;
 
 #if ENABLE_TRACE_PRINT
 #define trace(...) { printf(__VA_ARGS__); }
@@ -57,6 +51,8 @@ using namespace OsdBezier;
 #else
 #define debug(f, ...)
 #endif
+
+using namespace OsdBezier;
 
 //
 //   The original BVH code in this file was contributed by Syoyo Fujita and
@@ -565,31 +561,31 @@ static bool
 IntersectRayAABB(float &tminOut, // [out]
                  float &tmaxOut, // [out]
                  float maxT, vec3f bmin, vec3f bmax,
-                 vec3f rayOrg, vec3f rayInvDir, int rayDirSign[3])
+                 Ray const &ray)
 {
     float tmin, tmax;
 
-    const float min_x = rayDirSign[0] * bmax[0] + (1-rayDirSign[0]) * bmin[0];
-    const float min_y = rayDirSign[1] * bmax[1] + (1-rayDirSign[1]) * bmin[1];
-    const float min_z = rayDirSign[2] * bmax[2] + (1-rayDirSign[2]) * bmin[2];
-    const float max_x = rayDirSign[0] * bmin[0] + (1-rayDirSign[0]) * bmax[0];
-    const float max_y = rayDirSign[1] * bmin[1] + (1-rayDirSign[1]) * bmax[1];
-    const float max_z = rayDirSign[2] * bmin[2] + (1-rayDirSign[2]) * bmax[2];
+    const float min_x = ray.dirSign[0] * bmax[0] + (1-ray.dirSign[0]) * bmin[0];
+    const float min_y = ray.dirSign[1] * bmax[1] + (1-ray.dirSign[1]) * bmin[1];
+    const float min_z = ray.dirSign[2] * bmax[2] + (1-ray.dirSign[2]) * bmin[2];
+    const float max_x = ray.dirSign[0] * bmin[0] + (1-ray.dirSign[0]) * bmax[0];
+    const float max_y = ray.dirSign[1] * bmin[1] + (1-ray.dirSign[1]) * bmax[1];
+    const float max_z = ray.dirSign[2] * bmin[2] + (1-ray.dirSign[2]) * bmax[2];
 
     // X
-    const double tmin_x = (min_x - rayOrg[0]) * rayInvDir[0];
-    const double tmax_x = (max_x - rayOrg[0]) * rayInvDir[0];
+    const double tmin_x = (min_x - ray.org[0]) * ray.invDir[0];
+    const double tmax_x = (max_x - ray.org[0]) * ray.invDir[0];
 
     // Y
-    const double tmin_y = (min_y - rayOrg[1]) * rayInvDir[1];
-    const double tmax_y = (max_y - rayOrg[1]) * rayInvDir[1];
+    const double tmin_y = (min_y - ray.org[1]) * ray.invDir[1];
+    const double tmax_y = (max_y - ray.org[1]) * ray.invDir[1];
 
     tmin = (tmin_x > tmin_y) ? tmin_x : tmin_y;
     tmax = (tmax_x < tmax_y) ? tmax_x : tmax_y;
 
     // Z
-    const double tmin_z = (min_z - rayOrg[2]) * rayInvDir[2];
-    const double tmax_z = (max_z - rayOrg[2]) * rayInvDir[2];
+    const double tmin_z = (min_z - ray.org[2]) * ray.invDir[2];
+    const double tmax_z = (max_z - ray.org[2]) * ray.invDir[2];
 
     tmin = (tmin > tmin_z) ? tmin : tmin_z;
     tmax = (tmax < tmax_z) ? tmax : tmax_z;
@@ -1015,13 +1011,6 @@ bool PatchIsectDisp(Intersection *isect,
     return hit;
 }
 
-static inline float
-Inverse(float x)
-{
-    if (fabs(x) < 1e-16) return 1e+16;
-    return float(1)/x;
-}
-
 bool
 BVHAccel::TestLeafNode(Intersection *isect, // [inout]
                        const BVHNode &node,
@@ -1038,10 +1027,6 @@ BVHAccel::TestLeafNode(Intersection *isect, // [inout]
     vec3f rayDir = ray.dir;
 
     Ray tr = ray;
-    tr.invDir = vec3f(Inverse(rayDir[0]),Inverse(rayDir[1]),Inverse(rayDir[2]));
-    for (int i=0; i < 3 ; i++) {
-        tr.dirSign[i] = (rayDir[i]<0)?1:0;
-    }
 
     if (_mesh->IsBezierMesh()) {
         for (unsigned int i = 0; i < numPrimitives; i++) {
@@ -1189,8 +1174,15 @@ BuildIntersection(Intersection *isect, const Mesh *mesh, const Ray &ray)
 
 #define kMaxStackDepth    512
 
+static inline float
+inverse(float x)
+{
+    if (fabs(x) < 1e-16) return 1e+16;
+    return float(1)/x;
+}
+
 bool
-BVHAccel::Traverse(const Ray &ray, Intersection *isect, Context *context) const
+BVHAccel::Traverse(Ray ray, Intersection *isect, Context *context) const
 {
     if (context) context->BeginTraverse();
 
@@ -1207,21 +1199,12 @@ BVHAccel::Traverse(const Ray &ray, Intersection *isect, Context *context) const
     isect->faceID = -1;
     isect->maxLevel = _maxLevel;
 
-    int dirSign[3];
-    dirSign[0] = ray.dir[0] < 0.0 ? 1 : 0;
-    dirSign[1] = ray.dir[1] < 0.0 ? 1 : 0;
-    dirSign[2] = ray.dir[2] < 0.0 ? 1 : 0;
-
-    // @fixme { Check edge case; i.e., 1/0 }
-    vec3f rayInvDir;
-    rayInvDir[0] = 1.0 / ray.dir[0];
-    rayInvDir[1] = 1.0 / ray.dir[1];
-    rayInvDir[2] = 1.0 / ray.dir[2];
-
-    vec3f rayOrg;
-    rayOrg[0] = ray.org[0];
-    rayOrg[1] = ray.org[1];
-    rayOrg[2] = ray.org[2];
+    ray.invDir = vec3f(inverse(ray.dir[0]),
+                       inverse(ray.dir[1]),
+                       inverse(ray.dir[2]));
+    ray.dirSign[0] = ray.dir[0] < 0.0 ? 1 : 0;
+    ray.dirSign[1] = ray.dir[1] < 0.0 ? 1 : 0;
+    ray.dirSign[2] = ray.dir[2] < 0.0 ? 1 : 0;
 
     float minT, maxT;
     while (nodeStackIndex >= 0) {
@@ -1230,12 +1213,11 @@ BVHAccel::Traverse(const Ray &ray, Intersection *isect, Context *context) const
 
         nodeStackIndex--;
 
-        bool hit = IntersectRayAABB(minT, maxT, hitT, node.bmin, node.bmax, rayOrg,
-                                    rayInvDir, dirSign);
+        bool hit = IntersectRayAABB(minT, maxT, hitT, node.bmin, node.bmax, ray);
 
         if (node.flag == 0) { // branch node
             if (hit) {
-                int orderNear = dirSign[node.axis];
+                int orderNear = ray.dirSign[node.axis];
                 int orderFar = 1 - orderNear;
 
                 // Traverse near first.

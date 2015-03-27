@@ -59,7 +59,8 @@ struct BVHBuildOptions {
 
     // Set default value: Taabb = 0.2
     BVHBuildOptions()
-        : costTaabb(0.2), minLeafPrimitives(16), maxTreeDepth(256), binSize(64) {}
+        : costTaabb(0.2), minLeafPrimitives(16),
+          maxTreeDepth(256), binSize(64) {}
 };
 
 ///< BVH build statistics.
@@ -94,7 +95,7 @@ public:
     BVHBuildStatistics GetStatistics() const { return _stats; }
 
     ///< Traverse into BVH along ray and find closest hit point if found
-    bool Traverse(const Ray &ray, Intersection *isect, Context *context) const;
+    bool Traverse(Ray ray, Intersection *isect, Context *context) const;
 
     void SetIntersectKernel(int k) {_intersectKernel = k; }
     void SetUVMargin(float margin) { _uvMargin = margin; }

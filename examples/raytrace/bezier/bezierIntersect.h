@@ -61,7 +61,6 @@ struct Epsilon<double> {
 template<class VALUE_TYPE, class REAL, int N=4>
 class BezierPatchIntersection {
 public:
-
     typedef VALUE_TYPE ValueType;
     typedef REAL Real;
     typedef BezierPatch<ValueType, Real, N> PatchType;
