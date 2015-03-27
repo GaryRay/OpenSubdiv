@@ -77,7 +77,6 @@ class BVHAccel {
 public:
     BVHAccel(float uvMargin=0) :
         _intersectKernel(KERNEL_FLOAT),
-        _displaceScale(0), _displaceFreq(100) ,
         _epsilon(1e-4),
         _uvMargin(uvMargin), _cropUV(true), _bezierClip(true),
         _maxLevel(10), _useTriangle(false),
@@ -101,9 +100,6 @@ public:
     void SetUVMargin(float margin) { _uvMargin = margin; }
     void SetCropUV(bool flag) {_cropUV = flag;}
     void SetBezierClip(bool flag) {_bezierClip = flag;}
-    void SetDisplacement(float scale, float freq) {
-        _displaceScale = scale; _displaceFreq = freq;
-    }
 
     void SetEpsilon(double eps){_epsilon=eps;}
     void SetMaxLevel(int level){_maxLevel=level;}
@@ -130,8 +126,6 @@ private:
 
     const Mesh *_mesh;
     int _intersectKernel;
-    float _displaceScale;
-    float _displaceFreq;
     double _epsilon;
 
     float _uvMargin;

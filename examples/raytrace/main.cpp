@@ -261,8 +261,6 @@ int g_debug = 0;
 float g_debugScale = 0.01f;
 int g_debugScope[2] = { g_width/2, g_height/2 };
 float g_uvMargin = 0.0f;
-float g_displaceScale = 0.0f;
-float g_displaceFreq = 100.0f;
 
 int g_epsLevel = 4;//4->16
 int g_maxLevel = 16;//10->32
@@ -321,8 +319,6 @@ setup() {
     config.uvMargin = g_uvMargin;
     config.cropUV = g_cropUV;
     config.bezierClip = g_bezierClip;
-    config.displaceScale = g_displaceScale;
-    config.displaceFreq = g_displaceFreq;
     config.epsLevel = g_epsLevel;
     config.maxLevel = g_maxLevel;
     config.useTriangle = g_useTriangle;
@@ -520,8 +516,7 @@ updateGeom() {
     g_scene.GetMesh().BezierConvert(g_cpuVertexBuffer->BindCpuBuffer(),
                                     g_topologyRefiner,
                                     g_patchTables,
-                                    g_watertight,
-                                    g_displaceScale/*bound*/);
+                                    g_watertight);
     s.Stop();
     g_convertTime = s.GetElapsed() * 1000.0f;
 
@@ -1025,12 +1020,6 @@ callbackSlider(float value, int data)
     } else if (data == 0) {
         g_uvMargin = value;
         startRender();
-    } else if (data == 1) {
-        g_displaceScale = value;
-        updateGeom();
-    } else if (data == 2) {
-        g_displaceFreq = value;
-        startRender();
     } else if (data == 3) {
         if (g_minLeafPrimitives != value) {
             g_minLeafPrimitives = value;
@@ -1150,11 +1139,6 @@ initHUD()
     g_hud.AddSlider("UV Margin", 0, 0.01, g_uvMargin,
                     10, y, 20, false, callbackSlider, 0);y+=30;
 
-    g_hud.AddSlider("Disp scale", 0, 0.1, g_displaceScale,
-                    10, y, 20, false, callbackSlider, 1);y+=30;
-    g_hud.AddSlider("Disp freq", 0, 200, g_displaceFreq,
-                    10, y, 20, false, callbackSlider, 2);y+=30;
-
     int kernel_pulldown = g_hud.AddPullDown("Intersect Kernel (I)", 400, 10, 200, callbackIntersect, 'i');
     g_hud.AddPullDownButton(kernel_pulldown, "float", 0, g_intersectKernel == 0);
     g_hud.AddPullDownButton(kernel_pulldown, "sse", 1, g_intersectKernel == 1);
@@ -1267,6 +1251,7 @@ idle() {
         g_stepIndex = 0;
     }
 
+    //if (g_displayStyle == Scene::PBS || g_displayStyle == Scene::AO) {
     if (g_displayStyle == Scene::PBS || g_displayStyle == Scene::AO) {
         if (g_stepIndex == 0) {
             g_stepIndex = g_step*g_step;

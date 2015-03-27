@@ -331,8 +331,7 @@ static void ComputeBoundingBox(vec3f &bmin, vec3f &bmax,
                                const vec3f *bezierVertices,
                                const unsigned int *indices,
                                unsigned int leftIndex,
-                               unsigned int rightIndex,
-                               float displaceBound/*tmp*/)
+                               unsigned int rightIndex)
 {
     const float kEPS = std::numeric_limits<float>::epsilon() * 1024;
 
@@ -350,12 +349,12 @@ static void ComputeBoundingBox(vec3f &bmin, vec3f &bmax,
         bmin = bmin.min(pmin);
         bmax = bmax.max(pmax);
     }
-    bmin[0] -= kEPS + displaceBound;
-    bmin[1] -= kEPS + displaceBound;
-    bmin[2] -= kEPS + displaceBound;
-    bmax[0] += kEPS + displaceBound;
-    bmax[1] += kEPS + displaceBound;
-    bmax[2] += kEPS + displaceBound;
+    bmin[0] -= kEPS;
+    bmin[1] -= kEPS;
+    bmin[2] -= kEPS;
+    bmax[0] += kEPS;
+    bmax[1] += kEPS;
+    bmax[2] += kEPS;
 }
 
 static void ComputeBoundingBox(vec3f &bmin, vec3f &bmax,
@@ -413,8 +412,7 @@ BVHAccel::BuildTree(unsigned int leftIdx, unsigned int rightIdx, int depth)
     vec3f bmin, bmax;
     if (_mesh->IsBezierMesh()) {
         ComputeBoundingBox(bmin, bmax, _mesh->GetBezierVerts(0),
-                           &_indices.at(0), leftIdx, rightIdx,
-                           _mesh->GetDisplaceBound());
+                           &_indices.at(0), leftIdx, rightIdx);
     } else {
         ComputeBoundingBox(bmin, bmax, _mesh->GetTriangleVerts(),
                            _mesh->GetFaces(),
@@ -687,330 +685,6 @@ bool PatchIsect(int patchIndex,
     return bzi.Test(isect, ray, 0, t);
 }
 
-static void
-sideCrop(float &umin, float &umax, float &vmin, float &vmax,
-         bool uFlag[2], bool vFlag[2],
-         Intersection const &hIs,
-         Intersection const uIs[2],
-         Intersection const vIs[2])
-{
-    if (uFlag[0]) {
-        umin = 0;
-        umax = hIs.u;
-    } else if (uFlag[1]) {
-        umin = hIs.u;
-        umax = 1;
-    } else {
-        if (vFlag[0]) {
-            umin = std::min(vIs[0].u, hIs.u);
-            umax = std::max(vIs[0].u, hIs.u);
-        } else if (vFlag[1]) {
-            umin = std::min(vIs[1].u, hIs.u);
-            umax = std::max(vIs[1].u, hIs.u);
-        } else {
-            // error.
-        }
-    }
-    if (vFlag[0]) {
-        vmin = 0;
-        vmax = hIs.v;
-    } else if (vFlag[1]) {
-        vmin = hIs.v;
-        vmax = 1;
-    } else {
-        if (uFlag[0]) {
-            vmin = std::min(uIs[0].u, hIs.v);
-            vmax = std::max(uIs[0].u, hIs.v);
-        } else if (uFlag[1]) {
-            vmin = std::min(uIs[1].u, hIs.v);
-            vmax = std::max(uIs[1].u, hIs.v);
-        } else {
-            // error.
-        }
-    }
-}
-
-template<typename T>
-bool PatchIsectDisp(Intersection *isect,
-                    const vec3f *bezierVerts,
-                    const Ray &ray,
-                    float uvMargin,
-                    bool cropUV,
-                    bool bezierClip,
-                    double eps,
-                    int maxLevel,
-                    bool useTriangle,
-                    bool useRayDiffEpsilon,
-                    float displaceScale,
-                    float displaceFreq)
-{
-    float upperBound = displaceScale; // this has to be per-patch
-    float lowerBound = 0;//upperBound;
-
-    typedef BezierPatch<T, typename T::ElementType, 4> PatchType;
-    typedef BezierPatchIntersection<T, typename T::ElementType, 4> Intersect;
-    PatchType patch(bezierVerts);
-
-    PatchType upperPatch;
-    PatchType lowerPatch;
-
-    // offset
-    for (int i = 0; i < 4; ++i) {
-        for(int j = 0; j < 4; ++j) {
-            T p = patch.Get(i, j);
-            T n = patch.EvaluateNormal(i/3.0, j/3.0);
-            upperPatch.Set(i, j, p - n * upperBound);
-            lowerPatch.Set(i, j, p + n * lowerBound);
-        }
-    }
-    /*
-      volume crop
-                         u--*
-               +----------+ |
-              /        u /| v
-           u / up/low / /u|
-          / /     v--* // |
-         * +----------+*  +
-         | |      u--*|| /
-         v |         ||v/
-           |         v|/
-           +----------+
-     */
-
-    float t = isect->t;
-    Intersection upperIs = *isect, lowerIs = *isect;
-    Intersect upperIsect(upperPatch);
-    Intersect lowerIsect(lowerPatch);
-
-    {
-      double eps0 = eps;
-      double eps1 = eps;
-      if(useRayDiffEpsilon){
-        eps0 = upperIsect.ComputeEpsilon(ray, eps0);
-        eps1 = lowerIsect.ComputeEpsilon(ray, eps1);
-      }
-      upperIsect.SetEpsilon(eps0);
-      upperIsect.SetMaxLevel(maxLevel);
-      upperIsect.SetCropUV  (cropUV);
-      upperIsect.SetUVMergin(uvMargin);
-      upperIsect.SetUseBezierClip(bezierClip);
-      upperIsect.SetUseTriangle  (useTriangle);
-
-      lowerIsect.SetEpsilon(eps1);
-      lowerIsect.SetMaxLevel(maxLevel);
-      lowerIsect.SetCropUV  (cropUV);
-      lowerIsect.SetUVMergin(uvMargin);
-      lowerIsect.SetUseBezierClip(bezierClip);
-      lowerIsect.SetUseTriangle  (useTriangle);
-    }
-    
-
-    bool upperFlag = upperIsect.Test(&upperIs, ray, 0, t);
-    bool lowerFlag = lowerIsect.Test(&lowerIs, ray, 0, t);
-
-    float umin = 0, umax = 1, vmin = 0, vmax = 1;
-
-    if (upperFlag and lowerFlag) {
-        umin = std::min(upperIs.u, lowerIs.u);
-        umax = std::max(upperIs.u, lowerIs.u);
-        vmin = std::min(upperIs.v, lowerIs.v);
-        vmax = std::max(upperIs.v, lowerIs.v);
-    } else {
-        PatchType uPatch[2], vPatch[2];
-        for (int i = 0; i < 4; ++i) {
-            uPatch[0].Set(i, 0, upperPatch.Get(0, i));
-            uPatch[0].Set(i, 3, lowerPatch.Get(0, i));
-            uPatch[1].Set(i, 0, upperPatch.Get(3, i));
-            uPatch[1].Set(i, 3, lowerPatch.Get(3, i));
-            vPatch[0].Set(i, 0, upperPatch.Get(i, 0));
-            vPatch[0].Set(i, 3, lowerPatch.Get(i, 0));
-            vPatch[1].Set(i, 0, upperPatch.Get(i, 3));
-            vPatch[1].Set(i, 3, lowerPatch.Get(i, 3));
-
-            for (int j = 0; j < 2; ++j) {
-                uPatch[j].Set(i, 1, (uPatch[j].Get(i, 0)*2 + uPatch[j].Get(i, 3)  )*(1.0/3.0));
-                uPatch[j].Set(i, 2, (uPatch[j].Get(i, 0)   + uPatch[j].Get(i, 3)*2)*(1.0/3.0));
-                vPatch[j].Set(i, 1, (vPatch[j].Get(i, 0)*2 + vPatch[j].Get(i, 3)  )*(1.0/3.0));
-                vPatch[j].Set(i, 2, (vPatch[j].Get(i, 0)   + vPatch[j].Get(i, 3)*2)*(1.0/3.0));
-            }
-        }
-        bool uFlag[2] = { false, false };
-        bool vFlag[2] = { false, false };
-        Intersection uIs[2] = { *isect, *isect };
-        Intersection vIs[2] = { *isect, *isect };
-        for (int i = 0; i < 2; ++i) {
-            Intersect uIsect(uPatch[i]);
-            Intersect vIsect(vPatch[i]);
-            double eps0 = eps;
-            double eps1 = eps;
-            if(useRayDiffEpsilon){
-              eps0 = uIsect.ComputeEpsilon(ray, eps0);
-              eps1 = vIsect.ComputeEpsilon(ray, eps1);
-            }
-            uIsect.SetEpsilon(eps0);
-            uIsect.SetMaxLevel(maxLevel);
-            uIsect.SetCropUV  (cropUV);
-            uIsect.SetUVMergin(uvMargin);
-            uIsect.SetUseBezierClip(bezierClip);
-            uIsect.SetUseTriangle  (useTriangle);
-
-            vIsect.SetEpsilon(eps1);
-            vIsect.SetMaxLevel(maxLevel);
-            vIsect.SetCropUV  (cropUV);
-            vIsect.SetUVMergin(uvMargin);
-            vIsect.SetUseBezierClip(bezierClip);
-            vIsect.SetUseTriangle  (useTriangle);
-
-            uFlag[i] = uIsect.Test(&uIs[i], ray, 0, t);
-            vFlag[i] = vIsect.Test(&vIs[i], ray, 0, t);
-        }
-
-        if (upperFlag) {
-            sideCrop(umin, umax, vmin, vmax, uFlag, vFlag,
-                     upperIs, uIs, vIs);
-        } else if (lowerFlag) {
-            sideCrop(umin, umax, vmin, vmax, uFlag, vFlag,
-                     lowerIs, uIs, vIs);
-        } else if (uFlag[0] == false and vFlag[0] == false and
-                   uFlag[1] == false and vFlag[1] == false) {
-            // complete out
-            return false;
-        } else {
-            // corner case
-            if (uFlag[0] and vFlag[0] and !uFlag[1] and !vFlag[1]) {
-                umax = vIs[0].u;
-                vmax = uIs[0].u;
-            } else if(uFlag[0] and !vFlag[0] and !uFlag[1] and vFlag[1]) {
-                vmin = uIs[0].u;
-                umax = vIs[1].u;
-            } else if(!uFlag[0] and vFlag[0] and uFlag[1] and !vFlag[1]) {
-                vmax = uIs[1].u;
-                umin = vIs[0].u;
-            } else if(!uFlag[0] and !vFlag[0] and uFlag[1] and vFlag[1]) {
-                umin = vIs[1].u;
-                vmin = uIs[1].u;
-            } else {
-                // TODO grazing ray, umin-umax / vmin-vmax;
-            }
-        }
-    }
-
-    // make square for better cropping
-    float ulen = umax - umin;
-    float vlen = vmax - vmin;
-    ulen = std::max(ulen, vlen);
-    float ucenter = (umin+umax)*0.5;
-    float vcenter = (vmin+vmax)*0.5;
-    umin = ucenter - ulen;
-    umax = ucenter + ulen;
-    vmin = vcenter - ulen; // use u
-    vmax = vcenter + ulen;
-
-    umin = std::max(0.0f, umin);
-    vmin = std::max(0.0f, vmin);
-    umax = std::min(1.0f, umax);
-    vmax = std::min(1.0f, vmax);
-
-    // umin = vmin = 0;
-    // umax = vmax = 1;
-
-    // TODO: ray differential
-    int diceLevel = (int)(ulen * 400);
-    diceLevel = std::max(1, diceLevel);
-    diceLevel = std::min(16, diceLevel);
-
-    // dice & displace patch
-    float ustep = (umax-umin)/diceLevel;
-    float vstep = (vmax-vmin)/diceLevel;
-    bool hit = false;
-
-    float freq = displaceFreq;
-    const float kEPS = 1.0e-4;
-
-    for (int lu = 0; lu < diceLevel; ++lu) {
-        float umin2 = umin + ustep*lu - kEPS;
-        float umax2 = umin + ustep*(lu+1) + kEPS;
-        PatchType tmp;
-        patch.CropU(tmp, umin2, umax2);
-
-        for (int lv = 0; lv < diceLevel; ++lv) {
-            float vmin2 = vmin + vstep*lv - kEPS;
-            float vmax2 = vmin + vstep*(lv+1) + kEPS;
-            PatchType subPatch;
-            tmp.CropV(subPatch, vmin2, vmax2);
-
-            // triangle intersect
-            float t = isect->t;
-
-            T p[4];
-            p[0] = subPatch.Get(0,0);
-            p[1] = subPatch.Get(0,3);
-            p[2] = subPatch.Get(3,0);
-            p[3] = subPatch.Get(3,3);
-
-#define DISPLACEMENT(x, y) (upperBound * pow(0.5 * (1+sin(x*freq)*cos(y*freq)), 5))
-            //#define DISPLACEMENT(x, y) (upperBound * 0.8)
-
-            // TODO:
-            //
-            //    we'll make spline surfaces, rather than triangles.
-            //
-            vec3f v[4];
-            float uv[4][2] = { {umin2, vmin2}, {umin2, vmax2},
-                               {umax2, vmin2}, {umax2, vmax2} };
-            for (int i = 0; i < 4; ++i) {
-                vec3f n = patch.EvaluateNormal(uv[i][0], uv[i][1]);
-                float displacement = DISPLACEMENT(p[i][0], p[i][1]);
-                vec3f dp = p[i] - n * displacement;
-                v[i] = vec3f(dp[0], dp[1], dp[2]);
-            }
-
-            float ou, ov;
-            bool i0 = TriangleIsect(t, ou, ov, v[0], v[1], v[2], ray.org, ray.dir);
-            bool i1 = i0 ? false : TriangleIsect(t, ou, ov, v[1], v[2], v[3], ray.org, ray.dir);
-
-            if (i0 | i1) {
-                isect->t = t;
-                if (i0) {
-                    isect->u = umin2 * ou + umax2 * ov + umin2 * (1 - ou - ov);
-                    isect->v = vmax2 * ou + vmin2 * ov + vmin2 * (1 - ou - ov);
-                } else {
-                    isect->u = umax2 * ou + umax2 * ov + umin2 * (1 - ou - ov);
-                    isect->v = vmin2 * ou + vmax2 * ov + vmax2 * (1 - ou - ov);
-                }
-
-                // displaced normal approximation (ignoring weingarten term)
-                // du Ns' = du S + Ns du D
-                // dv Ns' = dv S + Ns dv D
-
-                float delta = 1.0e-4;
-                vec3f Sp = patch.Evaluate(isect->u, isect->v);
-                vec3f Spu = patch.Evaluate(isect->u + delta, isect->v);
-                vec3f Spv = patch.Evaluate(isect->u, isect->v + delta);
-                vec3f Su = patch.EvaluateDu(isect->u, isect->v);
-                vec3f Sv = -1.0 * patch.EvaluateDv(isect->u, isect->v);
-                vec3f N = cross(Su, Sv);
-                N.normalize();
-
-                float d = DISPLACEMENT(Sp[0], Sp[1]);
-                float duD = (DISPLACEMENT(Spu[0], Spu[1]) - d)/delta;
-                float dvD = (DISPLACEMENT(Spv[0], Spv[1]) - d)/delta;
-
-                Su = Su + N * duD;
-                Sv = Sv - N * dvD;
-
-                vec3f n = -1.0*cross(Su, Sv);
-                n.normalize();
-                isect->normal = vec3f(n[0], n[1], n[2]);
-
-                hit = true;
-#undef DISPLACEMNT
-            }
-        }
-    }
-    return hit;
-}
-
 bool
 BVHAccel::TestLeafNode(Intersection *isect, // [inout]
                        const BVHNode &node,
@@ -1035,43 +709,30 @@ BVHAccel::TestLeafNode(Intersection *isect, // [inout]
             const vec3f *bv = _mesh->GetBezierVerts(faceIdx);
             int wcpFlag = _conservativeTest ? _mesh->GetWatertightFlag(faceIdx) : 0;
 
-            if (_displaceScale == 0) {
-                bool r = false;
-                if (_intersectKernel == BVHAccel::KERNEL_FLOAT) {
-                    r = PatchIsect<vec3f>(faceIdx, isect, bv, wcpFlag, tr,
-                                          _uvMargin, _cropUV, _bezierClip,
-                                          _epsilon,
-                                          _maxLevel, _useTriangle,
-                                          _useRayDiffEpsilon, _directBilinear);
-                } else if (_intersectKernel == BVHAccel::KERNEL_SSE) {
-                    r = PatchIsect<vec3sse>(faceIdx, isect, bv, wcpFlag, tr,
-                                            _uvMargin, _cropUV, _bezierClip,
-                                            _epsilon,
-                                            _maxLevel, _useTriangle,
-                                            _useRayDiffEpsilon, _directBilinear);
-                } else if (_intersectKernel == BVHAccel::KERNEL_DOUBLE) {
-                    r = PatchIsect<vec3d>(faceIdx, isect, bv, wcpFlag, tr,
-                                          _uvMargin, _cropUV, _bezierClip,
-                                          _epsilon,
-                                          _maxLevel, _useTriangle,
-                                          _useRayDiffEpsilon, _directBilinear);
-                }
-                if (r) {
-                    // Update isect state
-                    isect->faceID = faceIdx;
-                    hit = true;
-                }
-            } else {
-                if (PatchIsectDisp<vec3f>(isect, bv, tr,
-                                          _uvMargin, _cropUV, _bezierClip,
-                                          _epsilon,
-                                          _maxLevel, _useTriangle,
-                                          _useRayDiffEpsilon,
-                                          _displaceScale, _displaceFreq)) {
-                    // Update isect state
-                    isect->faceID = faceIdx;
-                    hit = true;
-                }
+            bool r = false;
+            if (_intersectKernel == BVHAccel::KERNEL_FLOAT) {
+                r = PatchIsect<vec3f>(faceIdx, isect, bv, wcpFlag, tr,
+                                      _uvMargin, _cropUV, _bezierClip,
+                                      _epsilon,
+                                      _maxLevel, _useTriangle,
+                                      _useRayDiffEpsilon, _directBilinear);
+            } else if (_intersectKernel == BVHAccel::KERNEL_SSE) {
+                r = PatchIsect<vec3sse>(faceIdx, isect, bv, wcpFlag, tr,
+                                        _uvMargin, _cropUV, _bezierClip,
+                                        _epsilon,
+                                        _maxLevel, _useTriangle,
+                                        _useRayDiffEpsilon, _directBilinear);
+            } else if (_intersectKernel == BVHAccel::KERNEL_DOUBLE) {
+                r = PatchIsect<vec3d>(faceIdx, isect, bv, wcpFlag, tr,
+                                      _uvMargin, _cropUV, _bezierClip,
+                                      _epsilon,
+                                      _maxLevel, _useTriangle,
+                                      _useRayDiffEpsilon, _directBilinear);
+            }
+            if (r) {
+                // Update isect state
+                isect->faceID = faceIdx;
+                hit = true;
             }
         }
     } else {

@@ -47,15 +47,12 @@ struct Material {
 class Mesh {
 public:
     Mesh() : _numTriangles(0),
-             _numBezierPatches(0),
-             _displaceBound(0) {
-    }
+             _numBezierPatches(0) { }
 
     void BezierConvert(const float *vertices,
                        OpenSubdiv::Far::TopologyRefiner const *refiner,
                        OpenSubdiv::Far::PatchTables const *patchTables,
-                       bool watertight,
-                       float displaceBound);
+                       bool watertight);
 
     void Tessellate(int level);
 
@@ -97,7 +94,6 @@ public:
         return mem;
     }
 
-    float GetDisplaceBound() const { return _displaceBound; }
     vec3f GetColor(int face) const { return vec3f(&_colors[face*3]); }
     OpenSubdiv::Far::PatchParam GetPatchParam(int face) const
         { return _patchParams[face]; }
@@ -128,8 +124,6 @@ private:
     /// material index for each patches.
     std::vector<int> _materialIDs;
     std::vector<Material> _materials;
-
-    float _displaceBound;
 };
 
 #endif  // OSD_RAYTRACE_MESH_H

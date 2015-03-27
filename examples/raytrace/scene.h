@@ -45,7 +45,6 @@ public:
             maxLevel = 16;
             useTriangle = false;
             useRayDiffEpsilon = true;
-            displaceScale = displaceFreq = 0.0f;
             conservativeTest = true;
             directBilinear = false;
             preTessLevel = 0;
@@ -63,8 +62,6 @@ public:
         bool conservativeTest;
         bool directBilinear;
         int preTessLevel;
-        float displaceScale;
-        float displaceFreq;
 
         std::string Dump() const;
     };

@@ -71,8 +71,7 @@ void
 Mesh::BezierConvert(const float *vertices,
                     OpenSubdiv::Far::TopologyRefiner const *refiner,
                     OpenSubdiv::Far::PatchTables const *patchTables,
-                    bool watertight,
-                    float displaceBound)
+                    bool watertight)
 {
     using namespace OpenSubdiv;
     using namespace OsdBezier;
@@ -487,8 +486,6 @@ Mesh::BezierConvert(const float *vertices,
     _numTriangles = 0;
     _numBezierPatches = numTotalPatches;
     _patchParams = patchParam;
-
-    _displaceBound = displaceBound;
 
     assert(numTotalPatches*16*3 == (int)_bezierVertices.size());
 }

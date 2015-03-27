@@ -267,7 +267,6 @@ Scene::SetConfig(Config const &config)
     _accel.SetUVMargin(config.uvMargin);
     _accel.SetCropUV(config.cropUV);
     _accel.SetBezierClip(config.bezierClip);
-    _accel.SetDisplacement(config.displaceScale, config.displaceFreq);
 
     static const double EPS_FROM_LEVEL[] = {
         1e-3,1e-3,1e-3,1e-3,1e-4,1e-5,1e-6,1e-7,1e-8,1e-9,
