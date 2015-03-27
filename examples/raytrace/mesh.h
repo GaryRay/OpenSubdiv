@@ -72,11 +72,15 @@ struct Mesh {
     size_t GetMemoryUsage() const {
         size_t mem = 0;
         if (IsBezierMesh()) {
+            // patches memory
             mem += _bezierVertices.size() * sizeof(float);  // cp
-            mem += _numBezierPatches/2; // wcpFlag (4bit per patch);
+            mem += _numBezierPatches/2; // wcpFlag (4bit per patch)
+                                        // note: currently it takes 8bit though.
         } else {
-            mem += _triVertices.size() * sizeof(float); // verts
+            // triangles memory
+            mem += _triVertices.size() * sizeof(float);  // verts
             mem += _faces.size() * sizeof(unsigned int); // indices
+            // ignoring normals for now...
         }
         return mem;
     }

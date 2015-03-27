@@ -21,50 +21,34 @@
 //   KIND, either express or implied. See the Apache License for the specific
 //   language governing permissions and limitations under the Apache License.
 //
-
-#ifndef RAY_H
-#define RAY_H
+#ifndef SHADER_H
+#define SHADER_H
 
 #include "common.h"
 
-struct Ray {
-    vec3f org;
-    vec3f dir;
-    vec3f invDir;
-    int dirSign[3];
-    int depth;
-    bool hasDifferential;
+struct Intersection;
+struct Ray;
+class Scene;
 
-    vec3f dDdx;
-    vec3f dDdy;
-};
+typedef vec3f (*ShadeFunc)(const Scene *, const Ray &, const Intersection &);
 
-struct Intersection {
-    float t;
-    float u;
-    float v;
-    unsigned int faceID;
+extern vec3f ShadeLambert(const Scene *scene,
+                          const Ray &ray,
+                          const Intersection &isect);
+extern vec3f ShadePatchCoord(const Scene *scene,
+                             const Ray &ray,
+                             const Intersection &isect);
+extern vec3f ShadeHeatmap(const Scene *scene,
+                          const Ray &ray,
+                          const Intersection &isect);
+extern vec3f ShadePatchType(const Scene *scene,
+                            const Ray &ray,
+                            const Intersection &isect);
+extern vec3f ShadeAmbientOcclusion(const Scene *scene,
+                                   const Ray &ray,
+                                   const Intersection &isect);
+extern vec3f ShadePBS(const Scene *scene,
+                      const Ray &ray,
+                      const Intersection &isect);
 
-    // patch info
-    unsigned int patchID;
-    unsigned int level;
-    unsigned int clipLevel;
-
-    // for SGA tech brief
-    float        eps;
-    unsigned int maxLevel;
-
-    unsigned int f0;
-    unsigned int f1;
-    unsigned int f2;
-
-    vec3f position;
-    vec3f geometricNormal;
-    vec3f normal;
-    vec3f tangent;
-    vec3f binormal;
-    float texcoord[2];
-};
-
-
-#endif // RAY_H
+#endif  // SHADER_H

@@ -26,9 +26,10 @@
 
 #include <vector>
 #include "ray.h"
-#include "mesh.h"
 #include "context.h"
 #include "common.h"
+
+struct Mesh;
 
 class BVHNode {
 public:
@@ -92,8 +93,7 @@ public:
     BVHBuildStatistics GetStatistics() const { return _stats; }
 
     ///< Traverse into BVH along ray and find closest hit point if found
-    bool Traverse(Intersection &isect, const Mesh *mesh, Ray &ray,
-                  Context *context) const;
+    bool Traverse(const Ray &ray, Intersection *isect, Context *context) const;
 
     void SetIntersectKernel(int k) {_intersectKernel = k; }
     void SetUVMargin(float margin) { _uvMargin = margin; }
@@ -113,14 +113,14 @@ public:
 
 private:
     ///< Builds BVH tree recursively.
-    size_t BuildTree(const Mesh *mesh, unsigned int leftIdx,
-                     unsigned int rightIdx, int depth);
+    size_t BuildTree(unsigned int leftIdx, unsigned int rightIdx, int depth);
 
     BVHBuildOptions _options;
     std::vector<BVHNode> _nodes;
     std::vector<unsigned int> _indices; // max 4G triangles.
     BVHBuildStatistics _stats;
 
+    const Mesh *_mesh;
     int _intersectKernel;
     float _uvMargin;
     bool _cropUV;

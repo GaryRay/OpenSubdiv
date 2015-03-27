@@ -1170,7 +1170,7 @@ initHUD()
     int shading_pulldown = g_hud.AddPullDown("Shading (W)", 200, 10, 250, callbackDisplayStyle, 'w');
     g_hud.AddPullDownButton(shading_pulldown, "Shaded", Scene::SHADED,
                             g_displayStyle==Scene::SHADED);
-    g_hud.AddPullDownButton(shading_pulldown, "Ptex coord", Scene::PATCH_COORD,
+    g_hud.AddPullDownButton(shading_pulldown, "Patch coord", Scene::PATCH_COORD,
                             g_displayStyle==Scene::PATCH_COORD);
     g_hud.AddPullDownButton(shading_pulldown, "Patch color", Scene::PATCH_TYPE,
                             g_displayStyle==Scene::PATCH_TYPE);
@@ -1180,8 +1180,6 @@ initHUD()
                             g_displayStyle==Scene::AO);
     g_hud.AddPullDownButton(shading_pulldown, "PBS", Scene::PBS,
                             g_displayStyle==Scene::PBS);
-    g_hud.AddPullDownButton(shading_pulldown, "Transparent", Scene::TRANSPARENT,
-                            g_displayStyle==Scene::TRANSPARENT);
 
     for (int i = 1; i < 11; ++i) {
         char level[16];

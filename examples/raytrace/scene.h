@@ -30,6 +30,7 @@
 #include "mesh.h"
 #include <far/patchTables.h>
 #include <osd/opengl.h>
+#include <string>
 
 class Scene
 {
@@ -77,33 +78,28 @@ public:
     void SetCamera(int width, int height, double fov,
                    std::vector<float> &image, // RGB
                    const float eye[3], const float lookat[3], const float up[3]);
-
     void SetConfig(Config const &config);
 
-    bool LoadEnvMap(const std::string &filename);
-    // render, debug
-
+    // render
     void Render(int stepIndex, int step);
     void Render() { Render(0, 1); }
+    bool Traverse(const Ray &ray,
+                  Intersection *isect,
+                  Context *context=NULL) const {
+        return _accel.Traverse(ray, isect, context);
+    }
+
+    // debug
     void DebugTrace(float x, float y);
 
     // shading style
-    void PhysicallyBasedShading(float rgba[4], const Intersection &isect, const Ray &ray,
-                                Context *context);
-    void EnvCol(float rgba[4], const OsdBezier::vec3f & dir);
-    void Shade(float rgba[4], const Intersection &isect, const Ray &ray,
-               Context *context);
-
-    enum ShadeMode { SHADED, PATCH_COORD, PATCH_TYPE, HEAT_MAP, AO, PBS, TRANSPARENT };
-
+    enum ShadeMode { SHADED, PATCH_COORD, PATCH_TYPE, HEAT_MAP, AO, PBS };
     void SetShadeMode(ShadeMode mode) {
         _mode = mode;
     }
 
     // background style
-
     enum BackgroundMode { GRADATION, WHITE, BLACK, ENVMAP };
-
     void SetBackgroudMode(BackgroundMode mode) {
         _backgroundMode = mode;
     }
@@ -111,18 +107,20 @@ public:
         return _backgroundMode;
     }
 
+    // envmap
+    bool LoadEnvMap(const std::string &filename);
+    vec3f GetEnvColor(const vec3f &dir) const;
+
     // mesh
     Mesh &GetMesh() { return _mesh; }
+    const Mesh &GetMesh() const { return _mesh; }
 
     // BVH visualize
     GLuint GetVBO() const { return _vbo; }
-
     int GetNumBVHNode() const { return (int)_accel.GetNodes().size(); }
 
     // reporting
-
     void RenderReport();
-
     size_t GetMemoryUsage() const {
         size_t mem = 0;
         // bvh

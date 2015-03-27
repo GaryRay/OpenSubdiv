@@ -67,6 +67,7 @@ include_directories("${CMAKE_CURRENT_BINARY_DIR}")
 _add_glfw_executable(raytrace
     main.cpp
     mesh.cpp
+    shader.cpp
     bvh_accel.cpp
     convert_bezier.cpp
     camera.cpp

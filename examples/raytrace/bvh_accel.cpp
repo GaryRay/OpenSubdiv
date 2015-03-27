@@ -35,6 +35,7 @@
 #include <algorithm>
 
 #include "bvh_accel.h"
+#include "mesh.h"
 #include "../common/stopwatch.h"
 
 #include "bezier/bezier.h"
@@ -416,8 +417,9 @@ static void ComputeBoundingBox(vec3f &bmin, vec3f &bmax,
 // --
 //
 
-size_t BVHAccel::BuildTree(const Mesh *mesh, unsigned int leftIdx,
-                           unsigned int rightIdx, int depth) {
+size_t
+BVHAccel::BuildTree(unsigned int leftIdx, unsigned int rightIdx, int depth)
+{
     assert(leftIdx <= rightIdx);
 
     debug("d: %d, l: %d, r: %d\n", depth, leftIdx, rightIdx);
@@ -429,12 +431,13 @@ size_t BVHAccel::BuildTree(const Mesh *mesh, unsigned int leftIdx,
     }
 
     vec3f bmin, bmax;
-    if (mesh->IsBezierMesh()) {
-        ComputeBoundingBox(bmin, bmax, &mesh->_bezierVertices[0],
-                           &_indices.at(0), leftIdx, rightIdx, mesh->_displaceBound);
+    if (_mesh->IsBezierMesh()) {
+        ComputeBoundingBox(bmin, bmax, &_mesh->_bezierVertices[0],
+                           &_indices.at(0), leftIdx, rightIdx,
+                           _mesh->_displaceBound);
     } else {
-        ComputeBoundingBox(bmin, bmax, &mesh->_triVertices[0],
-                           &mesh->_faces[0],
+        ComputeBoundingBox(bmin, bmax, &_mesh->_triVertices[0],
+                           &_mesh->_faces[0],
                            &_indices.at(0),
                            leftIdx, rightIdx);
     }
@@ -474,7 +477,7 @@ size_t BVHAccel::BuildTree(const Mesh *mesh, unsigned int leftIdx,
     float cutPos[3] = {0.0, 0.0, 0.0};
 
     BinBuffer bins(_options.binSize);
-    ContributeBinBuffer(&bins, bmin, bmax, mesh, &_indices.at(0), leftIdx,
+    ContributeBinBuffer(&bins, bmin, bmax, _mesh, &_indices.at(0), leftIdx,
                         rightIdx);
     FindCutFromBinBuffer(cutPos, minCutAxis, &bins, bmin, bmax, n,
                          _options.costTaabb);
@@ -500,7 +503,7 @@ size_t BVHAccel::BuildTree(const Mesh *mesh, unsigned int leftIdx,
         // Split at (cutAxis, cutPos)
         // _indices will be modified.
         //
-        mid = std::partition(begin, end, SAHPred(cutAxis, cutPos[cutAxis], mesh));
+        mid = std::partition(begin, end, SAHPred(cutAxis, cutPos[cutAxis], _mesh));
 
         midIdx = leftIdx + (mid - begin);
         if ((midIdx == leftIdx) || (midIdx == rightIdx)) {
@@ -523,8 +526,8 @@ size_t BVHAccel::BuildTree(const Mesh *mesh, unsigned int leftIdx,
     _nodes.push_back(node);
 
     // Recurively split tree.
-    unsigned int leftChildIndex = BuildTree(mesh, leftIdx, midIdx, depth + 1);
-    unsigned int rightChildIndex = BuildTree(mesh, midIdx, rightIdx, depth + 1);
+    unsigned int leftChildIndex = BuildTree(leftIdx, midIdx, depth + 1);
+    unsigned int rightChildIndex = BuildTree(midIdx, rightIdx, depth + 1);
 
     _nodes[offset].data[0] = leftChildIndex;
     _nodes[offset].data[1] = rightChildIndex;
@@ -537,13 +540,15 @@ size_t BVHAccel::BuildTree(const Mesh *mesh, unsigned int leftIdx,
     return offset;
 }
 
-bool BVHAccel::Build(const Mesh *mesh, const BVHBuildOptions &options) {
+bool BVHAccel::Build(const Mesh *mesh, const BVHBuildOptions &options)
+{
+    if (mesh == NULL) return false;
+
+    _mesh = mesh;
     _options = options;
     _stats = BVHBuildStatistics();
 
     assert(_options.binSize > 1);
-
-    assert(mesh);
 
     size_t n = mesh->IsBezierMesh() ? mesh->_numBezierPatches : mesh->_numTriangles;
     trace("[BVHAccel] Input # of bezier patches = %lu\n", mesh->GetNumPatches());
@@ -559,7 +564,7 @@ bool BVHAccel::Build(const Mesh *mesh, const BVHBuildOptions &options) {
     //
     // 2. Build tree
     //
-    BuildTree(mesh, 0, n, 0);
+    BuildTree(0, n, 0);
 
     // Tree will be null if input triangle count == 0.
     if (!_nodes.empty()) {
@@ -671,7 +676,7 @@ inline bool TriangleIsect(float &tInOut, float &uOut, float &vOut, const vec3f &
 
 template<typename T>
 bool PatchIsect(int patchIndex,
-    Intersection &isect,
+                Intersection *isect,
                 const float *bezierVerts,
                 int wcpFlag,
                 const Ray &ray,
@@ -698,8 +703,8 @@ bool PatchIsect(int patchIndex,
     bzi.SetDirectBilinear(directBilinear);
     bzi.SetWatertightFlag(wcpFlag);
 
-    float t = isect.t;
-    return bzi.Test(&isect, ray, 0, t);
+    float t = isect->t;
+    return bzi.Test(isect, ray, 0, t);
 }
 
 static void
@@ -744,7 +749,7 @@ sideCrop(float &umin, float &umax, float &vmin, float &vmax,
 }
 
 template<typename T>
-bool PatchIsectDisp(Intersection &isect,
+bool PatchIsectDisp(Intersection *isect,
                     const float *bezierVerts,
                     const Ray &ray,
                     float uvMargin,
@@ -791,8 +796,8 @@ bool PatchIsectDisp(Intersection &isect,
            +----------+
      */
 
-    float t = isect.t;
-    Intersection upperIs = isect, lowerIs = isect;
+    float t = isect->t;
+    Intersection upperIs = *isect, lowerIs = *isect;
     Intersect upperIsect(upperPatch);
     Intersect lowerIsect(lowerPatch);
 
@@ -850,8 +855,8 @@ bool PatchIsectDisp(Intersection &isect,
         }
         bool uFlag[2] = { false, false };
         bool vFlag[2] = { false, false };
-        Intersection uIs[2] = { isect, isect };
-        Intersection vIs[2] = { isect, isect };
+        Intersection uIs[2] = { *isect, *isect };
+        Intersection vIs[2] = { *isect, *isect };
         for (int i = 0; i < 2; ++i) {
             Intersect uIsect(uPatch[i]);
             Intersect vIsect(vPatch[i]);
@@ -954,7 +959,7 @@ bool PatchIsectDisp(Intersection &isect,
             tmp.CropV(subPatch, vmin2, vmax2);
 
             // triangle intersect
-            float t = isect.t;
+            float t = isect->t;
 
             T p[4];
             p[0] = subPatch.Get(0,0);
@@ -984,13 +989,13 @@ bool PatchIsectDisp(Intersection &isect,
             bool i1 = i0 ? false : TriangleIsect(t, ou, ov, v[1], v[2], v[3], ray.org, ray.dir);
 
             if (i0 | i1) {
-                isect.t = t;
+                isect->t = t;
                 if (i0) {
-                    isect.u = umin2 * ou + umax2 * ov + umin2 * (1 - ou - ov);
-                    isect.v = vmax2 * ou + vmin2 * ov + vmin2 * (1 - ou - ov);
+                    isect->u = umin2 * ou + umax2 * ov + umin2 * (1 - ou - ov);
+                    isect->v = vmax2 * ou + vmin2 * ov + vmin2 * (1 - ou - ov);
                 } else {
-                    isect.u = umax2 * ou + umax2 * ov + umin2 * (1 - ou - ov);
-                    isect.v = vmin2 * ou + vmax2 * ov + vmax2 * (1 - ou - ov);
+                    isect->u = umax2 * ou + umax2 * ov + umin2 * (1 - ou - ov);
+                    isect->v = vmin2 * ou + vmax2 * ov + vmax2 * (1 - ou - ov);
                 }
 
                 // displaced normal approximation (ignoring weingarten term)
@@ -998,11 +1003,11 @@ bool PatchIsectDisp(Intersection &isect,
                 // dv Ns' = dv S + Ns dv D
 
                 float delta = 1.0e-4;
-                vec3f Sp = patch.Evaluate(isect.u, isect.v);
-                vec3f Spu = patch.Evaluate(isect.u + delta, isect.v);
-                vec3f Spv = patch.Evaluate(isect.u, isect.v + delta);
-                vec3f Su = patch.EvaluateDu(isect.u, isect.v);
-                vec3f Sv = -1.0 * patch.EvaluateDv(isect.u, isect.v);
+                vec3f Sp = patch.Evaluate(isect->u, isect->v);
+                vec3f Spu = patch.Evaluate(isect->u + delta, isect->v);
+                vec3f Spv = patch.Evaluate(isect->u, isect->v + delta);
+                vec3f Su = patch.EvaluateDu(isect->u, isect->v);
+                vec3f Sv = -1.0 * patch.EvaluateDv(isect->u, isect->v);
                 vec3f N = cross(Su, Sv);
                 N.normalize();
 
@@ -1015,7 +1020,7 @@ bool PatchIsectDisp(Intersection &isect,
 
                 vec3f n = -1.0*cross(Su, Sv);
                 n.normalize();
-                isect.normal = vec3f(n[0], n[1], n[2]);
+                isect->normal = vec3f(n[0], n[1], n[2]);
 
                 hit = true;
 #undef DISPLACEMNT
@@ -1033,7 +1038,7 @@ Inverse(float x)
 }
 
 static bool
-TestLeafNode(Intersection &isect, // [inout]
+TestLeafNode(Intersection *isect, // [inout]
              const BVHNode &node, const std::vector<unsigned int> &indices,
              const Mesh *mesh, const Ray &ray, int intersectKernel,
              float uvMargin, bool cropUV, bool bezierClip,
@@ -1046,7 +1051,7 @@ TestLeafNode(Intersection &isect, // [inout]
              bool directBilinear) __attribute__((noinline));
 
 static bool
-TestLeafNode(Intersection &isect, // [inout]
+TestLeafNode(Intersection *isect, // [inout]
              const BVHNode &node, const std::vector<unsigned int> &indices,
              const Mesh *mesh, const Ray &ray, int intersectKernel,
              float uvMargin, bool cropUV, bool bezierClip,
@@ -1063,7 +1068,7 @@ TestLeafNode(Intersection &isect, // [inout]
     unsigned int numPrimitives = node.data[0];
     unsigned int offset = node.data[1];
 
-    float t = isect.t;
+    float t = isect->t;
 
     vec3f rayOrg = ray.org;
     vec3f rayDir = ray.dir;
@@ -1100,7 +1105,7 @@ TestLeafNode(Intersection &isect, // [inout]
                 }
                 if (r) {
                     // Update isect state
-                    isect.faceID = faceIdx;
+                    isect->faceID = faceIdx;
                     hit = true;
                 }
             } else {
@@ -1108,7 +1113,7 @@ TestLeafNode(Intersection &isect, // [inout]
                                                      cropUV, bezierClip, eps, maxLevel, useTriangle,
                                                      useRayDiffEpsilon, displaceScale, displaceFreq)) {
                     // Update isect state
-                    isect.faceID = faceIdx;
+                    isect->faceID = faceIdx;
                     hit = true;
                 }
             }
@@ -1137,10 +1142,10 @@ TestLeafNode(Intersection &isect, // [inout]
             float u, v;
             if (TriangleIsect(t, u, v, v0, v1, v2, rayOrg, rayDir)) {
                 // Update isect state
-                isect.t = t;
-                isect.u = u;
-                isect.v = v;
-                isect.faceID = faceIdx;
+                isect->t = t;
+                isect->u = u;
+                isect->v = v;
+                isect->faceID = faceIdx;
                 hit = true;
             }
         }
@@ -1149,15 +1154,15 @@ TestLeafNode(Intersection &isect, // [inout]
 }
 
 static void
-BuildIntersection(Intersection &isect, const Mesh *mesh, Ray &ray)
+BuildIntersection(Intersection *isect, const Mesh *mesh, const Ray &ray)
 {
     if (mesh->IsBezierMesh()) {
-        const OpenSubdiv::Far::PatchParam &param = mesh->_patchParams[isect.faceID];
+        const OpenSubdiv::Far::PatchParam &param = mesh->_patchParams[isect->faceID];
         unsigned int bits = param.bitField.field;
-        isect.patchID = isect.faceID;
-        isect.faceID = param.faceIndex;
-        isect.level = (bits & 0xf);
-        isect.position = ray.org + isect.t * ray.dir;
+        isect->patchID = isect->faceID;
+        isect->faceID = param.faceIndex;
+        isect->level = (bits & 0xf);
+        isect->position = ray.org + isect->t * ray.dir;
 #if 0
         // remap ptex index (if neccessary)
         int level = 1 << ((bits & 0xf) - ((bits >> 4) &1));
@@ -1165,56 +1170,55 @@ BuildIntersection(Intersection &isect, const Mesh *mesh, Ray &ray)
         int pv = (bits >> 7) & 0x3ff;
         int rot = (bits >> 5) & 0x3;
 
-        float u = float(rot==0)*(isect.v)
-            + float(rot==1)*(1-isect.u)
-            + float(rot==2)*(1-isect.v)
-            + float(rot==3)*(isect.u);
-        float v = float(rot==0)*(isect.u)
-            + float(rot==1)*(isect.v)
-            + float(rot==2)*(1-isect.u)
-            + float(rot==3)*(1-isect.v);
+        float u = float(rot==0)*(isect->v)
+            + float(rot==1)*(1-isect->u)
+            + float(rot==2)*(1-isect->v)
+            + float(rot==3)*(isect->u);
+        float v = float(rot==0)*(isect->u)
+            + float(rot==1)*(isect->v)
+            + float(rot==2)*(1-isect->u)
+            + float(rot==3)*(1-isect->v);
 
-        isect.u = (u + pu)/(float)level;
-        isect.v = (v + pv)/(float)level;
+        isect->u = (u + pu)/(float)level;
+        isect->v = (v + pv)/(float)level;
 #endif
     } else {
         // face index
-        isect.patchID = isect.faceID;
-        isect.level = 1;
+        isect->patchID = isect->faceID;
+        isect->level = 1;
 
         const unsigned int *faces = &mesh->_faces[0];
-        isect.f0 = faces[3 * isect.faceID + 0];
-        isect.f1 = faces[3 * isect.faceID + 1];
-        isect.f2 = faces[3 * isect.faceID + 2];
+        isect->f0 = faces[3 * isect->faceID + 0];
+        isect->f1 = faces[3 * isect->faceID + 1];
+        isect->f2 = faces[3 * isect->faceID + 2];
 
         const float *vertices = &mesh->_triVertices[0];
-        vec3f p0(&vertices[3 * isect.f0]);
-        vec3f p1(&vertices[3 * isect.f1]);
-        vec3f p2(&vertices[3 * isect.f2]);
+        vec3f p0(&vertices[3 * isect->f0]);
+        vec3f p1(&vertices[3 * isect->f1]);
+        vec3f p2(&vertices[3 * isect->f2]);
 
         // calc shading point.
-        isect.position = ray.org + isect.t * ray.dir;
+        isect->position = ray.org + isect->t * ray.dir;
 
         // interpolate normal
         const float *normals = &mesh->_triNormals[0];
-        vec3f n0(&normals[3 * isect.f0]);
-        vec3f n1(&normals[3 * isect.f1]);
-        vec3f n2(&normals[3 * isect.f2]);
+        vec3f n0(&normals[3 * isect->f0]);
+        vec3f n1(&normals[3 * isect->f1]);
+        vec3f n2(&normals[3 * isect->f2]);
 
-        vec3f n = n1 * isect.u + n2 * isect.v + n0 * (1 - isect.u - isect.v);
+        vec3f n = n1 * isect->u + n2 * isect->v + n0 * (1 - isect->u - isect->v);
         n.normalize();
         n = n.neg();
 
-        isect.geometricNormal = n;
-        isect.normal = n;
+        isect->geometricNormal = n;
+        isect->normal = n;
     }
 }
 
 #define kMaxStackDepth    512
 
 bool
-BVHAccel::Traverse(Intersection &isect, const Mesh *mesh, Ray &ray,
-                   Context *context) const
+BVHAccel::Traverse(const Ray &ray, Intersection *isect, Context *context) const
 {
     if (context) context->BeginTraverse();
 
@@ -1225,11 +1229,11 @@ BVHAccel::Traverse(Intersection &isect, const Mesh *mesh, Ray &ray,
     nodeStack[0] = 0;
 
     // Init isect info as no hit
-    isect.t = hitT;
-    isect.u = 0.0;
-    isect.v = 0.0;
-    isect.faceID = -1;
-    isect.maxLevel = _maxLevel;
+    isect->t = hitT;
+    isect->u = 0.0;
+    isect->v = 0.0;
+    isect->faceID = -1;
+    isect->maxLevel = _maxLevel;
 
     int dirSign[3];
     dirSign[0] = ray.dir[0] < 0.0 ? 1 : 0;
@@ -1273,11 +1277,11 @@ BVHAccel::Traverse(Intersection &isect, const Mesh *mesh, Ray &ray,
                     context->BeginIntersect();
                 }
 
-                if (TestLeafNode(isect, node, _indices, mesh, ray,
+                if (TestLeafNode(isect, node, _indices, _mesh, ray,
                                  _intersectKernel, _uvMargin, _cropUV, _bezierClip,
                                  _displaceScale, _displaceFreq, _epsilon, _maxLevel,
                                  _useTriangle, _useRayDiffEpsilon, _conservativeTest, _directBilinear)) {
-                    hitT = isect.t;
+                    hitT = isect->t;
                 }
 
                 if (context) {
@@ -1292,8 +1296,8 @@ BVHAccel::Traverse(Intersection &isect, const Mesh *mesh, Ray &ray,
         }
     }
 
-    if (isect.t < std::numeric_limits<float>::max()) {
-        BuildIntersection(isect, mesh, ray);
+    if (isect->t < std::numeric_limits<float>::max()) {
+        BuildIntersection(isect, _mesh, ray);
 
         if (context) context->EndTraverse();
         return true;
