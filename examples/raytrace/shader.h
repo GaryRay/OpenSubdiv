@@ -21,8 +21,8 @@
 //   KIND, either express or implied. See the Apache License for the specific
 //   language governing permissions and limitations under the Apache License.
 //
-#ifndef SHADER_H
-#define SHADER_H
+#ifndef OSD_RAYTRACE_SHADER_H
+#define OSD_RAYTRACE_SHADER_H
 
 #include "common.h"
 
@@ -51,4 +51,4 @@ extern vec3f ShadePBS(const Scene *scene,
                       const Ray &ray,
                       const Intersection &isect);
 
-#endif  // SHADER_H
+#endif  // OSD_RAYTRACE_SHADER_H

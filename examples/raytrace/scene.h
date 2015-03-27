@@ -21,8 +21,8 @@
 //   KIND, either express or implied. See the Apache License for the specific
 //   language governing permissions and limitations under the Apache License.
 //
-#ifndef SCENE_H
-#define SCENE_H
+#ifndef OSD_RAYTRACE_SCENE_H
+#define OSD_RAYTRACE_SCENE_H
 
 #include "bvh_accel.h"
 #include "camera.h"
@@ -148,4 +148,4 @@ private:
     float *_image;
 };
 
-#endif  // SCENE_H
+#endif  // OSD_RAYTRACE_SCENE_H

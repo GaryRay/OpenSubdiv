@@ -21,8 +21,8 @@
 //   KIND, either express or implied. See the Apache License for the specific
 //   language governing permissions and limitations under the Apache License.
 //
-#ifndef __MESH_H__
-#define __MESH_H__
+#ifndef OSD_RAYTRACE_MESH_H
+#define OSD_RAYTRACE_MESH_H
 
 #include <cstdio>
 #include <vector>
@@ -132,4 +132,4 @@ private:
     float _displaceBound;
 };
 
-#endif // __MESH_H__
+#endif  // OSD_RAYTRACE_MESH_H

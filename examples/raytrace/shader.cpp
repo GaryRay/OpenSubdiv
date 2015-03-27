@@ -368,18 +368,9 @@ static void WardBRDF(vec3f* omega_in, // output
                 float exp_arg = (dotx * dotx + doty * doty) / (dotn * dotn);
                 float denom = 4 * (float) M_PI * ax * ay * oh * dotn * dotn * dotn;
                 (*pdf) = expf(-exp_arg) / denom;
-                // compiler will reuse expressions already computed
                 denom = (4 * (float) M_PI * ax * ay * sqrtf(cosNO * cosNI));
                 float power = cosNI * expf(-exp_arg) / denom;
                 (*weight) = power;
-                //domega_in_dx = (2 * m_N.dot(domega_out_dx)) * m_N - domega_out_dx;
-                //domega_in_dy = (2 * m_N.dot(domega_out_dy)) * m_N - domega_out_dy;
-                // Since there is some blur to this reflection, make the
-                // derivatives a bit bigger. In theory this varies with the
-                // roughness but the exact relationship is complex and
-                // requires more ops than are practical.
-                //domega_in_dx *= 10;
-                //domega_in_dy *= 10;
             }
         }
     }

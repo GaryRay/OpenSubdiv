@@ -352,29 +352,21 @@ report() {
 }
 
 static void
-setCamera() {
+setCamera()
+{
     // prepare view matrix
     double aspect = g_width/(double)g_height;
     identity(g_transformData.ModelViewMatrix);
-#if 0
-    translate(g_transformData.ModelViewMatrix, g_pan[1], g_pan[0], -g_dolly);
-    rotate(g_transformData.ModelViewMatrix, g_rotate[1], 0, 1, 0);
-    rotate(g_transformData.ModelViewMatrix, g_rotate[0], 1, 0, 0);
-    rotate(g_transformData.ModelViewMatrix, 90, 0, 0, 1);
-    rotate(g_transformData.ModelViewMatrix, -90, 1, 0, 0);
-#else
     translate(g_transformData.ModelViewMatrix, -g_pan[0], -g_pan[1], -g_dolly);
     rotate(g_transformData.ModelViewMatrix, g_rotate[1], 1, 0, 0);
     rotate(g_transformData.ModelViewMatrix, g_rotate[0], 0, 1, 0);
     rotate(g_transformData.ModelViewMatrix, -90, 1, 0, 0);
-#endif
     perspective(g_transformData.ProjectionMatrix,
                 45.0f, (float)aspect, 0.01f, 500.0f);
     multMatrix(g_transformData.ModelViewProjectionMatrix,
                g_transformData.ModelViewMatrix,
                g_transformData.ProjectionMatrix);
 
-    
     float invView[16];
     inverseMatrix(invView, g_transformData.ModelViewMatrix);
 
@@ -443,7 +435,8 @@ inline float gamma_correct(float x, float inv_gamma) {
 
 static void
 HDRToLDR(std::vector<unsigned char> &out, const std::vector<float> &in,
-         int width, int height, float gamma = 2.2) {
+         int width, int height, float gamma = 2.2)
+{
   out.resize(width * height * 4);
   if ((int)(in.size()) != (width * height * 4)) {
     fprintf(stderr, "sz mismatch.\n");

@@ -46,21 +46,14 @@
 
 using namespace OsdBezier;
 
-bool g_traceEnabled = false;
-
 #if ENABLE_TRACE_PRINT
-//#if 1
-#define trace(...)                              \
-    {                                           \
-            printf(__VA_ARGS__);                \
-    }
+#define trace(...) { printf(__VA_ARGS__); }
 #else
 #define trace(...)
 #endif
 
 #if ENABLE_DEBUG_PRINT
-#define debug(f, ...)                           \
-    { printf(f, __VA_ARGS__); }
+#define debug(f, ...) { printf(f, __VA_ARGS__); }
 #else
 #define debug(f, ...)
 #endif
@@ -86,15 +79,16 @@ struct BinBuffer {
     int binSize;
 };
 
-static inline float CalculateSurfaceArea(const vec3f &min, const vec3f &max)
+static inline float
+CalculateSurfaceArea(const vec3f &min, const vec3f &max)
 {
     vec3f box = max - min;
     return 2.0f * (box[0] * box[1] + box[1] * box[2] + box[2] * box[0]);
 }
 
-static inline void GetBoundingBoxOfTriangle(vec3f &bmin, vec3f &bmax,
-                                            const Mesh *mesh,
-                                            unsigned int index)
+static inline void
+GetBoundingBoxOfTriangle(vec3f &bmin, vec3f &bmax,
+                         const Mesh *mesh, unsigned int index)
 {
     unsigned int f0 = mesh->GetFaces()[3 * index + 0];
     unsigned int f1 = mesh->GetFaces()[3 * index + 1];
@@ -110,28 +104,24 @@ static inline void GetBoundingBoxOfTriangle(vec3f &bmin, vec3f &bmax,
     bmax = p[0];
 
     for (int i = 1; i < 3; i++) {
-        bmin[0] = std::min(bmin[0], p[i][0]);
-        bmin[1] = std::min(bmin[1], p[i][1]);
-        bmin[2] = std::min(bmin[2], p[i][2]);
-
-        bmax[0] = std::max(bmax[0], p[i][0]);
-        bmax[1] = std::max(bmax[1], p[i][1]);
-        bmax[2] = std::max(bmax[2], p[i][2]);
+        bmin = bmin.min(p[i]);
+        bmax = bmax.max(p[i]);
     }
 }
 
-static inline void GetBoundingBoxOfRegularPatch(vec3f &bmin, vec3f &bmax,
-                                                const Mesh *mesh,
-                                                unsigned int index)
+static inline void
+GetBoundingBoxOfRegularPatch(vec3f &bmin, vec3f &bmax,
+                             const Mesh *mesh, unsigned int index)
 {
     BezierPatch<vec3f, float, 4> patch(mesh->GetBezierVerts(index));
     patch.GetMinMax(bmin, bmax);
 }
 
-static void ContributeBinBuffer(BinBuffer *bins, // [out]
-                                const vec3f &sceneMin, const vec3f &sceneMax,
-                                const Mesh *mesh, unsigned int *indices,
-                                unsigned int leftIdx, unsigned int rightIdx)
+static void
+ContributeBinBuffer(BinBuffer *bins, // [out]
+                    const vec3f &sceneMin, const vec3f &sceneMax,
+                    const Mesh *mesh, unsigned int *indices,
+                    unsigned int leftIdx, unsigned int rightIdx)
 {
     static const float EPS = std::numeric_limits<float>::epsilon() * 1024;
 
@@ -159,7 +149,6 @@ static void ContributeBinBuffer(BinBuffer *bins, // [out]
     bool bezierMesh = mesh->IsBezierMesh();
 
     for (size_t i = leftIdx; i < rightIdx; i++) {
-
         //
         // Quantize the position into [0, BIN_SIZE)
         //
@@ -191,29 +180,29 @@ static void ContributeBinBuffer(BinBuffer *bins, // [out]
             assert(idxBMax[j] < binSize);
 
             // Increment bin counter
-            bins->bin[0 * (bins->binSize * 3) + j * bins->binSize + idxBMin[j]] += 1;
-            bins->bin[1 * (bins->binSize * 3) + j * bins->binSize + idxBMax[j]] += 1;
+            bins->bin[0*(bins->binSize*3) + j*bins->binSize + idxBMin[j]] += 1;
+            bins->bin[1*(bins->binSize*3) + j*bins->binSize + idxBMax[j]] += 1;
         }
     }
 }
 
-static inline double SAH(size_t ns1, float leftArea, size_t ns2, float rightArea,
-                         float invS, float Taabb, float Ttri) {
+static inline double
+SAH(size_t ns1, float leftArea, size_t ns2, float rightArea,
+    float invS, float Taabb, float Ttri)
+{
     // const float Taabb = 0.2f;
     // const float Ttri = 0.8f;
-    float T;
-
-    T = 2.0f * Taabb + (leftArea * invS) * (float)(ns1)*Ttri +
-        (rightArea * invS) * (float)(ns2)*Ttri;
-
-    return T;
+    return 2.0f * Taabb
+        + (leftArea * invS) * (float)(ns1)*Ttri
+        + (rightArea * invS) * (float)(ns2)*Ttri;
 }
 
-static bool FindCutFromBinBuffer(float *cutPos,     // [out] xyz
-                                 int &minCostAxis, // [out]
-                                 const BinBuffer *bins, const vec3f &bmin,
-                                 const vec3f &bmax, size_t numTriangles,
-                                 float costTaabb) // should be in [0.0, 1.0]
+static void
+FindCutFromBinBuffer(float *cutPos,     // [out] xyz
+                     int &minCostAxis, // [out]
+                     const BinBuffer *bins, const vec3f &bmin,
+                     const vec3f &bmax, size_t numTriangles,
+                     float costTaabb) // should be in [0.0, 1.0]
 {
     const float eps = std::numeric_limits<float>::epsilon() * 1024;
 
@@ -224,11 +213,9 @@ static bool FindCutFromBinBuffer(float *cutPos,     // [out] xyz
     float saLeft, saRight, saTotal;
     float pos;
     float minCost[3];
-
     float costTtri = 1.0 - costTaabb;
 
     minCostAxis = 0;
-
     bsize = bmax - bmin;
     bstep = bsize * (1.0 / bins->binSize);
     saTotal = CalculateSurfaceArea(bmin, bmax);
@@ -287,13 +274,11 @@ static bool FindCutFromBinBuffer(float *cutPos,     // [out] xyz
                 // minCostAxis = j;
             }
         }
-
         cutPos[j] = minCostPos;
     }
 
     // cutAxis = minCostAxis;
     // cutPos = minCostPos;
-
     // Find min cost axis
     float cost = minCost[0];
     minCostAxis = 0;
@@ -305,8 +290,6 @@ static bool FindCutFromBinBuffer(float *cutPos,     // [out] xyz
         minCostAxis = 2;
         cost = minCost[2];
     }
-
-    return true;
 }
 
 class SAHPred : public std::unary_function<unsigned int, bool> {
@@ -437,17 +420,17 @@ BVHAccel::BuildTree(unsigned int leftIdx, unsigned int rightIdx, int depth)
                            &_indices.at(0), leftIdx, rightIdx,
                            _mesh->GetDisplaceBound());
     } else {
-        ComputeBoundingBox(bmin, bmax, &_mesh->GetTriangleVerts()[0],
-                           &_mesh->GetFaces()[0],
-                           &_indices.at(0),
-                           leftIdx, rightIdx);
+        ComputeBoundingBox(bmin, bmax, _mesh->GetTriangleVerts(),
+                           _mesh->GetFaces(),
+                           &_indices.at(0), leftIdx, rightIdx);
     }
 
     debug(" bmin = %f, %f, %f\n", bmin[0], bmin[1], bmin[2]);
     debug(" bmax = %f, %f, %f\n", bmax[0], bmax[1], bmax[2]);
 
     size_t n = rightIdx - leftIdx;
-    if ((n < (size_t)_options.minLeafPrimitives) || (depth >= _options.maxTreeDepth)) {
+    if ((n < (size_t)_options.minLeafPrimitives) ||
+        (depth >= _options.maxTreeDepth)) {
         // Create leaf node.
         BVHNode leaf;
         leaf.bmin = bmin;
@@ -461,7 +444,6 @@ BVHAccel::BuildTree(unsigned int leftIdx, unsigned int rightIdx, int depth)
         debug(" leaf n = %d, offt = %d\n", n, leftIdx);
 
         _nodes.push_back(leaf);
-
         _stats.numLeafNodes++;
 
         return offset;
@@ -514,9 +496,7 @@ BVHAccel::BuildTree(unsigned int leftIdx, unsigned int rightIdx, int depth)
             midIdx = leftIdx + (n >> 1);
 
             // Try another axis if there's axis to try.
-
         } else {
-
             // Found good cut. exit loop.
             break;
         }
@@ -541,7 +521,8 @@ BVHAccel::BuildTree(unsigned int leftIdx, unsigned int rightIdx, int depth)
     return offset;
 }
 
-bool BVHAccel::Build(const Mesh *mesh, const BVHBuildOptions &options)
+bool
+BVHAccel::Build(const Mesh *mesh, const BVHBuildOptions &options)
 {
     if (mesh == NULL) return false;
 
@@ -631,9 +612,11 @@ IntersectRayAABB(float &tminOut, // [out]
 #endif
 }
 
-inline bool TriangleIsect(float &tInOut, float &uOut, float &vOut, const vec3f &v0,
-                          const vec3f &v1, const vec3f &v2, const vec3f &rayOrg,
-                          const vec3f &rayDir) {
+static inline bool
+TriangleIsect(float &tInOut, float &uOut, float &vOut, const vec3f &v0,
+              const vec3f &v1, const vec3f &v2, const vec3f &rayOrg,
+              const vec3f &rayDir)
+{
     const float kEPS = std::numeric_limits<float>::epsilon() * 1024;
 
     vec3f p0(v0[0], v0[1], v0[2]);
@@ -688,10 +671,10 @@ bool PatchIsect(int patchIndex,
                 int maxLevel,
                 bool useTriangle,
                 bool useRayDiffEpsilon,
-                bool directBilinear) {
-
-    OsdBezier::BezierPatchIntersection<T, typename T::ElementType, 4> bzi(bezierVerts);
-    if(useRayDiffEpsilon){
+                bool directBilinear)
+{
+    BezierPatchIntersection<T, typename T::ElementType, 4> bzi(bezierVerts);
+    if (useRayDiffEpsilon) {
         eps = bzi.ComputeEpsilon(ray, eps);
     }
 
@@ -711,7 +694,9 @@ bool PatchIsect(int patchIndex,
 static void
 sideCrop(float &umin, float &umax, float &vmin, float &vmax,
          bool uFlag[2], bool vFlag[2],
-         Intersection const &hIs, Intersection const uIs[2], Intersection const vIs[2])
+         Intersection const &hIs,
+         Intersection const uIs[2],
+         Intersection const vIs[2])
 {
     if (uFlag[0]) {
         umin = 0;
@@ -765,7 +750,6 @@ bool PatchIsectDisp(Intersection *isect,
 {
     float upperBound = displaceScale; // this has to be per-patch
     float lowerBound = 0;//upperBound;
-    using namespace OsdBezier;
 
     typedef BezierPatch<T, typename T::ElementType, 4> PatchType;
     typedef BezierPatchIntersection<T, typename T::ElementType, 4> Intersect;
@@ -1038,31 +1022,10 @@ Inverse(float x)
     return float(1)/x;
 }
 
-static bool
-TestLeafNode(Intersection *isect, // [inout]
-             const BVHNode &node, const std::vector<unsigned int> &indices,
-             const Mesh *mesh, const Ray &ray, int intersectKernel,
-             float uvMargin, bool cropUV, bool bezierClip,
-             float displaceScale, float displaceFreq,
-             double eps,
-             int maxLevel,
-             bool useTriangle,
-             bool useRayDiffEpsilon,
-             bool conservativeTest,
-             bool directBilinear) __attribute__((noinline));
-
-static bool
-TestLeafNode(Intersection *isect, // [inout]
-             const BVHNode &node, const std::vector<unsigned int> &indices,
-             const Mesh *mesh, const Ray &ray, int intersectKernel,
-             float uvMargin, bool cropUV, bool bezierClip,
-             float displaceScale, float displaceFreq,
-             double eps,
-             int maxLevel,
-             bool useTriangle,
-             bool useRayDiffEpsilon,
-             bool conservativeTest,
-             bool directBilinear)
+bool
+BVHAccel::TestLeafNode(Intersection *isect, // [inout]
+                       const BVHNode &node,
+                       const Ray &ray) const
 {
     bool hit = false;
 
@@ -1080,29 +1043,33 @@ TestLeafNode(Intersection *isect, // [inout]
         tr.dirSign[i] = (rayDir[i]<0)?1:0;
     }
 
-    if (mesh->IsBezierMesh()) {
+    if (_mesh->IsBezierMesh()) {
         for (unsigned int i = 0; i < numPrimitives; i++) {
-            int faceIdx = indices[i + offset];
+            int faceIdx = _indices[i + offset];
 
-            const vec3f *bv = mesh->GetBezierVerts(faceIdx);
-            int wcpFlag = conservativeTest ? mesh->GetWatertightFlag(faceIdx) : 0;
+            const vec3f *bv = _mesh->GetBezierVerts(faceIdx);
+            int wcpFlag = _conservativeTest ? _mesh->GetWatertightFlag(faceIdx) : 0;
 
-//            trace("TestLeafNode(%d/%d) patch = %d\n", i, numPrimitives, faceIdx);
-
-            if (displaceScale == 0) {
+            if (_displaceScale == 0) {
                 bool r = false;
-                if (intersectKernel == BVHAccel::KERNEL_FLOAT) {
-                    r = PatchIsect<OsdBezier::vec3f>(faceIdx, isect, bv, wcpFlag, tr, uvMargin,
-                                                     cropUV, bezierClip, eps, maxLevel, useTriangle,
-                                                     useRayDiffEpsilon, directBilinear);
-                } else if (intersectKernel == BVHAccel::KERNEL_SSE) {
-                    r = PatchIsect<OsdBezier::vec3sse>(faceIdx, isect, bv, wcpFlag, tr, uvMargin,
-                                                       cropUV, bezierClip, eps, maxLevel, useTriangle,
-                                                       useRayDiffEpsilon, directBilinear);
-                } else if (intersectKernel == BVHAccel::KERNEL_DOUBLE) {
-                    r = PatchIsect<OsdBezier::vec3d>(faceIdx, isect, bv, wcpFlag, tr, uvMargin,
-                                                     cropUV, bezierClip, eps, maxLevel, useTriangle,
-                                                     useRayDiffEpsilon, directBilinear);
+                if (_intersectKernel == BVHAccel::KERNEL_FLOAT) {
+                    r = PatchIsect<vec3f>(faceIdx, isect, bv, wcpFlag, tr,
+                                          _uvMargin, _cropUV, _bezierClip,
+                                          _epsilon,
+                                          _maxLevel, _useTriangle,
+                                          _useRayDiffEpsilon, _directBilinear);
+                } else if (_intersectKernel == BVHAccel::KERNEL_SSE) {
+                    r = PatchIsect<vec3sse>(faceIdx, isect, bv, wcpFlag, tr,
+                                            _uvMargin, _cropUV, _bezierClip,
+                                            _epsilon,
+                                            _maxLevel, _useTriangle,
+                                            _useRayDiffEpsilon, _directBilinear);
+                } else if (_intersectKernel == BVHAccel::KERNEL_DOUBLE) {
+                    r = PatchIsect<vec3d>(faceIdx, isect, bv, wcpFlag, tr,
+                                          _uvMargin, _cropUV, _bezierClip,
+                                          _epsilon,
+                                          _maxLevel, _useTriangle,
+                                          _useRayDiffEpsilon, _directBilinear);
                 }
                 if (r) {
                     // Update isect state
@@ -1110,9 +1077,12 @@ TestLeafNode(Intersection *isect, // [inout]
                     hit = true;
                 }
             } else {
-                if (PatchIsectDisp<OsdBezier::vec3f>(isect, bv, tr, uvMargin,
-                                                     cropUV, bezierClip, eps, maxLevel, useTriangle,
-                                                     useRayDiffEpsilon, displaceScale, displaceFreq)) {
+                if (PatchIsectDisp<vec3f>(isect, bv, tr,
+                                          _uvMargin, _cropUV, _bezierClip,
+                                          _epsilon,
+                                          _maxLevel, _useTriangle,
+                                          _useRayDiffEpsilon,
+                                          _displaceScale, _displaceFreq)) {
                     // Update isect state
                     isect->faceID = faceIdx;
                     hit = true;
@@ -1121,24 +1091,24 @@ TestLeafNode(Intersection *isect, // [inout]
         }
     } else {
         for (unsigned int i = 0; i < numPrimitives; i++) {
-            int faceIdx = indices[i + offset];
+            int faceIdx = _indices[i + offset];
 
-            int f0 = mesh->GetFaces()[3 * faceIdx + 0];
-            int f1 = mesh->GetFaces()[3 * faceIdx + 1];
-            int f2 = mesh->GetFaces()[3 * faceIdx + 2];
+            int f0 = _mesh->GetFaces()[3 * faceIdx + 0];
+            int f1 = _mesh->GetFaces()[3 * faceIdx + 1];
+            int f2 = _mesh->GetFaces()[3 * faceIdx + 2];
 
             vec3f v0, v1, v2;
-            v0[0] = mesh->GetTriangleVerts()[3 * f0 + 0];
-            v0[1] = mesh->GetTriangleVerts()[3 * f0 + 1];
-            v0[2] = mesh->GetTriangleVerts()[3 * f0 + 2];
+            v0[0] = _mesh->GetTriangleVerts()[3 * f0 + 0];
+            v0[1] = _mesh->GetTriangleVerts()[3 * f0 + 1];
+            v0[2] = _mesh->GetTriangleVerts()[3 * f0 + 2];
 
-            v1[0] = mesh->GetTriangleVerts()[3 * f1 + 0];
-            v1[1] = mesh->GetTriangleVerts()[3 * f1 + 1];
-            v1[2] = mesh->GetTriangleVerts()[3 * f1 + 2];
+            v1[0] = _mesh->GetTriangleVerts()[3 * f1 + 0];
+            v1[1] = _mesh->GetTriangleVerts()[3 * f1 + 1];
+            v1[2] = _mesh->GetTriangleVerts()[3 * f1 + 2];
 
-            v2[0] = mesh->GetTriangleVerts()[3 * f2 + 0];
-            v2[1] = mesh->GetTriangleVerts()[3 * f2 + 1];
-            v2[2] = mesh->GetTriangleVerts()[3 * f2 + 2];
+            v2[0] = _mesh->GetTriangleVerts()[3 * f2 + 0];
+            v2[1] = _mesh->GetTriangleVerts()[3 * f2 + 1];
+            v2[2] = _mesh->GetTriangleVerts()[3 * f2 + 2];
 
             float u, v;
             if (TriangleIsect(t, u, v, v0, v1, v2, rayOrg, rayDir)) {
@@ -1279,10 +1249,7 @@ BVHAccel::Traverse(const Ray &ray, Intersection *isect, Context *context) const
                     context->BeginIntersect();
                 }
 
-                if (TestLeafNode(isect, node, _indices, _mesh, ray,
-                                 _intersectKernel, _uvMargin, _cropUV, _bezierClip,
-                                 _displaceScale, _displaceFreq, _epsilon, _maxLevel,
-                                 _useTriangle, _useRayDiffEpsilon, _conservativeTest, _directBilinear)) {
+                if (TestLeafNode(isect, node, ray)) {
                     hitT = isect->t;
                 }
 

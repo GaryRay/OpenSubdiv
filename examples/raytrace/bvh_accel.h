@@ -76,9 +76,10 @@ class BVHAccel {
 public:
     BVHAccel(float uvMargin=0) :
         _intersectKernel(KERNEL_FLOAT),
-        _uvMargin(uvMargin), _cropUV(true),
-        _bezierClip(true), _displaceScale(0), _displaceFreq(100) ,
-        _epsilon(1e-4), _maxLevel(10), _useTriangle(false),
+        _displaceScale(0), _displaceFreq(100) ,
+        _epsilon(1e-4),
+        _uvMargin(uvMargin), _cropUV(true), _bezierClip(true),
+        _maxLevel(10), _useTriangle(false),
         _useRayDiffEpsilon(false), _conservativeTest(false),
         _directBilinear(false) {}
     ~BVHAccel() {};
@@ -99,7 +100,9 @@ public:
     void SetUVMargin(float margin) { _uvMargin = margin; }
     void SetCropUV(bool flag) {_cropUV = flag;}
     void SetBezierClip(bool flag) {_bezierClip = flag;}
-    void SetDisplacement(float scale, float freq) { _displaceScale = scale; _displaceFreq = freq; }
+    void SetDisplacement(float scale, float freq) {
+        _displaceScale = scale; _displaceFreq = freq;
+    }
 
     void SetEpsilon(double eps){_epsilon=eps;}
     void SetMaxLevel(int level){_maxLevel=level;}
@@ -115,6 +118,10 @@ private:
     ///< Builds BVH tree recursively.
     size_t BuildTree(unsigned int leftIdx, unsigned int rightIdx, int depth);
 
+    bool TestLeafNode(Intersection *isect, // [inout]
+                      const BVHNode &node,
+                      const Ray &ray) const;
+
     BVHBuildOptions _options;
     std::vector<BVHNode> _nodes;
     std::vector<unsigned int> _indices; // max 4G triangles.
@@ -122,14 +129,14 @@ private:
 
     const Mesh *_mesh;
     int _intersectKernel;
+    float _displaceScale;
+    float _displaceFreq;
+    double _epsilon;
+
     float _uvMargin;
     bool _cropUV;
     bool _bezierClip;
-    float _displaceScale;
-    float _displaceFreq;
-
-    double _epsilon;
-    int    _maxLevel; 
+    int  _maxLevel; 
     bool _useTriangle;
     bool _useRayDiffEpsilon;
     bool _conservativeTest;

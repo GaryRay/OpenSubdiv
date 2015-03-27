@@ -21,8 +21,8 @@
 //   KIND, either express or implied. See the Apache License for the specific
 //   language governing permissions and limitations under the Apache License.
 //
-#ifndef RAYTRACE_COMMON_H
-#define RAYTRACE_COMMON_H
+#ifndef OSD_RAYTRACE_COMMON_H
+#define OSD_RAYTRACE_COMMON_H
 
 #include "bezier/math.h"
 
@@ -30,4 +30,4 @@ using OsdBezier::vec3f;
 using OsdBezier::matrix4f;
 
 
-#endif // RAYTRACE_COMMON_H
+#endif // OSD_RAYTRACE_COMMON_H
