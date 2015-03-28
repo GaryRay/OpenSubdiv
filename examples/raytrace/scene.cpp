@@ -213,9 +213,9 @@ public:
                         rgba[3] += 1.0f;
                     } else {
                         vec3f bg = _scene->GetEnvColor(ray.dir);
-                        rgba[0] += bg[0]/3.14;
-                        rgba[1] += bg[1]/3.14;
-                        rgba[2] += bg[2]/3.14;
+                        rgba[0] += bg[0];///3.14;
+                        rgba[1] += bg[1];///3.14;
+                        rgba[2] += bg[2];///3.14;
                         rgba[3] += 1.0f;
                     }
 

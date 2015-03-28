@@ -34,7 +34,7 @@
 struct Material {
     Material() : diffuse(0.5f), reflection(0.01f), refraction(0.0f),
                  reflectionGlossiness(1.0f), refractionGlossiness(1.0f),
-                 fresnel(false), ior(0.0f) { }
+                 fresnel(false), ior(1.0f) { }
     vec3f diffuse;
     vec3f reflection;
     vec3f refraction;
@@ -54,6 +54,9 @@ public:
                        OpenSubdiv::Far::PatchTables const *patchTables,
                        bool watertight);
 
+    void AssignMaterialIDs(std::vector<int> const &ptexIDToFaceIDMapping,
+                           std::vector<unsigned short> const &materialBinds);
+
     void Tessellate(int level);
 
     bool IsBezierMesh() const { return _numTriangles == 0; }
@@ -70,8 +73,15 @@ public:
 
     Material const &GetMaterial(int matID) const { return _materials[matID]; }
     void SetMaterial(int matID, Material const &mat) {
+        // temp.
         if ((int)_materials.size() <= matID) _materials.resize(matID+1);
         _materials[matID] = mat;
+    }
+    void AssignMaterial(int patchIndex, int matID) {
+        _materialIDs[patchIndex] = matID;
+    }
+    int GetMaterialID(int patchIndex) const {
+        return _materialIDs[patchIndex];
     }
 
     const unsigned int *GetFaces() const { return &_faces[0]; }

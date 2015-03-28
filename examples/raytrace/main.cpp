@@ -79,6 +79,7 @@ static const char *s_FS =
     "in vec2 uv;\n"
     "out vec4 outColor;\n"
     "uniform sampler2D tex;\n"
+    "uniform float exposure;\n"
     "void main()\n"
     "{\n"
     "  ivec2 texUV = ivec2(textureSize(tex, 0)*uv);\n"
@@ -95,20 +96,21 @@ static const char *s_FS =
     "  c = mix(c, c2, c2.a);\n"
     "  c = mix(c, cs, min(1, cs.a));\n"
     "  outColor = c;\n"
-    "  outColor.rgb = pow(outColor.rgb/max(1, cs.a), vec3(0.454545));\n"
+    "  outColor.rgb = pow(exposure*outColor.rgb/max(1, cs.a), vec3(0.454545));\n"
     "}\n";
 static const char *s0_FS =
     "#version 410\n"
     "in vec2 uv;\n"
     "out vec4 outColor;\n"
     "uniform sampler2D tex;\n"
+    "uniform float exposure;\n"
     "void main()\n"
     "{\n"
     "  ivec2 texUV = ivec2(textureSize(tex, 0)*uv);\n"
     "  vec4 c = vec4(0.1, 0.1, 0.1, 0);\n"
     "  vec4 cs = texelFetch(tex, texUV, 0);\n"
     "  outColor = mix(c, cs, min(1, cs.a));\n"
-    "  outColor.rgb = pow(outColor.rgb/max(1, cs.a), vec3(0.454545));\n"
+    "  outColor.rgb = pow(exposure*outColor.rgb/max(1, cs.a), vec3(0.454545));\n"
     "}\n";
 
 static const char *s_VS_BVH =
@@ -239,6 +241,7 @@ float g_convertTime = 0;
 float g_tessellateTime = 0;
 float g_bvhTime = 0;
 float g_renderTime = 0;
+float g_exposure = 1.0f;
 
 // geometry
 std::vector<float> g_orgPositions;
@@ -250,7 +253,7 @@ OpenSubdiv::Far::PatchTables *g_patchTables = NULL;
 OpenSubdiv::Far::TopologyRefiner * g_topologyRefiner = NULL;
 
 
-int g_level = 6;
+int g_level = 2;
 int g_preTess = 0;
 int g_preTessLevel = 1;
 int g_intersectKernel = 1;
@@ -296,8 +299,8 @@ float g_lookat[] = {0, 0, 0, 1};
 float g_up[] = {0, 1, 0, 0};
 
 Scene g_scene;
-std::vector<int> g_vertexParentIDs;
-std::vector<int> g_farToHbrVertexRemap;
+std::vector<int> g_ptexIDToFaceIDMapping;
+std::vector<unsigned short> g_materialBinds;
 
 //------------------------------------------------------------------------------
 
@@ -461,7 +464,11 @@ saveImage()
   std::vector<unsigned char> ldr;
   ldr.resize(g_width * g_height * 4);
 
-  HDRToLDR(ldr, g_image, g_width, g_height, 1.0f);
+  if (g_displayStyle==Scene::SHADED) {
+      HDRToLDR(ldr, g_image, g_width, g_height, 2.2f);
+  } else {
+      HDRToLDR(ldr, g_image, g_width, g_height, 1.0f);
+  }
 
   jpge::params comp_params;
   comp_params.m_quality = 100;
@@ -517,6 +524,10 @@ updateGeom() {
                                     g_topologyRefiner,
                                     g_patchTables,
                                     g_watertight);
+
+    g_scene.GetMesh().AssignMaterialIDs(g_ptexIDToFaceIDMapping,
+                                        g_materialBinds);
+
     s.Stop();
     g_convertTime = s.GetElapsed() * 1000.0f;
 
@@ -559,9 +570,20 @@ createOsdMesh( const std::string &shapeStr, int level ){
     if (shape->mtlbind.empty()) {
         g_scene.GetMesh().SetMaterial(0, Material());
     } else {
-        for (int i = 0 ; i < (int)shape->mtlbind.size(); ++i){
-            printf("%d  : %d\n", i, shape->mtlbind[i]);
-            g_scene.GetMesh().SetMaterial(i, Material());
+        for (int i = 0; i < (int)shape->mtls.size(); ++i) {
+            Shape::material const *m = shape->mtls[i];
+            Material mat;
+            mat.diffuse = vec3f(m->kd[0], m->kd[1], m->kd[2]);
+            mat.reflection = vec3f(m->ks[0], m->ks[1], m->ks[2]);
+            mat.refraction = vec3f(1.0f-m->d);
+            mat.reflectionGlossiness = m->sharpness;
+            mat.refractionGlossiness = 1;
+            mat.fresnel = true;
+            mat.ior = 1.0;//m->ni;
+
+            g_scene.GetMesh().SetMaterial(i, mat);
+        }
+        for (int i = 0; i < (int)shape->mtlbind.size(); ++i){
         }
     }
 
@@ -605,6 +627,13 @@ createOsdMesh( const std::string &shapeStr, int level ){
     options.maxIsolationLevel = level;
     g_patchTables = OpenSubdiv::Far::PatchTablesFactory::Create(*g_topologyRefiner, options);
 
+    // resolve material indices
+    OpenSubdiv::Far::PatchParamTable patchParam = g_patchTables->GetPatchParamTable();
+
+    // XXX: need refactoring.
+    g_ptexIDToFaceIDMapping = shape->GetPtexIDToFaceIDMapping();
+    g_materialBinds = shape->mtlbind;
+
     int numVerts = vertexStencils->GetNumStencils() + vertexStencils->GetNumControlVertices();
     g_cpuVertexBuffer = OpenSubdiv::Osd::CpuVertexBuffer::Create(3, numVerts);
 
@@ -626,7 +655,6 @@ createOsdMesh( const std::string &shapeStr, int level ){
     }
     g_size = sqrtf(g_size);
 
-    printf("%f, %f, %f\n", g_center[0], g_center[1], g_center[2]);
     for (size_t i=0; i <g_orgPositions.size()/3-4; ++i) {
         for (int j=0; j<3; ++j) {
             g_orgPositions[i*3+j] =
@@ -721,6 +749,7 @@ display() {
 
     GLuint program = g_blockFill ? g_programBlockFill : g_programSimpleFill;
     glUseProgram(program);
+    glUniform1f(glGetUniformLocation(program, "exposure"), g_exposure);
 
     glBindVertexArray(g_vao);
     glBindBuffer(GL_ARRAY_BUFFER, g_vbo);
@@ -1025,6 +1054,8 @@ callbackSlider(float value, int data)
             g_minLeafPrimitives = value;
             updateGeom();
         }
+    } else if (data == 4) {
+        g_exposure = value;
     }
 }
 
@@ -1138,6 +1169,9 @@ initHUD()
 
     g_hud.AddSlider("UV Margin", 0, 0.01, g_uvMargin,
                     10, y, 20, false, callbackSlider, 0);y+=30;
+
+    g_hud.AddSlider("Exposure", 0, 2.0, g_exposure,
+                    10, y, 20, false, callbackSlider, 4);y+=30;
 
     int kernel_pulldown = g_hud.AddPullDown("Intersect Kernel (I)", 400, 10, 200, callbackIntersect, 'i');
     g_hud.AddPullDownButton(kernel_pulldown, "float", 0, g_intersectKernel == 0);

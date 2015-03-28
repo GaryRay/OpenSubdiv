@@ -732,6 +732,7 @@ BVHAccel::TestLeafNode(Intersection *isect, // [inout]
             if (r) {
                 // Update isect state
                 isect->faceID = faceIdx;
+                isect->matID = 0;
                 hit = true;
             }
         }
@@ -763,6 +764,7 @@ BVHAccel::TestLeafNode(Intersection *isect, // [inout]
                 isect->u = u;
                 isect->v = v;
                 isect->faceID = faceIdx;
+                isect->matID = 0;
                 hit = true;
             }
         }
@@ -776,9 +778,12 @@ BuildIntersection(Intersection *isect, const Mesh *mesh, const Ray &ray)
     if (mesh->IsBezierMesh()) {
         //const OpenSubdiv::Far::PatchParam &param = mesh->_patchParams[isect->faceID];
         const OpenSubdiv::Far::PatchParam &param = mesh->GetPatchParam(isect->faceID);
+        int matID = mesh->GetMaterialID(isect->faceID);
+
         unsigned int bits = param.bitField.field;
         isect->patchID = isect->faceID;
-        isect->faceID = param.faceIndex;
+        isect->faceID = param.faceIndex; // back to ptex face index
+        isect->matID = matID;
         isect->level = (bits & 0xf);
         isect->position = ray.org + isect->t * ray.dir;
 #if 0
@@ -858,6 +863,7 @@ BVHAccel::Traverse(Ray ray, Intersection *isect, Context *context) const
     isect->u = 0.0;
     isect->v = 0.0;
     isect->faceID = -1;
+    isect->matID = 0;
     isect->maxLevel = _maxLevel;
 
     ray.invDir = vec3f(inverse(ray.dir[0]),

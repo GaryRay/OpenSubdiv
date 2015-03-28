@@ -96,34 +96,29 @@ Mesh::BezierConvert(const float *vertices,
 
         switch(desc.GetType()) {
         case Far::PatchDescriptor::REGULAR:
-            numPatches = convertRegular(
-                _bezierVertices, cpIndices,
-                &vertices[0], patchTables, array);
+            numPatches = convertRegular(_bezierVertices, cpIndices,
+                                        &vertices[0], patchTables, array);
             break;
         case Far::PatchDescriptor::SINGLE_CREASE:
-            numPatches = convertSingleCrease(
-                _bezierVertices, cpIndices,
-                &vertices[0], patchTables, array);
+            numPatches = convertSingleCrease(_bezierVertices, cpIndices,
+                                             &vertices[0], patchTables, array);
             break;
         case Far::PatchDescriptor::BOUNDARY:
-            numPatches = convertBoundary(
-                _bezierVertices, cpIndices,
-                &vertices[0], patchTables, array);
+            numPatches = convertBoundary(_bezierVertices, cpIndices,
+                                         &vertices[0], patchTables, array);
             break;
         case Far::PatchDescriptor::CORNER:
-            numPatches = convertCorner(
-                _bezierVertices, cpIndices,
-                &vertices[0], patchTables, array);
+            numPatches = convertCorner(_bezierVertices, cpIndices,
+                                       &vertices[0], patchTables, array);
             break;
         case Far::PatchDescriptor::GREGORY:
-            numPatches = convertGregory(
-                _bezierVertices, cpIndices,
-                &vertices[0], patchTables, array);
+            numPatches = convertGregory(_bezierVertices, cpIndices,
+                                        &vertices[0], patchTables, array);
             break;
         case Far::PatchDescriptor::GREGORY_BOUNDARY:
-            numPatches = convertBoundaryGregory(
-                _bezierVertices, cpIndices,
-                &vertices[0], patchTables, array);
+            numPatches = convertBoundaryGregory(_bezierVertices, cpIndices,
+                                                &vertices[0], patchTables,
+                                                array);
             break;
         default:
             break;
@@ -170,7 +165,6 @@ Mesh::BezierConvert(const float *vertices,
     }
 
     _wcpFlags.resize(numTotalPatches);
-    _materialIDs.resize(numTotalPatches);
 
     // vertex position verification pass
     if (watertight) {
@@ -485,9 +479,29 @@ Mesh::BezierConvert(const float *vertices,
 
     _numTriangles = 0;
     _numBezierPatches = numTotalPatches;
-    _patchParams = patchParam;
+    _patchParams = patchParam; // for pre-tessellation
 
     assert(numTotalPatches*16*3 == (int)_bezierVertices.size());
+}
+
+void
+Mesh::AssignMaterialIDs(std::vector<int> const &ptexIDToFaceIDMapping,
+                        std::vector<unsigned short> const &materialBinds)
+{
+    // resolve material indices
+    _materialIDs.clear();
+    _materialIDs.resize(_numBezierPatches);
+
+    if (ptexIDToFaceIDMapping.empty() ||
+        materialBinds.empty()) return;
+
+    for (size_t i = 0; i < _numBezierPatches; ++i) {
+        int ptexIndex = _patchParams[i].faceIndex;
+        int faceIndex = ptexIDToFaceIDMapping[ptexIndex];
+        int materialID = materialBinds[faceIndex];
+        //printf("%d->%d\n", faceIndex, materialID);
+        _materialIDs[i] = materialID;
+    }
 }
 
 static void evalBezier(float *p, float *n, float u, float v, const float *cp)

@@ -44,16 +44,18 @@ struct Intersection {
     float u;
     float v;
     unsigned int faceID;
+    unsigned int matID;
 
     // patch info
     unsigned int patchID;
     unsigned int level;
     unsigned int clipLevel;
 
-    // for SGA tech brief
+    // for measurements
     float        eps;
     unsigned int maxLevel;
 
+    // triangle
     unsigned int f0;
     unsigned int f1;
     unsigned int f2;

@@ -40,11 +40,14 @@ randomreal(void) {
 }
 
 vec3f
-ShadeLambert(const Scene *, const Ray &ray, const Intersection &isect)
+ShadeLambert(const Scene *scene, const Ray &ray, const Intersection &isect)
 {
     // No zero in d to distinguish crack pixel color(dark background color)
+    const Material& mat = scene->GetMesh().GetMaterial(isect.matID);
+
+    vec3f diffuse = mat.diffuse;
     float d = std::max(float(0.2), dot(ray.dir, isect.normal));
-    return d * vec3f(0.8f);
+    return d * diffuse;
 }
 
 vec3f
@@ -386,17 +389,15 @@ ShadePBS(const Scene *scene, const Ray &ray, const Intersection &isect)
 
     // Currently available: diffuse + reflection(+glossy reflection)
 
-    //int matID = isect.matID;
-    int matID = 0;
-    const Material& mat = scene->GetMesh().GetMaterial(matID);
+    const Material& mat = scene->GetMesh().GetMaterial(isect.matID);
 
-  // Preserve Energy conservation for each channel.
+    // Preserve Energy conservation for each channel.
     vec3f diffuse = mat.diffuse;
     vec3f reflection = mat.reflection;
     vec3f refraction = mat.refraction;
     float reflectionGlossiness = mat.reflectionGlossiness;
-    float refractionGlossiness = mat.refractionGlossiness;
-    bool  fresnel = mat.fresnel;
+    float refractionGlossiness = 1.0f;//mat.refractionGlossiness;
+    bool  fresnel = false;//qmat.fresnel; //????
     float ior = mat.ior;
 
     vec3f in, n;
@@ -440,7 +441,7 @@ ShadePBS(const Scene *scene, const Ray &ray, const Intersection &isect)
         kdRGB = vclamp01((one - ksRGB - ktRGB) * diffuse);
     }
 
-    //  printf("diff = %f, %f, %f\n", diffuse[0], diffuse[1], diffuse[2]);
+    //printf("diff = %f, %f, %f\n", diffuse[0], diffuse[1], diffuse[2]);
     //  printf("ks = %f, %f, %f\n", ksRGB[0], ksRGB[1], ksRGB[2]);
     //printf("kd = %f, %f, %f\n", kdRGB[0], kdRGB[1], kdRGB[2]);
 
