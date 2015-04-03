@@ -145,7 +145,7 @@ inline vec3f vclamp01(vec3f x)
 inline vec3f reflect(const vec3f &in, const vec3f &n)
 {
     float d = dot(in, n);
-    return in - n * (2.0 * d);
+    return n * (2.0f * d) -in;
 }
 
 inline vec3f refract(bool &tir, const vec3f &in, const vec3f &n, float eta)
@@ -154,7 +154,7 @@ inline vec3f refract(bool &tir, const vec3f &in, const vec3f &n, float eta)
     vec3f N;
     double e = eta;
     double cos1 = dot(in, n);
-    if (cos1 < 0.0) { // entering
+    if (cos1 > 0.0) { // entering
         N = n;
     } else { // outgoing
         cos1 = -cos1;
@@ -171,10 +171,10 @@ inline vec3f refract(bool &tir, const vec3f &in, const vec3f &n, float eta)
         return ret;
     }
 
-    k = -e * cos1 - sqrt(k);
+    k = e * cos1 - sqrt(k);
 
     tir = false;
-    ret = k * N + e * in;
+    ret = k * N - e * in;
     ret.normalize();
 
     return ret;
@@ -257,47 +257,45 @@ static void GenerateBasis(vec3f &tangent, vec3f &binormal,
     }
 }
 
-static double SampleDiffuseIS(vec3f &dir, const vec3f &normal)
+static void SampleDiffuseIS(vec3f &dir, const vec3f &normal)
 {
     vec3f tangent, binormal;
 
     GenerateBasis(tangent, binormal, normal);
 
-    double theta = acos(sqrt(1.0 - randomreal()));
-    double phi = 2.0 * M_PI * randomreal();
+    float theta = acosf(sqrtf(1.0f - randomreal()));
+    float phi = 2.0f * M_PI * randomreal();
 
   //double cosTheta = cos(theta);
 
   /* D = T*cos(phi)*sin(theta) + B*sin(phi)*sin(theta) + N*cos(theta) */
-    double cos_theta = cos(theta);
-    vec3f T = tangent * cos(phi) * sin(theta);
-    vec3f B = binormal * sin(phi) * sin(theta);
+    float cos_theta = cosf(theta);
+    vec3f T = tangent * cosf(phi) * sinf(theta);
+    vec3f B = binormal * sinf(phi) * sinf(theta);
     vec3f N = normal * (cos_theta);
 
     dir = T + B + N;
 
-    return cos_theta; // PDF = weight
+    //return cos_theta; // PDF = weight
 }
 
 // (Modified) Ward glossy BRDF
 // http://www.graphics.cornell.edu/~bjw/wardnotes.pdf
 // Some from OpenShadingLanguage
-static void WardBRDF(vec3f* omega_in, // output
-                     float* pdf,     // output
-                     float* weight,  // output
+static void WardBRDF(vec3f& out, // output
+                     float& weight,  // output
                      float ax,
                      float ay,
-                     vec3f  omega_out,
-                     vec3f  normal,               // shading normal
-                     vec3f  geometric_normal)     // geometric normal
+                     const vec3f&  in,
+                     const vec3f&  normal,               // shading normal
+                     const vec3f&  geometric_normal)     // geometric normal
 {
-    float cosNO = dot(normal, omega_out);
+    float cosNO = dot(normal, in);
 
-    (*pdf) = 0.0f;
-    (*weight) = 0.0f;
-    (*omega_in)[0] = 0.0f;
-    (*omega_in)[1] = 0.0f;
-    (*omega_in)[2] = 0.0f;
+    weight = 0.0f;
+    out[0] = 0.0f;
+    out[1] = 0.0f;
+    out[2] = 0.0f;
 
     if (cosNO > 0.0f) {
         // @todo { Supply tangent vector for true aniso-brdf. }
@@ -355,40 +353,32 @@ static void WardBRDF(vec3f* omega_in, // output
         // transform to world space
         h = h[0] * tangent + h[1] * binormal + h[2] * normal;
         // generate the final sample
-        float oh = dot(h, omega_out);
-        //omega_in->x = 2 * oh * h.x - omega_out.x;
-        //omega_in->y = 2 * oh * h.y - omega_out.y;
-        //omega_in->z = 2 * oh * h.z - omega_out.z;
-        (*omega_in)[0] = omega_out[0] - 2 * oh * h[0];
-        (*omega_in)[1] = omega_out[1] - 2 * oh * h[1];
-        (*omega_in)[1] = omega_out[2] - 2 * oh * h[2];
+        float oh = dot(h, in);
+        //omega_in->x = 2 * oh * h.x - in.x;
+        //omega_in->y = 2 * oh * h.y - in.y;
+        //omega_in->z = 2 * oh * h.z - in.z;
+        out = 2.f * oh * h - in;
 
-        float ng_dot_wi = dot(geometric_normal, (*omega_in));
+        float ng_dot_wi = dot(geometric_normal, out);
         if (ng_dot_wi > 0.0f) {
-            float cosNI = dot(normal, (*omega_in));
+            float cosNI = dot(normal, out);
             if (cosNI > 0.0f) {
                 // eq. 9
                 float exp_arg = (dotx * dotx + doty * doty) / (dotn * dotn);
                 float denom = 4 * (float) M_PI * ax * ay * oh * dotn * dotn * dotn;
-                (*pdf) = expf(-exp_arg) / denom;
+                //float pdf = expf(-exp_arg) / denom;
                 denom = (4 * (float) M_PI * ax * ay * sqrtf(cosNO * cosNI));
                 float power = cosNI * expf(-exp_arg) / denom;
-                (*weight) = power;
+                weight = power;
             }
         }
     }
 }
 
-vec3f
-ShadePBS(const Scene *scene, const Ray &ray, const Intersection &isect)
+bool
+ShadePBSbounce(const Scene *scene, const Ray &ray, const Intersection &isect, vec3f& weight, vec3f& newDir)
 {
-    //printf("depth = %d\n", ray.depth);
-    if (ray.depth > 3) {
-        return vec3f(0.01f);
-    }
-
     // Currently available: diffuse + reflection(+glossy reflection)
-
     const Material& mat = scene->GetMesh().GetMaterial(isect.matID);
 
     // Preserve Energy conservation for each channel.
@@ -397,22 +387,18 @@ ShadePBS(const Scene *scene, const Ray &ray, const Intersection &isect)
     vec3f refraction = mat.refraction;
     float reflectionGlossiness = mat.reflectionGlossiness;
     float refractionGlossiness = 1.0f;//mat.refractionGlossiness;
-    bool  fresnel = false;//qmat.fresnel; //????
+    bool  fresnel = (refraction[0]>0.f || refraction[1]>0.f || refraction[2]>0.f);//qmat.fresnel; //????
     float ior = mat.ior;
 
-    vec3f in, n;
-    in[0] = ray.dir[0];
-    in[1] = ray.dir[1];
-    in[2] = ray.dir[2];
+    vec3f in = ray.dir.neg();
     in.normalize();
-
-    n[0] = -isect.normal[0];
-    n[1] = -isect.normal[1];
-    n[2] = -isect.normal[2];
+    
+// normal inversed on the car model?
+vec3f ns = isect.normal.neg();
+    float IdotN = dot(in, ns);
+    float eta = (IdotN >= 0.f) ? 1.0 / ior : ior;
+    vec3f n = (IdotN >= 0.f) ? ns : ns.neg();
     n.normalize();
-
-    float eta = 1.0 / ior;
-    vec3f ns;
 
     // ks wins, kt next, kd weaks.
     vec3f one(1.0, 1.0, 1.0);
@@ -422,15 +408,7 @@ ShadePBS(const Scene *scene, const Ray &ray, const Intersection &isect)
     vec3f ktRGB = vclamp01((one - ksRGB0) * ktRGB0);
     vec3f kdRGB = vclamp01((one - ksRGB - ktRGB) * diffuse);
 
-    if (fresnel) { // adjust ks and kd energy with fresnel factor.
-        vec3f ns = n;
-        float IdotN = dot(in, ns);
-        if (IdotN < 0.0) { // outside -> inside
-        } else {
-            eta = ior;
-            ns = n.neg();
-        }
-        
+    if (fresnel) { // adjust ks and kt energy with fresnel factor. kd is 0 if we have kt
         vec3f sDir, tDir;
         float fresnelKr, fresnelKt;
         fresnel_factor(sDir, tDir, fresnelKr, fresnelKt, in, ns, eta);
@@ -438,208 +416,130 @@ ShadePBS(const Scene *scene, const Ray &ray, const Intersection &isect)
 
         ksRGB = fresnelKr * ksRGB0;
         ktRGB = fresnelKt * ktRGB0;
-        kdRGB = vclamp01((one - ksRGB - ktRGB) * diffuse);
+        kdRGB = vec3f(0.f);
     }
-
-    //printf("diff = %f, %f, %f\n", diffuse[0], diffuse[1], diffuse[2]);
-    //  printf("ks = %f, %f, %f\n", ksRGB[0], ksRGB[1], ksRGB[2]);
-    //printf("kd = %f, %f, %f\n", kdRGB[0], kdRGB[1], kdRGB[2]);
 
     float ks = vavg(ksRGB); ks = std::min(1.0f, std::max(0.0f, ks));
     float kt = vavg(ktRGB); kt = std::min(1.0f, std::max(0.0f, kt));
     float kd = vavg(kdRGB); kd = std::min(1.0f, std::max(0.0f, kd));
+    
+    float kTotal = ks+kt+kd;
+    
+    if (kTotal == 0.f) return false;
+    
+    ks /= kTotal;
+    kt /= kTotal;
+    kd /= kTotal;
+    
+    float xi = randomreal();
 
-    vec3f kdRet(0.0, 0.0, 0.0);
-    vec3f ktRet(0.0, 0.0, 0.0);
-    vec3f ksRet(0.0, 0.0, 0.0);
-    if (kd > 0.0) {
-
-        vec3f newDir;
+    if (xi < kd) {
         SampleDiffuseIS(newDir, n);
-
-        Ray diffuseRay;
-        diffuseRay.dir = newDir;
-        diffuseRay.invDir = newDir.neg();
-        diffuseRay.org = isect.position + 0.00001f * newDir;
-        //diffuseRay.org = ray.org + ray.dir * isect.t + sray.dir * 0.0001;
-        diffuseRay.depth = ray.depth + 1;
-
-        Intersection diffuseIsect;
-        diffuseIsect.t = 1.0e+30;
-        bool hit = scene->Traverse(diffuseRay, &diffuseIsect);
-        if (hit) {
-            vec3f diffuseRGB = ShadePBS(scene, diffuseRay, diffuseIsect);
-
-            kdRet[0] = kdRGB[0] * diffuseRGB[0];
-            kdRet[1] = kdRGB[1] * diffuseRGB[1];
-            kdRet[2] = kdRGB[2] * diffuseRGB[2];
-            kdRet[3] = 1.0; // fixme
-        } else {
-            // env light
-            vec3f rgb = scene->GetEnvColor(newDir);
-
-            float ndotl = dot(n, newDir);
-            ndotl = std::max(0.1f, ndotl);
-
-            kdRet[0] = ndotl * kdRGB[0] * rgb[0];
-            kdRet[1] = ndotl * kdRGB[1] * rgb[1];
-            kdRet[2] = ndotl * kdRGB[2] * rgb[2];
-        }
+        weight = kdRGB / kd;
     }
-
-    // reflection
-    if (ks > 0.0) {
-        vec3f r;
-
-        float weight = 1.0;
-
+    else if (xi < ks+kd) { // reflection
         if (reflectionGlossiness < 1.0) {
             // glossy reflection. WardBRDF
-      
-            float pdf;
 
             // larget = sharper.
-            float ax = 1.0f * (1.0f - reflectionGlossiness); // isotropic
-            float ay = 1.0f * (1.0f - reflectionGlossiness);
+            float ax = sqrtf(1.0f - reflectionGlossiness); // isotropic
+            float ay = ax;
 
-            vec3f wi = in.neg();
+            float wr;
 
-            WardBRDF(&r, &pdf, &weight, ax, ay, wi, n, n);
-            //printf("w = %f, r = %f, %f, %f, n = %f, %f, %f\n",
-            //  weight, r[0], r[1], r[2], n[0], n[1], n[2]);
-
-            // HACK
-            r = r.neg();
-            weight = 1.0;
+            WardBRDF(newDir, wr, ax, ay, in, n, n);
+            
+            weight = ksRGB * wr  / ks;
 
         } else {
             // perfect specular.
-            r = reflect(in, n);
-        }
-
-        float dir[3];
-        dir[0] = r[0];
-        dir[1] = r[1];
-        dir[2] = r[2];
-
-        float rmag = r[0] * r[0] + r[1] * r[1] + r[2] * r[2];
-
-        if ((weight > 0.0) && (rmag > 0.1)) {
-
-            Ray reflRay;
-            reflRay.dir = r;
-            reflRay.org = isect.position + 0.01f * r;
-            reflRay.depth = ray.depth + 1;
-
-            Intersection reflIsect;
-            reflIsect.t = 1.0e+30;
-            bool hit = scene->Traverse(reflRay, &reflIsect);
-
-            if (hit) {
-
-                vec3f reflRGB = ShadePBS(scene, reflRay, reflIsect);
-
-                ksRet[0] = ksRGB[0] * reflRGB[0];
-                ksRet[1] = ksRGB[1] * reflRGB[1];
-                ksRet[2] = ksRGB[2] * reflRGB[2];
-                ksRet[3] = 1.0; // fixme
-
-            } else {
-                // env light
-                vec3f rgb = scene->GetEnvColor(r);
-
-                ksRet[0] = ksRGB[0] * rgb[0];
-                ksRet[1] = ksRGB[1] * rgb[1];
-                ksRet[2] = ksRGB[2] * rgb[2];
-            }
-
-        } else {
-            // ???
-            ksRet[0] = 0.0;
-            ksRet[1] = 0.0;
-            ksRet[2] = 0.0;
+            newDir = reflect(in, n);
+            weight = ksRGB/ ks;
         }
     }
-
-    // refraction
-    if (kt > 0.0) {
-
+    else { // refraction
         // Simple Ward refraction.
         // @todo { GGX Glossy transmission. }
-        vec3f r;
 
-        float weight = 1.0;
-
-        if (refractionGlossiness < 1.0) {
+        if (refractionGlossiness < 1.0f) {
             // glossy reflection. WardBRDF
       
-            float pdf;
-
             // larget = sharper.
-            float ax = 1.0f * (1.0f - refractionGlossiness); // isotropic
-            float ay = 1.0f * (1.0f - refractionGlossiness);
+            float ax = sqrtf(1.0f - refractionGlossiness); // isotropic
+            float ay = ax;
 
-            vec3f wi = in.neg();
+            float wr;
 
-            WardBRDF(&r, &pdf, &weight, ax, ay, wi, n, n);
-            //printf("w = %f, r = %f, %f, %f, n = %f, %f, %f\n",
-            //  weight, r[0], r[1], r[2], n[0], n[1], n[2]);
+            WardBRDF(newDir, wr, ax, ay, in, n, n);
 
-            // HACK
-            r = r.neg();
-            weight = 1.0;
+            weight = ktRGB * wr  / kt;
+            newDir = newDir - 2.f * dot(newDir, n) * n;
 
         } else {
             // perfect transmission.
             bool tir = false;
-            r = refract(tir, in, n, eta);
-        }
-
-        float dir[3];
-        dir[0] = r[0];
-        dir[1] = r[1];
-        dir[2] = r[2];
-
-        float rmag = r[0] * r[0] + r[1] * r[1] + r[2] * r[2];
-
-        if ((weight > 0.0) && (rmag > 0.1)) {
-
-            Ray refrRay;
-            refrRay.dir = r;
-            refrRay.org = isect.position + 0.01f * r;
-            refrRay.depth = ray.depth + 1;
-
-            Intersection refrIsect;
-            refrIsect.t = 1.0e+30;
-            bool hit = scene->Traverse(refrRay, &refrIsect);
-
-            if (hit) {
-                vec3f refrRGB = ShadePBS(scene, refrRay, refrIsect);
-
-                ktRet[0] = ktRGB[0] * refrRGB[0];
-                ktRet[1] = ktRGB[1] * refrRGB[1];
-                ktRet[2] = ktRGB[2] * refrRGB[2];
-                ktRet[3] = 1.0; // fixme
-
-            } else {
-                // env light
-                vec3f rgb = scene->GetEnvColor(r);
-
-                ktRet[0] = ktRGB[0] * rgb[0];
-                ktRet[1] = ktRGB[1] * rgb[1];
-                ktRet[2] = ktRGB[2] * rgb[2];
-            }
-
-        } else {
-            // ???
-            ktRet[0] = 0.0;
-            ktRet[1] = 0.0;
-            ktRet[2] = 0.0;
+            newDir = refract(tir, in, n, eta);
+            weight = ktRGB / kt;
         }
     }
 
-    // @fixme.
-    return vec3f(0.5*3.14 * (kdRet[0] + ksRet[0] + ktRet[0]),
-                 0.5*3.14 * (kdRet[1] + ksRet[1] + ktRet[1]),
-                 0.5*3.14 * (kdRet[2] + ksRet[2] + ktRet[2]));
+    return true;
+}
+
+
+vec3f
+ShadePBS(const Scene *scene, const Ray &ray, const Intersection &isect)
+{
+    const int maxDepth = 6;
+   
+    Ray indirectRay = ray;
+    Intersection indirectIsect = isect;
+    
+    vec3f result(1.f);
+
+// check model orientation, GREEN -> good, RED -> bad
+//float vdotn = -dot(ray.dir, isect.normal);
+//if (vdotn>0.f) return vec3f(0.f, vdotn, 0.f);
+//else return vec3f(-vdotn, 0.f, 0.f);
+    
+    for (int depth=0; depth<=maxDepth; ++depth)
+    {
+        if (depth == maxDepth) // max depth we just return an ambient
+        {
+            //result = result * vec3f(0.01f);
+            result = vec3f(0.0f);
+        }
+        else // shading
+        {
+            vec3f weight;
+            vec3f newDir;
+
+            if (ShadePBSbounce(scene, indirectRay, indirectIsect, weight, newDir))
+            {
+                result = result * weight;
+
+                // trace indirect ray
+                indirectRay.dir = newDir;
+                indirectRay.invDir = newDir.neg();
+                indirectRay.org = indirectIsect.position + 0.001f * newDir;
+                //indirectRay.org = ray.org + ray.dir * isect.t + sray.dir * 0.0001;
+                indirectRay.depth = depth + 1;
+                indirectIsect.t = 1.0e+30f;
+
+                if (!scene->Traverse(indirectRay, &indirectIsect)) // if no hit, return the environment
+                {
+                    // env light
+                    result = result * scene->GetEnvColor(newDir);
+                    break;
+                }
+            }
+            else
+            {
+                result = vec3f(0.f);
+                break;
+            }
+        }
+    }
+    
+    return result;
 }
